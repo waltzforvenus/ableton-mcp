@@ -17,7 +17,11 @@ except ImportError:
 
 # Constants for socket communication
 DEFAULT_PORT = 9877
-HOST = "0.0.0.0"
+# Bind to loopback only. The upstream default of "0.0.0.0" exposes Live's
+# control socket to every host on the local network, and that socket accepts
+# arbitrary commands with no authentication. The MCP server always connects
+# from localhost, so loopback costs nothing.
+HOST = "127.0.0.1"
 
 def create_instance(c_instance):
     """Create and return the AbletonMCP script instance"""
@@ -229,6 +233,7 @@ class AbletonMCP(ControlSurface):
             # Commands that modify Live's state should be scheduled on the main thread
             elif command_type in ["create_midi_track", "set_track_name",
                                  "create_clip", "create_audio_clip", "add_notes_to_clip", "set_clip_name",
+                                 "delete_clip", "clear_clip_notes", "delete_track",
                                  "set_arrangement_clip_name",
                                  "set_tempo", "fire_clip", "stop_clip",
                                  "start_playback", "stop_playback",
@@ -287,6 +292,17 @@ class AbletonMCP(ControlSurface):
                             track_index = params.get("track_index", 0)
                             clip_index = params.get("clip_index", 0)
                             result = self._stop_clip(track_index, clip_index)
+                        elif command_type == "delete_clip":
+                            track_index = params.get("track_index", 0)
+                            clip_index = params.get("clip_index", 0)
+                            result = self._delete_clip(track_index, clip_index)
+                        elif command_type == "clear_clip_notes":
+                            track_index = params.get("track_index", 0)
+                            clip_index = params.get("clip_index", 0)
+                            result = self._clear_clip_notes(track_index, clip_index)
+                        elif command_type == "delete_track":
+                            track_index = params.get("track_index", 0)
+                            result = self._delete_track(track_index)
                         elif command_type == "start_playback":
                             result = self._start_playback()
                         elif command_type == "stop_playback":
@@ -546,6 +562,98 @@ class AbletonMCP(ControlSurface):
             return result
         except Exception as e:
             self.log_message("Error creating clip: " + str(e))
+            raise
+
+    def _delete_clip(self, track_index, clip_index):
+        """Delete the clip in the specified track and clip slot, emptying the slot"""
+        try:
+            if track_index < 0 or track_index >= len(self._song.tracks):
+                raise IndexError("Track index out of range")
+
+            track = self._song.tracks[track_index]
+
+            if clip_index < 0 or clip_index >= len(track.clip_slots):
+                raise IndexError("Clip index out of range")
+
+            clip_slot = track.clip_slots[clip_index]
+
+            if not clip_slot.has_clip:
+                raise Exception("Clip slot is already empty")
+
+            # Read the name before deleting — the clip object is gone afterwards
+            deleted_name = clip_slot.clip.name
+
+            clip_slot.delete_clip()
+
+            result = {
+                "track_index": track_index,
+                "clip_index": clip_index,
+                "deleted_clip_name": deleted_name
+            }
+            return result
+        except Exception as e:
+            self.log_message("Error deleting clip: " + str(e))
+            raise
+
+    def _clear_clip_notes(self, track_index, clip_index):
+        """Remove every MIDI note from a clip, leaving the empty clip in place"""
+        try:
+            if track_index < 0 or track_index >= len(self._song.tracks):
+                raise IndexError("Track index out of range")
+
+            track = self._song.tracks[track_index]
+
+            if clip_index < 0 or clip_index >= len(track.clip_slots):
+                raise IndexError("Clip index out of range")
+
+            clip_slot = track.clip_slots[clip_index]
+
+            if not clip_slot.has_clip:
+                raise Exception("No clip in slot")
+
+            clip = clip_slot.clip
+
+            if not clip.is_midi_clip:
+                raise Exception("Clip is not a MIDI clip")
+
+            # remove_notes_extended covers the whole MIDI pitch range across the
+            # clip's full length. Fall back to the older select/replace pair on
+            # Live builds that don't expose it.
+            if hasattr(clip, "remove_notes_extended"):
+                clip.remove_notes_extended(0, 128, 0.0, clip.length)
+            else:
+                clip.select_all_notes()
+                clip.replace_selected_notes(tuple())
+
+            result = {
+                "track_index": track_index,
+                "clip_index": clip_index,
+                "name": clip.name,
+                "length": clip.length
+            }
+            return result
+        except Exception as e:
+            self.log_message("Error clearing clip notes: " + str(e))
+            raise
+
+    def _delete_track(self, track_index):
+        """Delete a track from the song"""
+        try:
+            if track_index < 0 or track_index >= len(self._song.tracks):
+                raise IndexError("Track index out of range")
+
+            deleted_name = self._song.tracks[track_index].name
+
+            self._song.delete_track(track_index)
+
+            result = {
+                "deleted_track_index": track_index,
+                "deleted_track_name": deleted_name,
+                "remaining_track_count": len(self._song.tracks)
+            }
+            return result
+        except Exception as e:
+            self.log_message("Error deleting track: " + str(e))
             raise
 
     def _create_audio_clip(self, track_index, clip_index, path):

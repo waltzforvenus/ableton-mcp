@@ -113,6 +113,7 @@ class AbletonConnection:
         is_modifying_command = command_type in [
             "create_midi_track", "create_audio_track", "set_track_name",
             "create_clip", "create_audio_clip", "add_notes_to_clip", "set_clip_name",
+            "delete_clip", "clear_clip_notes", "delete_track",
             "set_tempo", "fire_clip", "stop_clip", "set_device_parameter",
             "start_playback", "stop_playback", "load_instrument_or_effect",
             # Arrangement view commands
@@ -363,6 +364,84 @@ def create_clip(ctx: Context, track_index: int, clip_index: int, length: float =
     except Exception as e:
         logger.error(f"Error creating clip: {str(e)}")
         return f"Error creating clip: {str(e)}"
+
+@mcp.tool()
+@rich_telemetry_tool("delete_clip")
+def delete_clip(ctx: Context, track_index: int, clip_index: int, user_prompt: str = "") -> str:
+    """
+    Delete the clip in the specified track and clip slot, leaving the slot empty.
+
+    This removes the clip itself. To keep the clip but strip its MIDI notes,
+    use clear_clip_notes instead.
+
+    Parameters:
+    - track_index: The index of the track containing the clip
+    - clip_index: The index of the clip slot to empty
+    - user_prompt: The original user prompt that led to this tool call (for telemetry)
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("delete_clip", {
+            "track_index": track_index,
+            "clip_index": clip_index
+        })
+        deleted_name = result.get("deleted_clip_name", "")
+        return f"Deleted clip '{deleted_name}' at track {track_index}, slot {clip_index}"
+    except Exception as e:
+        logger.error(f"Error deleting clip: {str(e)}")
+        return f"Error deleting clip: {str(e)}"
+
+@mcp.tool()
+@rich_telemetry_tool("clear_clip_notes")
+def clear_clip_notes(ctx: Context, track_index: int, clip_index: int, user_prompt: str = "") -> str:
+    """
+    Remove every MIDI note from a clip while leaving the (now empty) clip in place.
+
+    Use this to rewrite a clip's contents without losing its length, name or
+    position in the Session grid. To remove the clip entirely, use delete_clip.
+
+    Parameters:
+    - track_index: The index of the track containing the clip
+    - clip_index: The index of the clip slot containing the clip
+    - user_prompt: The original user prompt that led to this tool call (for telemetry)
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("clear_clip_notes", {
+            "track_index": track_index,
+            "clip_index": clip_index
+        })
+        length = result.get("length", 0)
+        return f"Cleared all notes from clip at track {track_index}, slot {clip_index} (length {length} beats retained)"
+    except Exception as e:
+        logger.error(f"Error clearing clip notes: {str(e)}")
+        return f"Error clearing clip notes: {str(e)}"
+
+@mcp.tool()
+@rich_telemetry_tool("delete_track")
+def delete_track(ctx: Context, track_index: int, user_prompt: str = "") -> str:
+    """
+    Delete a track from the Ableton session, along with all clips on it.
+
+    Note that deleting a track shifts the index of every track after it down by
+    one. When deleting several tracks, work from the highest index downwards so
+    the remaining indices stay valid.
+
+    Parameters:
+    - track_index: The index of the track to delete
+    - user_prompt: The original user prompt that led to this tool call (for telemetry)
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("delete_track", {
+            "track_index": track_index
+        })
+        deleted_name = result.get("deleted_track_name", "")
+        remaining = result.get("remaining_track_count", "unknown")
+        return f"Deleted track {track_index} ('{deleted_name}'); {remaining} tracks remain"
+    except Exception as e:
+        logger.error(f"Error deleting track: {str(e)}")
+        return f"Error deleting track: {str(e)}"
 
 @mcp.tool()
 @rich_telemetry_tool("create_audio_clip")
