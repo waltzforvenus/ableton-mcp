@@ -230,6 +230,9 @@ class AbletonMCP(ControlSurface):
             elif command_type == "get_track_info":
                 track_index = params.get("track_index", 0)
                 response["result"] = self._get_track_info(track_index)
+            elif command_type == "get_track_routing":
+                track_index = params.get("track_index", 0)
+                response["result"] = self._get_track_routing(track_index)
             elif command_type == "get_device_parameters":
                 track_index = params.get("track_index", 0)
                 device_index = params.get("device_index", 0)
@@ -942,6 +945,12 @@ class AbletonMCP(ControlSurface):
         arrangement to make room at the front.
 
         bars: 0 = None, 1 = 1 Bar, 2 = 2 Bars, 3 = 4 Bars (Live's own indices).
+
+        NOTE: verified against Live 12.3.2 — `Song.count_in_duration` is exposed
+        but READ-ONLY ("property of 'Song' object has no setter"). The same is
+        true of any save. Both are reported as failures rather than silently
+        swallowed, so a caller learns the API route is closed and reaches for
+        the UI instead of assuming it worked.
         """
         try:
             mapping = {0: "None", 1: "1 Bar", 2: "2 Bars", 3: "4 Bars"}
