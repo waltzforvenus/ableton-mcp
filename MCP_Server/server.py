@@ -114,8 +114,15 @@ class AbletonConnection:
             "create_midi_track", "create_audio_track", "set_track_name",
             "create_clip", "create_audio_clip", "add_notes_to_clip", "set_clip_name",
             "delete_clip", "clear_clip_notes", "delete_track",
+            "delete_device", "set_device_parameter",
+            "set_track_volume", "set_track_pan", "set_track_mute",
+            "create_return_track", "set_track_arm", "set_track_monitoring",
             "set_tempo", "fire_clip", "stop_clip", "set_device_parameter",
             "start_playback", "stop_playback", "load_instrument_or_effect",
+            # The load_* tools actually send load_browser_item; without it here
+            # they got the short non-modifying socket timeout and appeared to
+            # fail while Live was in fact still loading the device.
+            "load_browser_item",
             # Arrangement view commands
             "switch_to_arrangement_view", "set_current_song_time",
             "duplicate_session_clip_to_arrangement"
@@ -366,6 +373,269 @@ def create_clip(ctx: Context, track_index: int, clip_index: int, length: float =
         return f"Error creating clip: {str(e)}"
 
 @mcp.tool()
+@rich_telemetry_tool("create_audio_track")
+def create_audio_track(ctx: Context, index: int = -1, user_prompt: str = "") -> str:
+    """
+    Create a new audio track, for recording vocals or instruments.
+
+    Parameters:
+    - index: The index to insert the track at (-1 = end of list)
+    - user_prompt: The original user prompt that led to this tool call (for telemetry)
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("create_audio_track", {"index": index})
+        return f"Created new audio track: {result.get('name')} at index {result.get('index')}"
+    except Exception as e:
+        logger.error(f"Error creating audio track: {str(e)}")
+        return f"Error creating audio track: {str(e)}"
+
+@mcp.tool()
+@rich_telemetry_tool("create_return_track")
+def create_return_track(ctx: Context, user_prompt: str = "") -> str:
+    """
+    Create a new return track — a shared effects bus that any track can send to.
+
+    This is how you get one reverb shared across many tracks instead of a
+    separate reverb on each, which is both cheaper and sounds more coherent.
+    Address it afterwards by passing track_type="return" to the device and
+    mixer tools.
+
+    Parameters:
+    - user_prompt: The original user prompt that led to this tool call (for telemetry)
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("create_return_track", {})
+        return (f"Created return track '{result.get('name')}' at return index "
+                f"{result.get('return_index')}")
+    except Exception as e:
+        logger.error(f"Error creating return track: {str(e)}")
+        return f"Error creating return track: {str(e)}"
+
+@mcp.tool()
+@rich_telemetry_tool("set_track_arm")
+def set_track_arm(ctx: Context, track_index: int, armed: bool = True, user_prompt: str = "") -> str:
+    """
+    Arm or disarm a track for recording.
+
+    Parameters:
+    - track_index: The index of the track
+    - armed: True to arm, False to disarm
+    - user_prompt: The original user prompt that led to this tool call (for telemetry)
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("set_track_arm", {
+            "track_index": track_index,
+            "value": armed
+        })
+        state = "armed" if result.get("arm") else "disarmed"
+        return f"Track {track_index} ('{result.get('track_name')}') {state}"
+    except Exception as e:
+        logger.error(f"Error arming track: {str(e)}")
+        return f"Error arming track: {str(e)}"
+
+@mcp.tool()
+@rich_telemetry_tool("set_track_monitoring")
+def set_track_monitoring(ctx: Context, track_index: int, state: str = "auto", user_prompt: str = "") -> str:
+    """
+    Set a track's input monitoring, so the performer can hear themselves.
+
+    Parameters:
+    - track_index: The index of the track
+    - state: "in" (always monitor input), "auto" (monitor when armed), or "off"
+    - user_prompt: The original user prompt that led to this tool call (for telemetry)
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("set_track_monitoring", {
+            "track_index": track_index,
+            "value": state
+        })
+        return (f"Track {track_index} ('{result.get('track_name')}') monitoring set to "
+                f"{result.get('monitoring')}")
+    except Exception as e:
+        logger.error(f"Error setting monitoring: {str(e)}")
+        return f"Error setting monitoring: {str(e)}"
+
+@mcp.tool()
+@rich_telemetry_tool("get_device_parameters")
+def get_device_parameters(ctx: Context, track_index: int, device_index: int,
+                          track_type: str = "regular", user_prompt: str = "") -> str:
+    """
+    List every parameter on a device, with its current value, range and the
+    value as Live displays it (e.g. "-6.0 dB", "35 %").
+
+    Call this before set_device_parameter so you know the parameter names and
+    what range each one accepts — a reverb's dry/wet, a delay's feedback, a
+    compressor's threshold are all reachable this way.
+
+    Parameters:
+    - track_index: The index of the track containing the device
+    - device_index: The index of the device in that track's chain (0 = first)
+    - user_prompt: The original user prompt that led to this tool call (for telemetry)
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("get_device_parameters", {
+            "track_index": track_index,
+            "device_index": device_index,
+            "track_type": track_type
+        })
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error getting device parameters: {str(e)}")
+        return f"Error getting device parameters: {str(e)}"
+
+@mcp.tool()
+@rich_telemetry_tool("set_device_parameter")
+def set_device_parameter(ctx: Context, track_index: int, device_index: int,
+                         parameter: str, value: float,
+                         track_type: str = "regular", user_prompt: str = "") -> str:
+    """
+    Set one parameter on a device. This is how you actually mix: pull a reverb's
+    Dry/Wet down, set a delay's feedback, change a filter cutoff.
+
+    The value is clamped into the parameter's own range rather than erroring, so
+    passing 0 always means "as low as this goes".
+
+    Parameters:
+    - track_index: The index of the track containing the device
+    - device_index: The index of the device in that track's chain (0 = first)
+    - parameter: The parameter's name as shown by get_device_parameters (e.g.
+      "Dry/Wet"), or its integer index passed as a string (e.g. "3")
+    - value: The value to set, in the parameter's own units
+    - user_prompt: The original user prompt that led to this tool call (for telemetry)
+    """
+    try:
+        ableton = get_ableton_connection()
+        # Accept an integer index passed as a string without making the caller care.
+        param: Any = parameter
+        try:
+            param = int(str(parameter).strip())
+        except (TypeError, ValueError):
+            pass
+        result = ableton.send_command("set_device_parameter", {
+            "track_index": track_index,
+            "device_index": device_index,
+            "parameter": param,
+            "value": value,
+            "track_type": track_type
+        })
+        note = " (clamped)" if result.get("clamped") else ""
+        return (f"Set {result.get('device_name')} '{result.get('parameter_name')}' "
+                f"to {result.get('display_value') or result.get('value')}{note}")
+    except Exception as e:
+        logger.error(f"Error setting device parameter: {str(e)}")
+        return f"Error setting device parameter: {str(e)}"
+
+@mcp.tool()
+@rich_telemetry_tool("delete_device")
+def delete_device(ctx: Context, track_index: int, device_index: int,
+                  track_type: str = "regular", user_prompt: str = "") -> str:
+    """
+    Remove a device from a track's chain.
+
+    Deleting a device shifts the index of every device after it down by one, so
+    when removing several, work from the highest index downwards.
+
+    Parameters:
+    - track_index: The index of the track containing the device
+    - device_index: The index of the device to remove (0 = first in the chain)
+    - user_prompt: The original user prompt that led to this tool call (for telemetry)
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("delete_device", {
+            "track_index": track_index,
+            "device_index": device_index,
+            "track_type": track_type
+        })
+        return (f"Deleted '{result.get('deleted_device_name')}' from track {track_index}; "
+                f"{result.get('remaining_device_count')} devices remain")
+    except Exception as e:
+        logger.error(f"Error deleting device: {str(e)}")
+        return f"Error deleting device: {str(e)}"
+
+@mcp.tool()
+@rich_telemetry_tool("set_track_volume")
+def set_track_volume(ctx: Context, track_index: int, value: float,
+                     track_type: str = "regular", user_prompt: str = "") -> str:
+    """
+    Set a track's mixer volume.
+
+    The scale is Live's own 0.0-1.0 fader position, NOT decibels: 0.85 is unity
+    (0 dB), 0.0 is silence, 1.0 is +6 dB. The returned display_value gives the
+    resulting level in dB so you can check it landed where you meant.
+
+    Parameters:
+    - track_index: The index of the track
+    - value: Fader position from 0.0 to 1.0 (0.85 = 0 dB)
+    - user_prompt: The original user prompt that led to this tool call (for telemetry)
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("set_track_volume", {
+            "track_index": track_index,
+            "value": value,
+            "track_type": track_type
+        })
+        return (f"Set '{result.get('track_name')}' volume to "
+                f"{result.get('display_value') or result.get('value')}")
+    except Exception as e:
+        logger.error(f"Error setting track volume: {str(e)}")
+        return f"Error setting track volume: {str(e)}"
+
+@mcp.tool()
+@rich_telemetry_tool("set_track_pan")
+def set_track_pan(ctx: Context, track_index: int, value: float,
+                  track_type: str = "regular", user_prompt: str = "") -> str:
+    """
+    Set a track's stereo panning.
+
+    Parameters:
+    - track_index: The index of the track
+    - value: -1.0 is hard left, 0.0 is centre, 1.0 is hard right
+    - user_prompt: The original user prompt that led to this tool call (for telemetry)
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("set_track_pan", {
+            "track_index": track_index,
+            "value": value,
+            "track_type": track_type
+        })
+        return (f"Set '{result.get('track_name')}' pan to "
+                f"{result.get('display_value') or result.get('value')}")
+    except Exception as e:
+        logger.error(f"Error setting track pan: {str(e)}")
+        return f"Error setting track pan: {str(e)}"
+
+@mcp.tool()
+@rich_telemetry_tool("set_track_mute")
+def set_track_mute(ctx: Context, track_index: int, mute: bool, user_prompt: str = "") -> str:
+    """
+    Mute or unmute a track. Useful for auditioning parts in isolation.
+
+    Parameters:
+    - track_index: The index of the track
+    - mute: True to mute, False to unmute
+    - user_prompt: The original user prompt that led to this tool call (for telemetry)
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("set_track_mute", {
+            "track_index": track_index,
+            "value": mute
+        })
+        state = "muted" if result.get("mute") else "unmuted"
+        return f"Track {track_index} ('{result.get('track_name')}') {state}"
+    except Exception as e:
+        logger.error(f"Error setting track mute: {str(e)}")
+        return f"Error setting track mute: {str(e)}"
+
+@mcp.tool()
 @rich_telemetry_tool("delete_clip")
 def delete_clip(ctx: Context, track_index: int, clip_index: int, user_prompt: str = "") -> str:
     """
@@ -572,7 +842,8 @@ def set_tempo(ctx: Context, tempo: float, user_prompt: str = "") -> str:
 
 @mcp.tool()
 @rich_telemetry_tool("load_instrument_or_effect")
-def load_instrument_or_effect(ctx: Context, track_index: int, uri: str, user_prompt: str = "") -> str:
+def load_instrument_or_effect(ctx: Context, track_index: int, uri: str,
+                              track_type: str = "regular", user_prompt: str = "") -> str:
     """
     Load an instrument or effect onto a track using its URI.
 
@@ -585,7 +856,8 @@ def load_instrument_or_effect(ctx: Context, track_index: int, uri: str, user_pro
         ableton = get_ableton_connection()
         result = ableton.send_command("load_browser_item", {
             "track_index": track_index,
-            "item_uri": uri
+            "item_uri": uri,
+            "track_type": track_type
         })
         
         # Check if the instrument was loaded successfully
