@@ -117,6 +117,7 @@ class AbletonConnection:
             "delete_device", "set_device_parameter",
             "set_track_volume", "set_track_pan", "set_track_mute",
             "create_return_track", "set_track_arm", "set_track_monitoring", "save_set",
+            "set_track_send",
             "set_tempo", "fire_clip", "stop_clip", "set_device_parameter",
             "start_playback", "stop_playback", "load_instrument_or_effect",
             # The load_* tools actually send load_browser_item; without it here
@@ -371,6 +372,37 @@ def create_clip(ctx: Context, track_index: int, clip_index: int, length: float =
     except Exception as e:
         logger.error(f"Error creating clip: {str(e)}")
         return f"Error creating clip: {str(e)}"
+
+@mcp.tool()
+@rich_telemetry_tool("set_track_send")
+def set_track_send(ctx: Context, track_index: int, send_index: int, value: float,
+                   user_prompt: str = "") -> str:
+    """
+    Set how much of a track is sent to a return track.
+
+    Live starts every send at -inf, so a newly created return track receives
+    nothing until this is raised — a shared reverb bus is silent without it.
+    The scale matches Live's send knob: 0.0 is -inf, around 0.6-0.7 is a modest
+    send, 1.0 is unity.
+
+    Parameters:
+    - track_index: The index of the track sending
+    - send_index: Which return to send to (0 = Return A, 1 = Return B, ...)
+    - value: Send amount from 0.0 to 1.0
+    - user_prompt: The original user prompt that led to this tool call (for telemetry)
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("set_track_send", {
+            "track_index": track_index,
+            "send_index": send_index,
+            "value": value
+        })
+        return (f"Set '{result.get('track_name')}' send {send_index} to "
+                f"{result.get('display_value') or result.get('value')}")
+    except Exception as e:
+        logger.error(f"Error setting track send: {str(e)}")
+        return f"Error setting track send: {str(e)}"
 
 @mcp.tool()
 @rich_telemetry_tool("save_set")

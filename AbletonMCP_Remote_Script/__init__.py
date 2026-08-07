@@ -244,6 +244,7 @@ class AbletonMCP(ControlSurface):
                                  "set_track_volume", "set_track_pan", "set_track_mute",
                                  "create_audio_track", "create_return_track",
                                  "set_track_arm", "set_track_monitoring", "save_set",
+                                 "set_track_send",
                                  "set_arrangement_clip_name",
                                  "set_tempo", "fire_clip", "stop_clip",
                                  "start_playback", "stop_playback",
@@ -343,6 +344,11 @@ class AbletonMCP(ControlSurface):
                             result = self._create_return_track()
                         elif command_type == "save_set":
                             result = self._save_set()
+                        elif command_type == "set_track_send":
+                            track_index = params.get("track_index", 0)
+                            send_index = params.get("send_index", 0)
+                            value = params.get("value", 0.0)
+                            result = self._set_track_send(track_index, send_index, value)
                         elif command_type == "set_track_arm":
                             track_index = params.get("track_index", 0)
                             value = params.get("value", True)
@@ -850,6 +856,41 @@ class AbletonMCP(ControlSurface):
             }
         except Exception as e:
             self.log_message("Error setting track " + field + ": " + str(e))
+            raise
+
+    def _set_track_send(self, track_index, send_index, value):
+        """Set how much of a track is sent to a return track (0.0-1.0).
+
+        A newly created return track receives nothing until this is raised —
+        Live starts every send at -inf — so a shared reverb bus is silent
+        without it.
+        """
+        try:
+            track = self._resolve_track(track_index)
+            sends = track.mixer_device.sends
+            if send_index < 0 or send_index >= len(sends):
+                raise IndexError("Send index out of range (track has %d sends)" % len(sends))
+
+            param = sends[send_index]
+            value = float(value)
+            clamped = max(param.min, min(param.max, value))
+            param.value = clamped
+
+            try:
+                shown = str(param.str_for_value(param.value))
+            except Exception:
+                shown = ""
+
+            return {
+                "track_index": track_index,
+                "track_name": track.name,
+                "send_index": send_index,
+                "value": param.value,
+                "display_value": shown,
+                "clamped": clamped != value,
+            }
+        except Exception as e:
+            self.log_message("Error setting track send: " + str(e))
             raise
 
     def _set_track_mute(self, track_index, value):
