@@ -230,10 +230,20 @@ class AbletonMCP(ControlSurface):
             elif command_type == "get_track_info":
                 track_index = params.get("track_index", 0)
                 response["result"] = self._get_track_info(track_index)
+            elif command_type == "get_device_parameters":
+                track_index = params.get("track_index", 0)
+                device_index = params.get("device_index", 0)
+                track_type = params.get("track_type", "regular")
+                response["result"] = self._get_device_parameters(
+                    track_index, device_index, track_type)
             # Commands that modify Live's state should be scheduled on the main thread
             elif command_type in ["create_midi_track", "set_track_name",
                                  "create_clip", "create_audio_clip", "add_notes_to_clip", "set_clip_name",
                                  "delete_clip", "clear_clip_notes", "delete_track",
+                                 "delete_device", "set_device_parameter",
+                                 "set_track_volume", "set_track_pan", "set_track_mute",
+                                 "create_audio_track", "create_return_track",
+                                 "set_track_arm", "set_track_monitoring", "save_set",
                                  "set_arrangement_clip_name",
                                  "set_tempo", "fire_clip", "stop_clip",
                                  "start_playback", "stop_playback",
@@ -303,6 +313,48 @@ class AbletonMCP(ControlSurface):
                         elif command_type == "delete_track":
                             track_index = params.get("track_index", 0)
                             result = self._delete_track(track_index)
+                        elif command_type == "delete_device":
+                            track_index = params.get("track_index", 0)
+                            device_index = params.get("device_index", 0)
+                            track_type = params.get("track_type", "regular")
+                            result = self._delete_device(track_index, device_index, track_type)
+                        elif command_type == "set_device_parameter":
+                            track_index = params.get("track_index", 0)
+                            device_index = params.get("device_index", 0)
+                            parameter = params.get("parameter")
+                            value = params.get("value", 0.0)
+                            track_type = params.get("track_type", "regular")
+                            result = self._set_device_parameter(
+                                track_index, device_index, parameter, value, track_type)
+                        elif command_type == "set_track_volume":
+                            track_index = params.get("track_index", 0)
+                            value = params.get("value", 0.85)
+                            track_type = params.get("track_type", "regular")
+                            result = self._set_track_mixer(track_index, "volume", value, track_type)
+                        elif command_type == "set_track_pan":
+                            track_index = params.get("track_index", 0)
+                            value = params.get("value", 0.0)
+                            track_type = params.get("track_type", "regular")
+                            result = self._set_track_mixer(track_index, "panning", value, track_type)
+                        elif command_type == "create_audio_track":
+                            index = params.get("index", -1)
+                            result = self._create_audio_track(index)
+                        elif command_type == "create_return_track":
+                            result = self._create_return_track()
+                        elif command_type == "save_set":
+                            result = self._save_set()
+                        elif command_type == "set_track_arm":
+                            track_index = params.get("track_index", 0)
+                            value = params.get("value", True)
+                            result = self._set_track_arm(track_index, value)
+                        elif command_type == "set_track_monitoring":
+                            track_index = params.get("track_index", 0)
+                            value = params.get("value", "auto")
+                            result = self._set_track_monitoring(track_index, value)
+                        elif command_type == "set_track_mute":
+                            track_index = params.get("track_index", 0)
+                            value = params.get("value", False)
+                            result = self._set_track_mute(track_index, value)
                         elif command_type == "start_playback":
                             result = self._start_playback()
                         elif command_type == "stop_playback":
@@ -310,11 +362,13 @@ class AbletonMCP(ControlSurface):
                         elif command_type == "load_instrument_or_effect":
                             track_index = params.get("track_index", 0)
                             uri = params.get("uri", "")
-                            result = self._load_instrument_or_effect(track_index, uri)
+                            track_type = params.get("track_type", "regular")
+                            result = self._load_instrument_or_effect(track_index, uri, track_type)
                         elif command_type == "load_browser_item":
                             track_index = params.get("track_index", 0)
                             item_uri = params.get("item_uri", "")
-                            result = self._load_browser_item(track_index, item_uri)
+                            track_type = params.get("track_type", "regular")
+                            result = self._load_browser_item(track_index, item_uri, track_type)
                         # ── Arrangement view commands ──────────────────────────────
                         elif command_type == "switch_to_arrangement_view":
                             result = self._switch_to_arrangement_view()
@@ -634,6 +688,182 @@ class AbletonMCP(ControlSurface):
             return result
         except Exception as e:
             self.log_message("Error clearing clip notes: " + str(e))
+            raise
+
+    def _resolve_track(self, track_index, track_type="regular"):
+        """Resolve a regular track, a return track, or the master track.
+
+        track_type is "regular" (default), "return", or "master"; master ignores
+        track_index. song.tracks contains neither the returns nor the master, so
+        this is what lets the mixer and device commands reach them at all.
+        """
+        kind = (track_type or "regular").strip().lower()
+        if kind in ("master", "main"):
+            return self._song.master_track
+        if kind in ("return", "send"):
+            returns = self._song.return_tracks
+            if track_index < 0 or track_index >= len(returns):
+                raise IndexError("Return track index out of range (%d return tracks)"
+                                 % len(returns))
+            return returns[track_index]
+        if track_index < 0 or track_index >= len(self._song.tracks):
+            raise IndexError("Track index out of range")
+        return self._song.tracks[track_index]
+
+    def _resolve_device(self, track_index, device_index, track_type="regular"):
+        track = self._resolve_track(track_index, track_type)
+        if device_index < 0 or device_index >= len(track.devices):
+            raise IndexError("Device index out of range (track has %d devices)"
+                             % len(track.devices))
+        return track, track.devices[device_index]
+
+    def _get_device_parameters(self, track_index, device_index, track_type="regular"):
+        """List every automatable parameter on a device, with its current value"""
+        try:
+            track, device = self._resolve_device(track_index, device_index, track_type)
+
+            parameters = []
+            for i, p in enumerate(device.parameters):
+                entry = {
+                    "index": i,
+                    "name": p.name,
+                    "value": p.value,
+                    "min": p.min,
+                    "max": p.max,
+                    "is_quantized": bool(p.is_quantized),
+                }
+                # display_value is what Live shows in the UI (e.g. "-6.0 dB"),
+                # which is far more useful than the raw float when deciding
+                # what to set something to.
+                try:
+                    entry["display_value"] = str(p.str_for_value(p.value))
+                except Exception:
+                    entry["display_value"] = ""
+                parameters.append(entry)
+
+            return {
+                "track_index": track_index,
+                "track_name": track.name,
+                "device_index": device_index,
+                "device_name": device.name,
+                "parameter_count": len(parameters),
+                "parameters": parameters,
+            }
+        except Exception as e:
+            self.log_message("Error getting device parameters: " + str(e))
+            raise
+
+    def _set_device_parameter(self, track_index, device_index, parameter, value,
+                              track_type="regular"):
+        """Set one device parameter, addressed by integer index or by name"""
+        try:
+            track, device = self._resolve_device(track_index, device_index, track_type)
+
+            target = None
+            if isinstance(parameter, bool):
+                raise ValueError("parameter must be an index or a name, not a bool")
+            elif isinstance(parameter, int):
+                if parameter < 0 or parameter >= len(device.parameters):
+                    raise IndexError("Parameter index out of range (device has %d)"
+                                     % len(device.parameters))
+                target = device.parameters[parameter]
+            else:
+                wanted = str(parameter).strip().lower()
+                for p in device.parameters:
+                    if p.name.strip().lower() == wanted:
+                        target = p
+                        break
+                if target is None:
+                    names = ", ".join([p.name for p in device.parameters])
+                    raise ValueError("No parameter named '%s'. Available: %s"
+                                     % (parameter, names))
+
+            value = float(value)
+            # Clamp rather than raise: Live throws on out-of-range assignment,
+            # and a caller asking for "as low as it goes" should just get the min.
+            clamped = max(target.min, min(target.max, value))
+            target.value = clamped
+
+            try:
+                shown = str(target.str_for_value(target.value))
+            except Exception:
+                shown = ""
+
+            return {
+                "track_index": track_index,
+                "device_index": device_index,
+                "device_name": device.name,
+                "parameter_name": target.name,
+                "requested": value,
+                "value": target.value,
+                "display_value": shown,
+                "clamped": clamped != value,
+                "min": target.min,
+                "max": target.max,
+            }
+        except Exception as e:
+            self.log_message("Error setting device parameter: " + str(e))
+            raise
+
+    def _delete_device(self, track_index, device_index, track_type="regular"):
+        """Remove a device from a track's chain"""
+        try:
+            track, device = self._resolve_device(track_index, device_index, track_type)
+            name = device.name
+            track.delete_device(device_index)
+            return {
+                "track_index": track_index,
+                "deleted_device_index": device_index,
+                "deleted_device_name": name,
+                "remaining_device_count": len(track.devices),
+            }
+        except Exception as e:
+            self.log_message("Error deleting device: " + str(e))
+            raise
+
+    def _set_track_mixer(self, track_index, field, value, track_type="regular"):
+        """Set mixer volume (0.0-1.0, 0.85 = 0 dB) or panning (-1.0 to 1.0).
+
+        Works on regular tracks, return tracks and the master.
+        """
+        try:
+            track = self._resolve_track(track_index, track_type)
+            param = getattr(track.mixer_device, field)
+
+            value = float(value)
+            clamped = max(param.min, min(param.max, value))
+            param.value = clamped
+
+            try:
+                shown = str(param.str_for_value(param.value))
+            except Exception:
+                shown = ""
+
+            return {
+                "track_index": track_index,
+                "track_name": track.name,
+                "field": field,
+                "requested": value,
+                "value": param.value,
+                "display_value": shown,
+                "clamped": clamped != value,
+            }
+        except Exception as e:
+            self.log_message("Error setting track " + field + ": " + str(e))
+            raise
+
+    def _set_track_mute(self, track_index, value):
+        """Mute or unmute a track"""
+        try:
+            track = self._resolve_track(track_index)
+            track.mute = bool(value)
+            return {
+                "track_index": track_index,
+                "track_name": track.name,
+                "mute": bool(track.mute),
+            }
+        except Exception as e:
+            self.log_message("Error setting track mute: " + str(e))
             raise
 
     def _delete_track(self, track_index):
@@ -1077,7 +1307,108 @@ class AbletonMCP(ControlSurface):
     
     
     
-    def _load_instrument_or_effect(self, track_index, uri):
+    def _save_set(self):
+        """Save the open Live Set, if this Live build exposes a way to do it.
+
+        Live's Python API has never officially documented a save, but some
+        builds expose Song.save_set or an equivalent on the Application. Try
+        each candidate and report precisely which one worked — or report that
+        none exist, so the caller knows to stop asking rather than assuming a
+        silent success.
+        """
+        try:
+            attempts = []
+
+            for owner_name, owner in (("song", self._song),
+                                      ("application", self.application())):
+                if owner is None:
+                    continue
+                for attr in ("save_set", "save", "save_as", "save_document"):
+                    fn = getattr(owner, attr, None)
+                    if fn is None:
+                        continue
+                    if not callable(fn):
+                        attempts.append("%s.%s exists but is not callable" % (owner_name, attr))
+                        continue
+                    try:
+                        fn()
+                        return {
+                            "saved": True,
+                            "method": "%s.%s()" % (owner_name, attr),
+                            "attempts": attempts,
+                        }
+                    except Exception as inner:
+                        attempts.append("%s.%s() raised %s" % (owner_name, attr, inner))
+
+            return {
+                "saved": False,
+                "method": None,
+                "attempts": attempts,
+                "message": ("This Live build exposes no callable save through the "
+                            "Python API; the set must be saved from the UI."),
+            }
+        except Exception as e:
+            self.log_message("Error saving set: " + str(e))
+            raise
+
+    def _create_audio_track(self, index):
+        """Create a new audio track"""
+        try:
+            self._song.create_audio_track(index)
+            new_track = self._song.tracks[index if index >= 0 else len(self._song.tracks) - 1]
+            return {"index": list(self._song.tracks).index(new_track), "name": new_track.name}
+        except Exception as e:
+            self.log_message("Error creating audio track: " + str(e))
+            raise
+
+    def _create_return_track(self):
+        """Create a new return track, for shared send effects"""
+        try:
+            self._song.create_return_track()
+            returns = self._song.return_tracks
+            t = returns[-1]
+            return {"return_index": len(returns) - 1, "name": t.name,
+                    "return_track_count": len(returns)}
+        except Exception as e:
+            self.log_message("Error creating return track: " + str(e))
+            raise
+
+    def _set_track_arm(self, track_index, armed):
+        """Arm or disarm a track for recording"""
+        try:
+            track = self._resolve_track(track_index)
+            if not track.can_be_armed:
+                raise ValueError("Track %d cannot be armed" % track_index)
+            track.arm = bool(armed)
+            return {"track_index": track_index, "track_name": track.name,
+                    "arm": bool(track.arm)}
+        except Exception as e:
+            self.log_message("Error arming track: " + str(e))
+            raise
+
+    def _set_track_monitoring(self, track_index, state):
+        """Set input monitoring. 0 = In, 1 = Auto, 2 = Off (Live's own ordering)."""
+        try:
+            track = self._resolve_track(track_index)
+            names = {"in": 0, "auto": 1, "off": 2}
+            if isinstance(state, str):
+                key = state.strip().lower()
+                if key not in names:
+                    raise ValueError("monitoring must be 'in', 'auto' or 'off'")
+                value = names[key]
+            else:
+                value = int(state)
+            if value not in (0, 1, 2):
+                raise ValueError("monitoring state must be 0 (In), 1 (Auto) or 2 (Off)")
+            track.current_monitoring_state = value
+            inverse = {0: "in", 1: "auto", 2: "off"}
+            return {"track_index": track_index, "track_name": track.name,
+                    "monitoring": inverse[int(track.current_monitoring_state)]}
+        except Exception as e:
+            self.log_message("Error setting monitoring: " + str(e))
+            raise
+
+    def _load_instrument_or_effect(self, track_index, uri, track_type="regular"):
         """Load an instrument or effect onto a track by its browser URI.
 
         The command dispatcher above calls this method, but it was never
@@ -1087,15 +1418,16 @@ class AbletonMCP(ControlSurface):
         _load_browser_item does, so delegate to it; the only difference is the
         parameter name the MCP server uses ("uri" vs "item_uri").
         """
-        return self._load_browser_item(track_index, uri)
+        return self._load_browser_item(track_index, uri, track_type)
 
-    def _load_browser_item(self, track_index, item_uri):
-        """Load a browser item onto a track by its URI"""
+    def _load_browser_item(self, track_index, item_uri, track_type="regular"):
+        """Load a browser item onto a track by its URI.
+
+        track_type accepts "regular", "return" or "master", so effects can be
+        placed on the master bus and on send returns, not just regular tracks.
+        """
         try:
-            if track_index < 0 or track_index >= len(self._song.tracks):
-                raise IndexError("Track index out of range")
-            
-            track = self._song.tracks[track_index]
+            track = self._resolve_track(track_index, track_type)
             
             # Access the application's browser instance instead of creating a new one
             app = self.application()
