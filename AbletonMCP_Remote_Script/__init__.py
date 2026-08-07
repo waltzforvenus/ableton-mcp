@@ -244,7 +244,8 @@ class AbletonMCP(ControlSurface):
                                  "set_track_volume", "set_track_pan", "set_track_mute",
                                  "create_audio_track", "create_return_track",
                                  "set_track_arm", "set_track_monitoring", "save_set",
-                                 "set_track_send",
+                                 "set_track_send", "set_count_in",
+                                 "back_to_arrangement", "set_track_routing",
                                  "set_arrangement_clip_name",
                                  "set_tempo", "fire_clip", "stop_clip",
                                  "start_playback", "stop_playback",
@@ -344,6 +345,17 @@ class AbletonMCP(ControlSurface):
                             result = self._create_return_track()
                         elif command_type == "save_set":
                             result = self._save_set()
+                        elif command_type == "back_to_arrangement":
+                            result = self._back_to_arrangement()
+                        elif command_type == "set_track_routing":
+                            track_index = params.get("track_index", 0)
+                            field = params.get("field", "output_routing_type")
+                            target = params.get("target", "Main")
+                            result = self._set_track_routing(track_index, field, target)
+                        elif command_type == "set_count_in":
+                            bars = params.get("bars", 1)
+                            metronome = params.get("metronome", None)
+                            result = self._set_count_in(bars, metronome)
                         elif command_type == "set_track_send":
                             track_index = params.get("track_index", 0)
                             send_index = params.get("send_index", 0)
@@ -856,6 +868,109 @@ class AbletonMCP(ControlSurface):
             }
         except Exception as e:
             self.log_message("Error setting track " + field + ": " + str(e))
+            raise
+
+    def _back_to_arrangement(self):
+        """Hand every overridden track back to the Arrangement.
+
+        Stopping a Session clip does NOT return its track to the timeline — the
+        track goes silent until this is triggered. Without it, arrangement edits
+        are inaudible while any Session clip has ever been launched.
+        """
+        try:
+            self._song.back_to_arranger = False
+            return {"back_to_arranger": bool(self._song.back_to_arranger),
+                    "message": "All tracks returned to Arrangement playback"}
+        except Exception as e:
+            self.log_message("Error returning to arrangement: " + str(e))
+            raise
+
+    def _routing_name(self, obj):
+        if obj is None:
+            return None
+        return getattr(obj, "display_name", str(obj))
+
+    def _get_track_routing(self, track_index):
+        """Report a track's input/output routing and every option available to it"""
+        try:
+            track = self._resolve_track(track_index)
+            result = {"track_index": track_index, "track_name": track.name}
+            for attr in ("output_routing_type", "output_routing_channel",
+                         "input_routing_type", "input_routing_channel"):
+                result[attr] = self._routing_name(getattr(track, attr, None))
+            for attr in ("available_output_routing_types",
+                         "available_output_routing_channels",
+                         "available_input_routing_types",
+                         "available_input_routing_channels"):
+                options = getattr(track, attr, None)
+                result[attr] = [self._routing_name(o) for o in options] if options else []
+            return result
+        except Exception as e:
+            self.log_message("Error getting track routing: " + str(e))
+            raise
+
+    def _set_track_routing(self, track_index, field, target):
+        """Set one routing field by its display name, e.g. output type 'Main'"""
+        try:
+            track = self._resolve_track(track_index)
+            available_attr = "available_" + field + "s"
+            options = getattr(track, available_attr, None)
+            if not options:
+                raise ValueError("Track exposes no %s" % available_attr)
+
+            wanted = str(target).strip().lower()
+            for option in options:
+                if self._routing_name(option).strip().lower() == wanted:
+                    setattr(track, field, option)
+                    return {
+                        "track_index": track_index,
+                        "track_name": track.name,
+                        "field": field,
+                        "value": self._routing_name(getattr(track, field, None)),
+                    }
+            names = ", ".join([self._routing_name(o) for o in options])
+            raise ValueError("No %s named '%s'. Available: %s" % (field, target, names))
+        except Exception as e:
+            self.log_message("Error setting track routing: " + str(e))
+            raise
+
+    def _set_count_in(self, bars, metronome=None):
+        """Set the record count-in, so a performer gets a lead-in before punching in.
+
+        This is the correct way to get a count-in: it happens only when
+        recording, and it does not require shifting every clip in the
+        arrangement to make room at the front.
+
+        bars: 0 = None, 1 = 1 Bar, 2 = 2 Bars, 3 = 4 Bars (Live's own indices).
+        """
+        try:
+            mapping = {0: "None", 1: "1 Bar", 2: "2 Bars", 3: "4 Bars"}
+            if isinstance(bars, str):
+                lookup = {"none": 0, "0": 0, "1": 1, "1 bar": 1,
+                          "2": 2, "2 bars": 2, "4": 3, "4 bars": 3}
+                key = bars.strip().lower()
+                if key not in lookup:
+                    raise ValueError("count-in must be none, 1, 2 or 4 bars")
+                value = lookup[key]
+            else:
+                value = int(bars)
+            if value not in mapping:
+                raise ValueError("count-in index must be 0 (None), 1, 2 or 3 (4 Bars)")
+
+            self._song.count_in_duration = value
+
+            # A count-in you cannot hear is useless, so allow turning the
+            # metronome on in the same call.
+            if metronome is not None:
+                self._song.metronome = bool(metronome)
+
+            return {
+                "count_in_duration": int(self._song.count_in_duration),
+                "count_in": mapping.get(int(self._song.count_in_duration), "?"),
+                "metronome": bool(self._song.metronome),
+            }
+        except Exception as e:
+            self.log_message("Error setting count-in: " + str(e))
             raise
 
     def _set_track_send(self, track_index, send_index, value):

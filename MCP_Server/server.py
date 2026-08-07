@@ -117,7 +117,7 @@ class AbletonConnection:
             "delete_device", "set_device_parameter",
             "set_track_volume", "set_track_pan", "set_track_mute",
             "create_return_track", "set_track_arm", "set_track_monitoring", "save_set",
-            "set_track_send",
+            "set_track_send", "set_count_in", "back_to_arrangement", "set_track_routing",
             "set_tempo", "fire_clip", "stop_clip", "set_device_parameter",
             "start_playback", "stop_playback", "load_instrument_or_effect",
             # The load_* tools actually send load_browser_item; without it here
@@ -372,6 +372,107 @@ def create_clip(ctx: Context, track_index: int, clip_index: int, length: float =
     except Exception as e:
         logger.error(f"Error creating clip: {str(e)}")
         return f"Error creating clip: {str(e)}"
+
+@mcp.tool()
+@rich_telemetry_tool("back_to_arrangement")
+def back_to_arrangement(ctx: Context, user_prompt: str = "") -> str:
+    """
+    Return every track to Arrangement playback — Live's "Back to Arrangement" button.
+
+    Launching a Session clip overrides that track's timeline, and STOPPING the
+    clip does not undo it: the track falls silent instead of reverting. Until
+    this is called, arrangement edits on an overridden track are inaudible.
+
+    Parameters:
+    - user_prompt: The original user prompt that led to this tool call (for telemetry)
+    """
+    try:
+        ableton = get_ableton_connection()
+        ableton.send_command("back_to_arrangement", {})
+        return "All tracks returned to Arrangement playback"
+    except Exception as e:
+        logger.error(f"Error returning to arrangement: {str(e)}")
+        return f"Error returning to arrangement: {str(e)}"
+
+@mcp.tool()
+@rich_telemetry_tool("get_track_routing")
+def get_track_routing(ctx: Context, track_index: int, user_prompt: str = "") -> str:
+    """
+    Show a track's input and output routing, plus every option available to it.
+
+    Use this to find the exact name to pass to set_track_routing — for example
+    the master is called "Main" in Live 12, not "Master", and a bus track's name
+    only appears in the list once that track can accept input.
+
+    Parameters:
+    - track_index: The index of the track
+    - user_prompt: The original user prompt that led to this tool call (for telemetry)
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("get_track_routing", {"track_index": track_index})
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error getting track routing: {str(e)}")
+        return f"Error getting track routing: {str(e)}"
+
+@mcp.tool()
+@rich_telemetry_tool("set_track_routing")
+def set_track_routing(ctx: Context, track_index: int, target: str,
+                      field: str = "output_routing_type", user_prompt: str = "") -> str:
+    """
+    Route a track's output (or input) somewhere else, by display name.
+
+    This is how you build a submix bus without Live's grouping, which the API
+    does not expose: point several tracks' outputs at one audio track and put
+    the shared effects on it. Tracks you leave pointing at "Main" bypass it.
+
+    Parameters:
+    - track_index: The index of the track to re-route
+    - target: The destination's display name exactly as get_track_routing lists
+      it (e.g. "Main", or the name of a bus track)
+    - field: Which routing to set — "output_routing_type" (default),
+      "input_routing_type", "output_routing_channel", "input_routing_channel"
+    - user_prompt: The original user prompt that led to this tool call (for telemetry)
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("set_track_routing", {
+            "track_index": track_index,
+            "field": field,
+            "target": target
+        })
+        return (f"Set '{result.get('track_name')}' {result.get('field')} "
+                f"to {result.get('value')}")
+    except Exception as e:
+        logger.error(f"Error setting track routing: {str(e)}")
+        return f"Error setting track routing: {str(e)}"
+
+@mcp.tool()
+@rich_telemetry_tool("set_count_in")
+def set_count_in(ctx: Context, bars: int = 1, metronome: bool = True, user_prompt: str = "") -> str:
+    """
+    Set the record count-in, giving a performer a lead-in before punching in.
+
+    This is the right way to get a count-in: it applies only when recording, so
+    it needs no empty bar inserted at the front of the arrangement.
+
+    Parameters:
+    - bars: 0 = none, 1 = 1 bar, 2 = 2 bars, 3 = 4 bars (Live's own indices)
+    - metronome: Turn the metronome on, so the count-in is audible
+    - user_prompt: The original user prompt that led to this tool call (for telemetry)
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("set_count_in", {
+            "bars": bars,
+            "metronome": metronome
+        })
+        return (f"Count-in set to {result.get('count_in')}; "
+                f"metronome {'on' if result.get('metronome') else 'off'}")
+    except Exception as e:
+        logger.error(f"Error setting count-in: {str(e)}")
+        return f"Error setting count-in: {str(e)}"
 
 @mcp.tool()
 @rich_telemetry_tool("set_track_send")
