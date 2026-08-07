@@ -243,7 +243,7 @@ class AbletonMCP(ControlSurface):
                                  "delete_device", "set_device_parameter",
                                  "set_track_volume", "set_track_pan", "set_track_mute",
                                  "create_audio_track", "create_return_track",
-                                 "set_track_arm", "set_track_monitoring",
+                                 "set_track_arm", "set_track_monitoring", "save_set",
                                  "set_arrangement_clip_name",
                                  "set_tempo", "fire_clip", "stop_clip",
                                  "start_playback", "stop_playback",
@@ -341,6 +341,8 @@ class AbletonMCP(ControlSurface):
                             result = self._create_audio_track(index)
                         elif command_type == "create_return_track":
                             result = self._create_return_track()
+                        elif command_type == "save_set":
+                            result = self._save_set()
                         elif command_type == "set_track_arm":
                             track_index = params.get("track_index", 0)
                             value = params.get("value", True)
@@ -1305,6 +1307,50 @@ class AbletonMCP(ControlSurface):
     
     
     
+    def _save_set(self):
+        """Save the open Live Set, if this Live build exposes a way to do it.
+
+        Live's Python API has never officially documented a save, but some
+        builds expose Song.save_set or an equivalent on the Application. Try
+        each candidate and report precisely which one worked — or report that
+        none exist, so the caller knows to stop asking rather than assuming a
+        silent success.
+        """
+        try:
+            attempts = []
+
+            for owner_name, owner in (("song", self._song),
+                                      ("application", self.application())):
+                if owner is None:
+                    continue
+                for attr in ("save_set", "save", "save_as", "save_document"):
+                    fn = getattr(owner, attr, None)
+                    if fn is None:
+                        continue
+                    if not callable(fn):
+                        attempts.append("%s.%s exists but is not callable" % (owner_name, attr))
+                        continue
+                    try:
+                        fn()
+                        return {
+                            "saved": True,
+                            "method": "%s.%s()" % (owner_name, attr),
+                            "attempts": attempts,
+                        }
+                    except Exception as inner:
+                        attempts.append("%s.%s() raised %s" % (owner_name, attr, inner))
+
+            return {
+                "saved": False,
+                "method": None,
+                "attempts": attempts,
+                "message": ("This Live build exposes no callable save through the "
+                            "Python API; the set must be saved from the UI."),
+            }
+        except Exception as e:
+            self.log_message("Error saving set: " + str(e))
+            raise
+
     def _create_audio_track(self, index):
         """Create a new audio track"""
         try:

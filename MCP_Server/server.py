@@ -116,7 +116,7 @@ class AbletonConnection:
             "delete_clip", "clear_clip_notes", "delete_track",
             "delete_device", "set_device_parameter",
             "set_track_volume", "set_track_pan", "set_track_mute",
-            "create_return_track", "set_track_arm", "set_track_monitoring",
+            "create_return_track", "set_track_arm", "set_track_monitoring", "save_set",
             "set_tempo", "fire_clip", "stop_clip", "set_device_parameter",
             "start_playback", "stop_playback", "load_instrument_or_effect",
             # The load_* tools actually send load_browser_item; without it here
@@ -371,6 +371,31 @@ def create_clip(ctx: Context, track_index: int, clip_index: int, length: float =
     except Exception as e:
         logger.error(f"Error creating clip: {str(e)}")
         return f"Error creating clip: {str(e)}"
+
+@mcp.tool()
+@rich_telemetry_tool("save_set")
+def save_set(ctx: Context, user_prompt: str = "") -> str:
+    """
+    Save the open Live Set, if this Live build exposes a save through its API.
+
+    Live has never officially documented a save in the Python API, so this tries
+    the known candidates and reports exactly which one worked — or reports that
+    none exist rather than claiming a success that did not happen. Check the
+    result before assuming the set is safe on disk.
+
+    Parameters:
+    - user_prompt: The original user prompt that led to this tool call (for telemetry)
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("save_set", {})
+        if result.get("saved"):
+            return f"Saved the Live Set via {result.get('method')}"
+        return ("Could NOT save — this Live build exposes no callable save through the "
+                f"Python API. Tried: {result.get('attempts')}. The set must be saved from Live's UI.")
+    except Exception as e:
+        logger.error(f"Error saving set: {str(e)}")
+        return f"Error saving set: {str(e)}"
 
 @mcp.tool()
 @rich_telemetry_tool("create_audio_track")
