@@ -248,7 +248,7 @@ class AbletonMCP(ControlSurface):
                                  "create_audio_track", "create_return_track",
                                  "set_track_arm", "set_track_monitoring", "save_set",
                                  "set_track_send", "set_count_in",
-                                 "back_to_arrangement", "set_track_routing",
+                                 "back_to_arrangement", "set_track_routing", "set_clip_gain",
                                  "set_arrangement_clip_name",
                                  "set_tempo", "fire_clip", "stop_clip",
                                  "start_playback", "stop_playback",
@@ -348,6 +348,12 @@ class AbletonMCP(ControlSurface):
                             result = self._create_return_track()
                         elif command_type == "save_set":
                             result = self._save_set()
+                        elif command_type == "set_clip_gain":
+                            track_index = params.get("track_index", 0)
+                            clip_index = params.get("clip_index", 0)
+                            gain = params.get("gain", 0.5)
+                            arrangement = params.get("arrangement", True)
+                            result = self._set_clip_gain(track_index, clip_index, gain, arrangement)
                         elif command_type == "back_to_arrangement":
                             result = self._back_to_arrangement()
                         elif command_type == "set_track_routing":
@@ -873,6 +879,52 @@ class AbletonMCP(ControlSurface):
             self.log_message("Error setting track " + field + ": " + str(e))
             raise
 
+    def _set_clip_gain(self, track_index, clip_index, gain, arrangement=True):
+        """Set one audio clip's gain, without touching the track fader.
+
+        This is what fixes a single section sung too loud: it changes that clip
+        alone, where lowering the track would bury every other section and
+        compressing harder squashes the whole performance.
+
+        gain is Live's normalized 0.0-1.0, where 0.5 is roughly unity.
+        """
+        try:
+            track = self._resolve_track(track_index)
+
+            if arrangement:
+                clips = list(track.arrangement_clips)
+                if clip_index < 0 or clip_index >= len(clips):
+                    raise IndexError("Arrangement clip index out of range (track has %d)"
+                                     % len(clips))
+                clip = clips[clip_index]
+            else:
+                if clip_index < 0 or clip_index >= len(track.clip_slots):
+                    raise IndexError("Clip slot index out of range")
+                slot = track.clip_slots[clip_index]
+                if not slot.has_clip:
+                    raise Exception("No clip in that slot")
+                clip = slot.clip
+
+            if clip.is_midi_clip:
+                raise ValueError("Clip gain applies to audio clips only; this is a MIDI clip")
+
+            value = float(gain)
+            clip.gain = max(0.0, min(1.0, value))
+
+            return {
+                "track_index": track_index,
+                "track_name": track.name,
+                "clip_index": clip_index,
+                "clip_name": clip.name,
+                "arrangement": bool(arrangement),
+                "gain": clip.gain,
+                "gain_display": str(getattr(clip, "gain_display_string", "")),
+                "clamped": clip.gain != value,
+            }
+        except Exception as e:
+            self.log_message("Error setting clip gain: " + str(e))
+            raise
+
     def _back_to_arrangement(self):
         """Hand every overridden track back to the Arrangement.
 
@@ -1329,6 +1381,11 @@ class AbletonMCP(ControlSurface):
                     "color": clip.color,
                     "is_midi_clip": clip.is_midi_clip,
                     "is_audio_clip": clip.is_audio_clip,
+                    # Report gain so a too-loud section can be found and fixed
+                    # without guessing at its current level.
+                    "gain": getattr(clip, "gain", None) if clip.is_audio_clip else None,
+                    "gain_display": (str(getattr(clip, "gain_display_string", ""))
+                                     if clip.is_audio_clip else ""),
                     "is_playing": clip.is_playing
                 })
 

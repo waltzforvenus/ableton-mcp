@@ -118,6 +118,7 @@ class AbletonConnection:
             "set_track_volume", "set_track_pan", "set_track_mute",
             "create_return_track", "set_track_arm", "set_track_monitoring", "save_set",
             "set_track_send", "set_count_in", "back_to_arrangement", "set_track_routing",
+            "set_clip_gain",
             "set_tempo", "fire_clip", "stop_clip", "set_device_parameter",
             "start_playback", "stop_playback", "load_instrument_or_effect",
             # The load_* tools actually send load_browser_item; without it here
@@ -372,6 +373,43 @@ def create_clip(ctx: Context, track_index: int, clip_index: int, length: float =
     except Exception as e:
         logger.error(f"Error creating clip: {str(e)}")
         return f"Error creating clip: {str(e)}"
+
+@mcp.tool()
+@rich_telemetry_tool("set_clip_gain")
+def set_clip_gain(ctx: Context, track_index: int, clip_index: int, gain: float,
+                  arrangement: bool = True, user_prompt: str = "") -> str:
+    """
+    Set one audio clip's gain, leaving every other clip on the track untouched.
+
+    This is the right fix for a single section performed too loud or too quiet.
+    Lowering the track fader would bury the whole performance, and compressing
+    harder squashes the dynamics everywhere; clip gain changes only that take.
+
+    gain is Live's normalized 0.0-1.0 scale where 0.5 is roughly unity, NOT
+    decibels. Call get_arrangement_clips first — it reports each clip's current
+    gain and the dB Live displays for it.
+
+    Parameters:
+    - track_index: The index of the track containing the clip
+    - clip_index: Index of the clip, ordered by start time as get_arrangement_clips
+      returns them (or the clip slot index when arrangement is False)
+    - gain: 0.0 to 1.0, where 0.5 is approximately unity
+    - arrangement: True for a clip on the timeline (default), False for a Session slot
+    - user_prompt: The original user prompt that led to this tool call (for telemetry)
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("set_clip_gain", {
+            "track_index": track_index,
+            "clip_index": clip_index,
+            "gain": gain,
+            "arrangement": arrangement
+        })
+        return (f"Set '{result.get('clip_name')}' on '{result.get('track_name')}' "
+                f"to {result.get('gain_display') or result.get('gain')}")
+    except Exception as e:
+        logger.error(f"Error setting clip gain: {str(e)}")
+        return f"Error setting clip gain: {str(e)}"
 
 @mcp.tool()
 @rich_telemetry_tool("back_to_arrangement")
