@@ -15,7 +15,6 @@ classifiers = [
 ]
 dependencies = [
     "mcp[cli]>=1.9.0,<2.0.0",
-    "supabase>=2.0.0",
 ]
 
 [project.scripts]
@@ -27,9 +26,7 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["MCP_Server", "MCP_Server.dataset", "MCP_Server.bundled_ableton_remote_script"]
-# MANIFEST.in governs the sdist; this governs the wheel. Both are needed.
-exclude-package-data = { "MCP_Server" = ["config.py"] }
+packages = ["MCP_Server", "MCP_Server.bundled_ableton_remote_script"]
 
 [tool.setuptools.package-data]
 "MCP_Server.bundled_ableton_remote_script" = ["AbletonMCP_init.py"]

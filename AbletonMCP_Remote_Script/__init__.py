@@ -36,7 +36,6 @@ SCRIPT_CAPABILITIES = [
     "get_device_parameters",
     "get_session_snapshot",
     "set_device_parameter",
-    "drain_passive_events",
     "create_midi_track",
     "create_audio_track",
     "create_clip",
@@ -93,24 +92,9 @@ class AbletonMCP(ControlSurface):
         
         # Cache the song reference for easier access
         self._song = self.song()
-
-        # Passive human-UI event queue (drained by MCP → Supabase)
-        self._passive_events = []
-        self._passive_lock = threading.Lock()
-        self._passive_max = 500
-        self._passive_track_count = None
-        self._passive_track_bindings = []  # (track, [(add_name, callback), ...]) for cleanup
-        self._song_passive_callbacks = []
         
         # Start the socket server
         self.start_server()
-
-        # Register LOM listeners for passive capture (after song is ready)
-        try:
-            self._setup_passive_listeners()
-        except Exception as e:
-            self.log_message("Passive listener setup failed: " + str(e))
-            self.log_message(traceback.format_exc())
         
         self.log_message("AbletonMCP initialized")
         
@@ -121,11 +105,6 @@ class AbletonMCP(ControlSurface):
         """Called when Ableton closes or the control surface is removed"""
         self.log_message("AbletonMCP disconnecting...")
         self.running = False
-
-        try:
-            self._teardown_passive_listeners()
-        except Exception as e:
-            self.log_message("Passive listener teardown error: " + str(e))
         
         # Stop the server
         if self.server:
@@ -551,7 +530,7 @@ class AbletonMCP(ControlSurface):
             elif command_type == "get_arrangement_clips":
                 track_index = params.get("track_index", 0)
                 response["result"] = self._get_arrangement_clips(track_index)
-            # Dataset / state-snapshot reads
+            # State-snapshot reads
             elif command_type == "get_clip_notes":
                 track_index = params.get("track_index", 0)
                 clip_index = params.get("clip_index", 0)
@@ -567,8 +546,6 @@ class AbletonMCP(ControlSurface):
                     include_notes=include_notes,
                     include_params=include_params,
                 )
-            elif command_type == "drain_passive_events":
-                response["result"] = self._drain_passive_events()
             elif command_type == "set_device_parameter":
                 response_queue = queue.Queue()
 
@@ -623,7 +600,6 @@ class AbletonMCP(ControlSurface):
             "port": DEFAULT_PORT,
             "capabilities": list(SCRIPT_CAPABILITIES),
             "snapshot_schema": "ableton_mcp_snapshot_v2",
-            "passive_listeners": True,
         }
     
     def _safe_song_property(self, attr, cast, default):
@@ -2166,273 +2142,7 @@ class AbletonMCP(ControlSurface):
         except:
             return "unknown"
 
-    # ── Passive human-UI listeners ──────────────────────────────────────────────
-
-    def _enqueue_passive(self, event_type, detail=None, track_index=None, clip_index=None):
-        """Append a coarse human-UI event (capped FIFO)."""
-        evt = {
-            "type": event_type,
-            "ts": time.time(),
-            "track_index": track_index,
-            "clip_index": clip_index,
-            "detail": detail if detail is not None else {},
-        }
-        with self._passive_lock:
-            self._passive_events.append(evt)
-            if len(self._passive_events) > self._passive_max:
-                self._passive_events = self._passive_events[-self._passive_max:]
-
-    def _drain_passive_events(self):
-        """Return and clear the passive event queue (called by MCP poller)."""
-        with self._passive_lock:
-            events = list(self._passive_events)
-            self._passive_events = []
-        return {"events": events, "count": len(events)}
-
-    def _safe_add_listener(self, obj, add_name, callback):
-        try:
-            if obj is not None and hasattr(obj, add_name):
-                getattr(obj, add_name)(callback)
-                return True
-        except Exception as e:
-            self.log_message("add listener %s failed: %s" % (add_name, str(e)))
-        return False
-
-    def _safe_remove_listener(self, obj, remove_name, callback):
-        try:
-            if obj is not None and hasattr(obj, remove_name):
-                getattr(obj, remove_name)(callback)
-        except Exception:
-            pass
-
-    def _setup_passive_listeners(self):
-        """Register high-signal LOM listeners for Mode C / assisted human edits."""
-        song = self._song
-
-        def on_tempo():
-            try:
-                self._enqueue_passive("tempo_changed", {"tempo": float(song.tempo)})
-            except Exception:
-                self._enqueue_passive("tempo_changed")
-
-        def on_sig_num():
-            try:
-                self._enqueue_passive(
-                    "time_signature_changed",
-                    {
-                        "signature_numerator": int(song.signature_numerator),
-                        "signature_denominator": int(song.signature_denominator),
-                    },
-                )
-            except Exception:
-                self._enqueue_passive("time_signature_changed")
-
-        def on_sig_den():
-            on_sig_num()
-
-        def on_is_playing():
-            try:
-                self._enqueue_passive(
-                    "playback_changed",
-                    {"is_playing": bool(song.is_playing)},
-                )
-            except Exception:
-                self._enqueue_passive("playback_changed")
-
-        def on_tracks():
-            count = len(song.tracks)
-            previous = getattr(self, "_passive_track_count", None)
-            self._passive_track_count = count
-            detail = {"track_count": count}
-            if previous is not None:
-                detail["previous_count"] = previous
-                detail["removed"] = count < previous
-                detail["added"] = count > previous
-            self._enqueue_passive("tracks_changed", detail)
-            try:
-                self._rebind_track_listeners()
-            except Exception as e:
-                self.log_message("rebind track listeners failed: " + str(e))
-
-        self._safe_add_listener(song, "add_tempo_listener", on_tempo)
-        self._safe_add_listener(song, "add_signature_numerator_listener", on_sig_num)
-        self._safe_add_listener(song, "add_signature_denominator_listener", on_sig_den)
-        self._safe_add_listener(song, "add_is_playing_listener", on_is_playing)
-        self._safe_add_listener(song, "add_tracks_listener", on_tracks)
-
-        self._song_passive_callbacks = [
-            ("tempo_listener", on_tempo),
-            ("signature_numerator_listener", on_sig_num),
-            ("signature_denominator_listener", on_sig_den),
-            ("is_playing_listener", on_is_playing),
-            ("tracks_listener", on_tracks),
-        ]
-
-        self._rebind_track_listeners()
-        self.log_message("Passive LOM listeners registered")
-
-    def _teardown_passive_listeners(self):
-        song = getattr(self, "_song", None)
-        for suffix, cb in getattr(self, "_song_passive_callbacks", []):
-            self._safe_remove_listener(song, "remove_" + suffix, cb)
-        self._clear_track_listeners()
-
-    def _clear_track_listeners(self):
-        for track, bindings in getattr(self, "_passive_track_bindings", []):
-            for add_name, callback in bindings:
-                remove_name = "remove_" + add_name[len("add_"):]
-                target = getattr(callback, "_passive_target", None)
-                if target is not None:
-                    self._safe_remove_listener(target, remove_name, callback)
-                else:
-                    self._safe_remove_listener(track, remove_name, callback)
-        self._passive_track_bindings = []
-
-    def _rebind_track_listeners(self):
-        self._clear_track_listeners()
-        song = self._song
-        for track_index, track in enumerate(song.tracks):
-            bindings = []
-
-            def make_track_cb(kind, t_index):
-                def _cb():
-                    detail = {}
-                    try:
-                        t = song.tracks[t_index]
-                        if kind == "name_changed":
-                            detail["name"] = t.name
-                        elif kind == "mute_changed":
-                            detail["mute"] = bool(t.mute)
-                        elif kind == "solo_changed":
-                            detail["solo"] = bool(t.solo)
-                        elif kind == "arm_changed":
-                            detail["arm"] = bool(getattr(t, "arm", False))
-                        elif kind == "devices_changed":
-                            detail["device_count"] = len(t.devices)
-                        elif kind == "volume_changed":
-                            detail["volume"] = float(t.mixer_device.volume.value)
-                        elif kind == "panning_changed":
-                            detail["panning"] = float(t.mixer_device.panning.value)
-                    except Exception:
-                        pass
-                    self._enqueue_passive(kind, detail, track_index=t_index)
-                return _cb
-
-            pairs = [
-                ("add_name_listener", "name_changed"),
-                ("add_mute_listener", "mute_changed"),
-                ("add_solo_listener", "solo_changed"),
-                ("add_arm_listener", "arm_changed"),
-                ("add_devices_listener", "devices_changed"),
-            ]
-            for add_name, kind in pairs:
-                cb = make_track_cb(kind, track_index)
-                if self._safe_add_listener(track, add_name, cb):
-                    bindings.append((add_name, cb))
-
-            try:
-                mixer = track.mixer_device
-                vol_cb = make_track_cb("volume_changed", track_index)
-                vol_cb._passive_target = mixer.volume
-                if self._safe_add_listener(mixer.volume, "add_value_listener", vol_cb):
-                    bindings.append(("add_value_listener", vol_cb))
-                pan_cb = make_track_cb("panning_changed", track_index)
-                pan_cb._passive_target = mixer.panning
-                if self._safe_add_listener(mixer.panning, "add_value_listener", pan_cb):
-                    bindings.append(("add_value_listener", pan_cb))
-            except Exception as e:
-                self.log_message("mixer listeners failed on track %d: %s" % (track_index, str(e)))
-
-            try:
-                for clip_index, slot in enumerate(track.clip_slots):
-                    def make_slot_cb(t_index, c_index):
-                        def _cb():
-                            has = False
-                            try:
-                                has = bool(song.tracks[t_index].clip_slots[c_index].has_clip)
-                            except Exception:
-                                pass
-                            self._enqueue_passive(
-                                "clip_slot_changed",
-                                {"has_clip": has},
-                                track_index=t_index,
-                                clip_index=c_index,
-                            )
-                            try:
-                                self._bind_clip_listeners(t_index, c_index)
-                            except Exception:
-                                pass
-                        return _cb
-
-                    slot_cb = make_slot_cb(track_index, clip_index)
-                    slot_cb._passive_target = slot
-                    if self._safe_add_listener(slot, "add_has_clip_listener", slot_cb):
-                        bindings.append(("add_has_clip_listener", slot_cb))
-                    if slot.has_clip:
-                        self._bind_clip_listeners(track_index, clip_index, bindings)
-            except Exception as e:
-                self.log_message("clip slot listeners failed on track %d: %s" % (track_index, str(e)))
-
-            self._passive_track_bindings.append((track, bindings))
-
-    def _bind_clip_listeners(self, track_index, clip_index, bindings=None):
-        try:
-            track = self._song.tracks[track_index]
-            slot = track.clip_slots[clip_index]
-            if not slot.has_clip:
-                return
-            clip = slot.clip
-
-            def on_name():
-                name = ""
-                try:
-                    name = clip.name
-                except Exception:
-                    pass
-                self._enqueue_passive(
-                    "clip_name_changed",
-                    {"name": name},
-                    track_index=track_index,
-                    clip_index=clip_index,
-                )
-
-            def on_notes():
-                self._enqueue_passive(
-                    "clip_notes_changed",
-                    {},
-                    track_index=track_index,
-                    clip_index=clip_index,
-                )
-
-            def on_playing():
-                playing = False
-                try:
-                    playing = bool(clip.is_playing)
-                except Exception:
-                    pass
-                self._enqueue_passive(
-                    "clip_playing_changed",
-                    {"is_playing": playing},
-                    track_index=track_index,
-                    clip_index=clip_index,
-                )
-
-            for add_name, cb in [
-                ("add_name_listener", on_name),
-                ("add_notes_listener", on_notes),
-                ("add_playing_status_listener", on_playing),
-            ]:
-                cb._passive_target = clip
-                if self._safe_add_listener(clip, add_name, cb):
-                    if bindings is not None:
-                        bindings.append((add_name, cb))
-        except Exception as e:
-            self.log_message(
-                "bind clip listeners %d/%d failed: %s"
-                % (track_index, clip_index, str(e))
-            )
-
-    # ── Dataset / state snapshot helpers ──────────────────────────────────────
+    # ── Session snapshot helpers ──────────────────────────────────────────────
 
     def _safe_attr(self, obj, attr, cast=None, default=None):
         try:
@@ -2819,7 +2529,7 @@ class AbletonMCP(ControlSurface):
             raise
 
     def _get_session_snapshot(self, include_notes=True, include_params=True):
-        """Full v2 project state dump for trajectory dataset recording."""
+        """Full v2 project state dump, returned to the caller."""
         try:
             session = self._get_session_info()
             tracks = []

@@ -49,17 +49,6 @@ def fake_conn(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def _silence_telemetry(monkeypatch):
-    """Make the telemetry side-effect in the tool decorators a no-op, so tests
-    are hermetic and never touch the network."""
-    class _Dummy:
-        def record_event(self, *a, **k):
-            pass
-    import MCP_Server.telemetry_decorator as td
-    monkeypatch.setattr(td, "get_telemetry", lambda: _Dummy(), raising=False)
-
-
-@pytest.fixture(autouse=True)
 def _script_capabilities_available(monkeypatch):
     """Tools gate on require_capability(), which needs a live Remote Script
     handshake. Report every capability as present so the tests exercise the
