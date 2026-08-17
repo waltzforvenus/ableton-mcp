@@ -125,6 +125,7 @@ That's it — ask your assistant to build something.
 - [Components](#components)
 - [Installation](#installation)
 - [Usage](#usage)
+  - [Tool reference](#tool-reference)
 - [Troubleshooting](#troubleshooting)
 - [Technical Details](#technical-details)
 - [Limitations & Security Considerations](#limitations--security-considerations)
@@ -308,17 +309,106 @@ uv run pytest        # tests run without Ableton and without network
 2. Make sure the MCP server is configured in your client
 3. The connection is established automatically when you interact with the assistant
 
-### Capabilities
+### Tool reference
 
-- Get session, track, clip and device information
-- Create and modify MIDI and audio tracks
-- Create full song arrangements in Arrangement View
-- Create, edit, clear and trigger clips
-- Mix: volume, pan, mute, sends, return tracks, device parameters by name
-- Route tracks and set up shared effect buses
-- Control playback, count-in and tempo
-- Load instruments and effects from Ableton's browser
-- Save the set
+All 46 tools the server exposes. Tools marked **†** are added by this fork and
+are not present upstream.
+
+#### Session & info
+
+| Tool | Arguments | Description |
+|---|---|---|
+| `get_session_info` | — | Get detailed information about the current Ableton session |
+| `get_track_info` | `track_index` | Get detailed information about a specific track in Ableton |
+| `get_session_snapshot` | `include_notes`?, `include_params`? | Read the whole project state in one call |
+| `get_remote_script_info` | — | Report Ableton Remote Script version and capabilities (handshake) |
+| `set_tempo` | `tempo` | Set the tempo of the Ableton session |
+| `save_set` † | — | Save the open Live Set, if this Live build exposes a save through its API |
+
+#### Tracks
+
+| Tool | Arguments | Description |
+|---|---|---|
+| `create_midi_track` | `index`? | Create a new MIDI track in the Ableton session |
+| `create_audio_track` | `index`? | Create a new audio track in the Ableton session |
+| `create_return_track` † | — | Create a new return track — a shared effects bus that any track can send to |
+| `delete_track` † | `track_index` | Delete a track from the Ableton session, along with all clips on it |
+| `set_track_name` | `track_index`, `name` | Set the name of a track |
+
+#### Mixer
+
+| Tool | Arguments | Description |
+|---|---|---|
+| `set_track_volume` † | `track_index`, `value`, `track_type`? | Set a track's mixer volume |
+| `set_track_pan` † | `track_index`, `value`, `track_type`? | Set a track's stereo panning |
+| `set_track_mute` † | `track_index`, `mute` | Mute or unmute a track. Useful for auditioning parts in isolation |
+| `set_track_arm` † | `track_index`, `armed`? | Arm or disarm a track for recording |
+| `set_track_monitoring` † | `track_index`, `state`? | Set a track's input monitoring, so the performer can hear themselves |
+| `set_track_send` † | `track_index`, `send_index`, `value` | Set how much of a track is sent to a return track |
+
+#### Routing
+
+| Tool | Arguments | Description |
+|---|---|---|
+| `get_track_routing` † | `track_index` | Show a track's input and output routing, plus every option available to it |
+| `set_track_routing` † | `track_index`, `target`, `field`? | Route a track's output (or input) somewhere else, by display name |
+
+#### Devices
+
+| Tool | Arguments | Description |
+|---|---|---|
+| `get_device_parameters` | `track_index`, `device_index`, `track_type`? | List every parameter on a device, with its current value, range and the |
+| `set_device_parameter` | `track_index`, `device_index`, `parameter`, `value`, `track_type`? | Set one parameter on a device. This is how you actually mix: pull a reverb's |
+| `delete_device` † | `track_index`, `device_index`, `track_type`? | Remove a device from a track's chain |
+| `load_instrument_or_effect` | `track_index`, `uri`, `track_type`? | Load an instrument or effect onto a track using its URI |
+| `load_drum_kit` | `track_index`, `rack_uri`, `kit_path` | Load a drum rack and then load a specific drum kit into it |
+
+#### Browser
+
+| Tool | Arguments | Description |
+|---|---|---|
+| `get_browser_tree` | `category_type`? | Get a hierarchical tree of browser categories from Ableton |
+| `get_browser_items_at_path` | `path` | Get browser items at a specific path in Ableton's browser |
+
+#### Clips (Session)
+
+| Tool | Arguments | Description |
+|---|---|---|
+| `create_clip` | `track_index`, `clip_index`, `length`? | Create a new MIDI clip in the specified track and clip slot |
+| `create_audio_clip` | `track_index`, `clip_index`, `path` | Create a new audio clip in an audio track's clip slot by importing a file |
+| `delete_clip` | `track_index`, `clip_index` | Delete the clip in the given clip slot, freeing it for reuse |
+| `set_clip_name` | `track_index`, `clip_index`, `name` | Set the name of a clip |
+| `set_clip_gain` † | `track_index`, `clip_index`, `gain`, `arrangement`? | Set one audio clip's gain, leaving every other clip on the track untouched |
+| `get_clip_notes` | `track_index`, `clip_index` | Read all MIDI notes from a Session-view clip |
+| `add_notes_to_clip` | `track_index`, `clip_index`, `notes` | Add MIDI notes to a clip |
+| `clear_notes_from_clip` | `track_index`, `clip_index` | Remove all MIDI notes from a Session clip |
+
+#### Arrangement
+
+| Tool | Arguments | Description |
+|---|---|---|
+| `switch_to_arrangement_view` | — | Switch Ableton's main window to the Arrangement view |
+| `get_arrangement_clips` | `track_index` | List all clips placed in the Arrangement timeline for a track |
+| `duplicate_to_arrangement` | `track_index`, `clip_index`, `destination_time` | Copy a Session-view clip into the Arrangement timeline |
+| `set_arrangement_clip_name` | `track_index`, `clip_index`, `name` | Set the name of a clip placed in the Arrangement timeline |
+| `set_arrangement_time` | `time` | Move the arrangement playhead to a specific position |
+| `create_locator` | `name`, `time` | Create a named locator (cue point) in the Arrangement at a beat position |
+| `back_to_arrangement` † | — | Return every track to Arrangement playback — Live's "Back to Arrangement" button |
+
+#### Transport
+
+| Tool | Arguments | Description |
+|---|---|---|
+| `start_playback` | — | Start playing the Ableton session |
+| `stop_playback` | — | Stop playing the Ableton session |
+| `fire_clip` | `track_index`, `clip_index` | Start playing a clip |
+| `stop_clip` | `track_index`, `clip_index` | Stop playing a clip |
+| `set_count_in` † | `bars`?, `metronome`? | Set the record count-in, giving a performer a lead-in before punching in |
+
+Arguments marked `?` are optional. `track_type` accepts `"regular"` or
+`"return"`, so the device and mixer tools reach return tracks as well as
+ordinary ones. `set_device_parameter` takes a parameter *name* as shown by
+`get_device_parameters` (e.g. `"Dry/Wet"`), or an index passed as a string.
 
 ### Example Commands
 
