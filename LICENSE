@@ -1,21 +1,52 @@
-MIT License
+# Licensing
 
-Copyright (c) 2025 Siddharth Ahuja
+This repository is a permanent fork of [ahujasid/ableton-mcp](https://github.com/ahujasid/ableton-mcp).
+Two sets of terms apply, depending on which part of the code you are looking at.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+## Upstream code — MIT
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+Everything inherited from the upstream project remains under the MIT license as
+published by its copyright holders. That text is preserved verbatim in
+[`LICENSE.MIT`](LICENSE.MIT), and its copyright notice must be retained in any
+copy or substantial portion of this software, including copies you distribute
+under the copyleft terms below.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+## This fork's changes — GPL-3.0-or-later **or** AGPL-3.0-or-later
+
+Copyright (c) 2026 waltzforvenus and contributors.
+
+All modifications, additions, and new files contributed to this fork are
+dual-licensed. You may use them under **either**:
+
+- the GNU General Public License, version 3 or (at your option) any later
+  version — [`LICENSE.GPL-3.0`](LICENSE.GPL-3.0); **or**
+- the GNU Affero General Public License, version 3 or (at your option) any
+  later version — [`LICENSE.AGPL-3.0`](LICENSE.AGPL-3.0).
+
+The choice is yours as the recipient. Pick one and comply with it; you do not
+have to satisfy both.
+
+## What this means in practice
+
+The MIT license permits sublicensing, which is what makes this combination
+possible: MIT-covered code can be carried into a GPL- or AGPL-licensed work.
+The practical effect is that **the repository as a whole is copyleft**. If you
+distribute this software, modified or not, you must do so under the terms of
+whichever license you selected above, keep the MIT notice intact, and make the
+corresponding source available.
+
+The AGPL option matters if you run a modified version as a network service.
+Under AGPL section 13, users interacting with it over a network must be offered
+the corresponding source. Running the MCP server locally on your own machine —
+the ordinary way this software is used — is not distribution and triggers no
+obligation at all.
+
+## Contributing
+
+Contributions are accepted under the same dual license: by opening a pull
+request you offer your changes under GPL-3.0-or-later and AGPL-3.0-or-later.
+
+## Note
+
+This file describes the licensing intent of the project. It is not legal
+advice. If the distinction matters to your situation, talk to a lawyer.

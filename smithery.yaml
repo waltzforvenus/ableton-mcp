@@ -1,16 +1,42 @@
 # Smithery configuration file: https://smithery.ai/docs/config#smitheryyaml
+#
+# Telemetry-free fork of ahujasid/ableton-mcp. This server talks to Ableton
+# Live over a loopback TCP socket and to its MCP client over stdio. It makes
+# no outbound network connections of its own — no analytics, no dataset
+# upload — so it needs no credentials and no egress.
+#
+# Note that the Remote Script half of this integration has to run inside
+# Ableton Live on the user's own machine; a hosted deployment can only be
+# useful if it can reach that machine's Live instance.
 
 startCommand:
   type: stdio
   configSchema:
     # JSON Schema defining the configuration options for the MCP.
     type: object
-    properties: {}
+    properties:
+      abletonHost:
+        type: string
+        title: Ableton host
+        description: Host running the Ableton Remote Script.
+        default: localhost
+      abletonPort:
+        type: integer
+        title: Ableton port
+        description: Port the Ableton Remote Script listens on.
+        default: 9877
+    additionalProperties: false
   commandFunction:
     # A JS function that produces the CLI command based on the given config to start the MCP on stdio.
     |-
     (config) => ({
-      command: 'python',
-      args: ['-m', 'MCP_Server.server']
+      command: 'ableton-mcp',
+      args: [],
+      env: {
+        ABLETON_HOST: String((config && config.abletonHost) || 'localhost'),
+        ABLETON_PORT: String((config && config.abletonPort) || 9877)
+      }
     })
-  exampleConfig: {}
+  exampleConfig:
+    abletonHost: localhost
+    abletonPort: 9877
