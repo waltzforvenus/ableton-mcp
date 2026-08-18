@@ -1,33 +1,49 @@
 [project]
 name = "ableton-mcp"
-version = "1.2.0"
-description = "Ableton Live integration through the Model Context Protocol"
+version = "1.3.8"
+description = "Ableton Live integration through the Model Context Protocol — telemetry-free fork"
 readme = "README.md"
 requires-python = ">=3.10"
+keywords = ["ableton", "live", "mcp", "model-context-protocol", "music", "midi", "daw"]
 authors = [
-    {name = "Siddharth Ahuja", email = "ahujasid@gmail.com"}
+    {name = "waltzforvenus", email = "mert@charlieoscar.com"}
 ]
-license = {text = "MIT"}
+# Fork changes are dual-licensed GPLv3/AGPLv3 (recipient's choice); upstream
+# code stays MIT and its notice must be retained. See LICENSE.
+license = "(GPL-3.0-or-later OR AGPL-3.0-or-later) AND MIT"
+license-files = ["LICENSE", "LICENSE.MIT", "LICENSE.GPL-3.0", "LICENSE.AGPL-3.0"]
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "mcp[cli]>=1.3.0,<2.0.0",
-    "supabase>=2.0.0",
+    "mcp[cli]>=1.9.0,<2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
 ]
 
 [project.scripts]
 ableton-mcp = "MCP_Server.server:main"
+ableton-mcp-install-script = "MCP_Server.remote_script_install:main"
 
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=77.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["MCP_Server"]
+packages = ["MCP_Server", "MCP_Server.bundled_ableton_remote_script"]
+
+[tool.setuptools.package-data]
+"MCP_Server.bundled_ableton_remote_script" = ["AbletonMCP_init.py"]
 
 [project.urls]
-"Homepage" = "https://github.com/ahujasid/ableton-mcp"
-"Bug Tracker" = "https://github.com/ahujasid/ableton-mcp/issues"
+"Homepage" = "https://github.com/waltzforvenus/ableton-mcp"
+"Bug Tracker" = "https://github.com/waltzforvenus/ableton-mcp/issues"
+"Upstream" = "https://github.com/ahujasid/ableton-mcp"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
