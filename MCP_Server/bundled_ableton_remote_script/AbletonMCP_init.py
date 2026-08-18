@@ -28,47 +28,93 @@ HOST = "127.0.0.1"
 SCRIPT_VERSION = "1.8.0"
 PROTOCOL_VERSION = 1
 
-SCRIPT_CAPABILITIES = [
-    "get_session_info",
-    "get_track_info",
-    "get_script_info",
-    "get_clip_notes",
-    "get_device_parameters",
-    "get_session_snapshot",
-    "set_device_parameter",
-    "create_midi_track",
-    "create_audio_track",
-    "create_clip",
-    "create_audio_clip",
-    "add_notes_to_clip",
-    "load_instrument_or_effect",
-    "load_browser_item",
-    "get_arrangement_clips",
-    "duplicate_session_clip_to_arrangement",
-    "create_locator",
-    "delete_clip",
-    "clear_notes_from_clip",
-    "get_track_routing",
-    "delete_track",
-    "delete_device",
-    "set_track_volume",
-    "set_track_pan",
-    "set_track_mute",
-    "create_return_track",
-    "set_track_arm",
-    "set_track_monitoring",
-    "save_set",
-    "set_track_send",
-    "set_count_in",
-    "back_to_arrangement",
-    "set_track_routing",
-    "set_clip_gain",
-    "set_arrangement_clip_name",
-    "switch_to_arrangement_view",
-    "set_current_song_time",
-    "get_browser_tree",
-    "get_browser_items_at_path",
-]
+# Wire-command dispatch table: every command _process_command accepts, in one
+# place. Each row is
+#
+#     command name: (handler method, main_thread, queue_timeout, advertise)
+#
+# - handler method: dispatched as getattr(self, method)(**params), so the wire
+#   parameter names ARE the handler's keyword arguments and Python itself
+#   enforces arity — the check whose absence let the 2026-08 merge's duplicate
+#   definitions ship silently.
+# - main_thread: True means the command modifies Live's state and must run on
+#   Live's main thread (scheduled via schedule_message); False means read-only,
+#   run directly on the socket client thread.
+# - queue_timeout: seconds to wait for the main-thread task's response queue;
+#   None means the default (10.0). create_audio_clip decodes/imports the file
+#   on the main thread and needs more than the default headroom.
+# - advertise: True puts the command in SCRIPT_CAPABILITIES, the capability
+#   list get_script_info reports to the MCP server. The dispatchable set is
+#   deliberately wider than the advertised one (legacy upstream commands and
+#   the two rack orphans stay reachable but unadvertised), so this flag — not
+#   naive derivation from the table's keys — is what keeps the wire response
+#   stable. A guardrail test pins the derived list against an explicit
+#   snapshot.
+#
+# The table must stay a pure literal (ast.literal_eval-able — no lambdas, no
+# adapter callables): the guardrail tests read it with ast.parse, because this
+# module imports _Framework and cannot be imported outside Live.
+COMMANDS = {
+    # Read-only commands — run directly on the socket client thread.
+    "get_script_info":            ("_get_script_info",            False, None, True),
+    "get_session_info":           ("_get_session_info",           False, None, True),
+    "get_track_info":             ("_get_track_info",             False, None, True),
+    "get_track_routing":          ("_get_track_routing",          False, None, True),
+    "get_device_parameters":      ("_get_device_parameters",      False, None, True),
+    "get_arrangement_clips":      ("_get_arrangement_clips",      False, None, True),
+    "get_clip_notes":             ("_get_clip_notes",             False, None, True),
+    "get_session_snapshot":       ("_get_session_snapshot",       False, None, True),
+    "get_browser_item":           ("_get_browser_item",           False, None, False),
+    "get_browser_tree":           ("get_browser_tree",            False, None, True),
+    "get_browser_items_at_path":  ("get_browser_items_at_path",   False, None, True),
+    # State-modifying commands — scheduled onto Live's main thread.
+    "create_midi_track":          ("_create_midi_track",          True,  None, True),
+    "create_audio_track":         ("_create_audio_track",         True,  None, True),
+    "set_track_name":             ("_set_track_name",             True,  None, False),
+    "create_clip":                ("_create_clip",                True,  None, True),
+    "create_audio_clip":          ("_create_audio_clip",          True,  60.0, True),
+    "add_notes_to_clip":          ("_add_notes_to_clip",          True,  None, True),
+    "clear_notes_from_clip":      ("_clear_notes_from_clip",      True,  None, True),
+    "set_clip_name":              ("_set_clip_name",              True,  None, False),
+    "set_arrangement_clip_name":  ("_set_arrangement_clip_name",  True,  None, True),
+    "set_tempo":                  ("_set_tempo",                  True,  None, False),
+    "fire_clip":                  ("_fire_clip",                  True,  None, False),
+    "stop_clip":                  ("_stop_clip",                  True,  None, False),
+    "delete_clip":                ("_delete_clip",                True,  None, True),
+    "delete_track":               ("_delete_track",               True,  None, True),
+    "delete_device":              ("_delete_device",              True,  None, True),
+    "set_device_parameter":       ("_set_device_parameter",       True,  None, True),
+    "set_track_volume":           ("_set_track_volume",           True,  None, True),
+    "set_track_pan":              ("_set_track_pan",              True,  None, True),
+    "set_track_mute":             ("_set_track_mute",             True,  None, True),
+    "create_return_track":        ("_create_return_track",        True,  None, True),
+    "set_track_arm":              ("_set_track_arm",              True,  None, True),
+    "set_track_monitoring":       ("_set_track_monitoring",       True,  None, True),
+    "save_set":                   ("_save_set",                   True,  None, True),
+    "set_track_send":             ("_set_track_send",             True,  None, True),
+    "set_count_in":               ("_set_count_in",               True,  None, True),
+    "back_to_arrangement":        ("_back_to_arrangement",        True,  None, True),
+    "set_track_routing":          ("_set_track_routing",          True,  None, True),
+    "set_clip_gain":              ("_set_clip_gain",              True,  None, True),
+    "start_playback":             ("_start_playback",             True,  None, False),
+    "stop_playback":              ("_stop_playback",              True,  None, False),
+    "load_browser_item":          ("_load_browser_item",          True,  None, True),
+    "load_instrument_or_effect":  ("_load_instrument_or_effect",  True,  None, True),
+    "switch_to_arrangement_view": ("_switch_to_arrangement_view", True,  None, True),
+    "set_current_song_time":      ("_set_current_song_time",      True,  None, True),
+    "duplicate_session_clip_to_arrangement":
+        ("_duplicate_session_clip_to_arrangement",                True,  None, True),
+    "map_rack_magnitude":         ("_map_rack_magnitude",         True,  None, False),
+    "inspect_rack":               ("_inspect_rack",               True,  None, False),
+    "create_locator":             ("_create_locator",             True,  None, True),
+}
+
+# Derived, never hand-edited: the advertised subset of COMMANDS, in sorted
+# order. Content is pinned by a guardrail test against the explicit pre-table
+# list, so the derivation can never silently widen or shrink the wire response.
+SCRIPT_CAPABILITIES = sorted(
+    name for name, row in COMMANDS.items() if row[3]
+)
 
 def create_instance(c_instance):
     """Create and return the AbletonMCP script instance"""
@@ -274,267 +320,64 @@ class AbletonMCP(ControlSurface):
         }
         
         try:
-            # Route the command to the appropriate handler
-            if command_type == "get_script_info":
-                response["result"] = self._get_script_info()
-            elif command_type == "get_session_info":
-                response["result"] = self._get_session_info()
-            elif command_type == "get_track_info":
-                track_index = params.get("track_index", 0)
-                response["result"] = self._get_track_info(track_index)
-            elif command_type == "get_track_routing":
-                track_index = params.get("track_index", 0)
-                response["result"] = self._get_track_routing(track_index)
-            elif command_type == "get_device_parameters":
-                track_index = params.get("track_index", 0)
-                device_index = params.get("device_index", 0)
-                track_type = params.get("track_type", "regular")
-                response["result"] = self._get_device_parameters(
-                    track_index, device_index, track_type)
-            # Commands that modify Live's state should be scheduled on the main thread
-            elif command_type in ["create_midi_track", "create_audio_track", "set_track_name",
-                                 "create_clip", "create_audio_clip", "add_notes_to_clip", "set_clip_name",
-                                 "delete_clip", "delete_track",
-                                 "delete_device", "set_device_parameter",
-                                 "set_track_volume", "set_track_pan", "set_track_mute",
-                                 "create_return_track",
-                                 "set_track_arm", "set_track_monitoring", "save_set",
-                                 "set_track_send", "set_count_in",
-                                 "back_to_arrangement", "set_track_routing", "set_clip_gain",
-                                 "set_arrangement_clip_name",
-                                 "clear_notes_from_clip",
-                                 "set_tempo", "fire_clip", "stop_clip",
-                                 "start_playback", "stop_playback",
-                                 "load_browser_item", "load_instrument_or_effect",
-                                 # Arrangement view – must run on the main thread
-                                 "switch_to_arrangement_view", "set_current_song_time",
-                                 "duplicate_session_clip_to_arrangement",
-                                 "map_rack_magnitude", "inspect_rack",
-                                 "create_locator"]:
-                # Use a thread-safe approach with a response queue
-                response_queue = queue.Queue()
-                
-                # Define a function to execute on the main thread
-                def main_thread_task():
-                    try:
-                        result = None
-                        if command_type == "create_midi_track":
-                            index = params.get("index", -1)
-                            result = self._create_midi_track(index)
-                        elif command_type == "create_audio_track":
-                            index = params.get("index", -1)
-                            result = self._create_audio_track(index)
-                        elif command_type == "set_track_name":
-                            track_index = params.get("track_index", 0)
-                            name = params.get("name", "")
-                            result = self._set_track_name(track_index, name)
-                        elif command_type == "create_clip":
-                            track_index = params.get("track_index", 0)
-                            clip_index = params.get("clip_index", 0)
-                            length = params.get("length", 4.0)
-                            result = self._create_clip(track_index, clip_index, length)
-                        elif command_type == "create_audio_clip":
-                            track_index = params.get("track_index", 0)
-                            clip_index = params.get("clip_index", 0)
-                            path = params.get("path", "")
-                            result = self._create_audio_clip(track_index, clip_index, path)
-                        elif command_type == "add_notes_to_clip":
-                            track_index = params.get("track_index", 0)
-                            clip_index = params.get("clip_index", 0)
-                            notes = params.get("notes", [])
-                            result = self._add_notes_to_clip(track_index, clip_index, notes)
-                        elif command_type == "clear_notes_from_clip":
-                            track_index = params.get("track_index", 0)
-                            clip_index = params.get("clip_index", 0)
-                            result = self._clear_notes_from_clip(track_index, clip_index)
-                        elif command_type == "set_clip_name":
-                            track_index = params.get("track_index", 0)
-                            clip_index = params.get("clip_index", 0)
-                            name = params.get("name", "")
-                            result = self._set_clip_name(track_index, clip_index, name)
-                        elif command_type == "set_arrangement_clip_name":
-                            track_index = params.get("track_index", 0)
-                            clip_index = params.get("clip_index", 0)
-                            name = params.get("name", "")
-                            result = self._set_arrangement_clip_name(track_index, clip_index, name)
-                        elif command_type == "set_tempo":
-                            tempo = params.get("tempo", 120.0)
-                            result = self._set_tempo(tempo)
-                        elif command_type == "fire_clip":
-                            track_index = params.get("track_index", 0)
-                            clip_index = params.get("clip_index", 0)
-                            result = self._fire_clip(track_index, clip_index)
-                        elif command_type == "stop_clip":
-                            track_index = params.get("track_index", 0)
-                            clip_index = params.get("clip_index", 0)
-                            result = self._stop_clip(track_index, clip_index)
-                        elif command_type == "delete_clip":
-                            track_index = params.get("track_index", 0)
-                            clip_index = params.get("clip_index", 0)
-                            result = self._delete_clip(track_index, clip_index)
-                        elif command_type == "delete_track":
-                            track_index = params.get("track_index", 0)
-                            result = self._delete_track(track_index)
-                        elif command_type == "delete_device":
-                            track_index = params.get("track_index", 0)
-                            device_index = params.get("device_index", 0)
-                            track_type = params.get("track_type", "regular")
-                            result = self._delete_device(track_index, device_index, track_type)
-                        elif command_type == "set_device_parameter":
-                            track_index = params.get("track_index", 0)
-                            device_index = params.get("device_index", 0)
-                            parameter = params.get("parameter")
-                            value = params.get("value", 0.0)
-                            track_type = params.get("track_type", "regular")
-                            result = self._set_device_parameter(
-                                track_index, device_index, parameter, value, track_type)
-                        elif command_type == "set_track_volume":
-                            track_index = params.get("track_index", 0)
-                            value = params.get("value", 0.85)
-                            track_type = params.get("track_type", "regular")
-                            result = self._set_track_mixer(track_index, "volume", value, track_type)
-                        elif command_type == "set_track_pan":
-                            track_index = params.get("track_index", 0)
-                            value = params.get("value", 0.0)
-                            track_type = params.get("track_type", "regular")
-                            result = self._set_track_mixer(track_index, "panning", value, track_type)
-                        elif command_type == "create_return_track":
-                            result = self._create_return_track()
-                        elif command_type == "save_set":
-                            result = self._save_set()
-                        elif command_type == "set_clip_gain":
-                            track_index = params.get("track_index", 0)
-                            clip_index = params.get("clip_index", 0)
-                            gain = params.get("gain", 0.5)
-                            arrangement = params.get("arrangement", True)
-                            result = self._set_clip_gain(track_index, clip_index, gain, arrangement)
-                        elif command_type == "back_to_arrangement":
-                            result = self._back_to_arrangement()
-                        elif command_type == "set_track_routing":
-                            track_index = params.get("track_index", 0)
-                            field = params.get("field", "output_routing_type")
-                            target = params.get("target", "Main")
-                            result = self._set_track_routing(track_index, field, target)
-                        elif command_type == "set_count_in":
-                            bars = params.get("bars", 1)
-                            metronome = params.get("metronome", None)
-                            result = self._set_count_in(bars, metronome)
-                        elif command_type == "set_track_send":
-                            track_index = params.get("track_index", 0)
-                            send_index = params.get("send_index", 0)
-                            value = params.get("value", 0.0)
-                            result = self._set_track_send(track_index, send_index, value)
-                        elif command_type == "set_track_arm":
-                            track_index = params.get("track_index", 0)
-                            value = params.get("value", True)
-                            result = self._set_track_arm(track_index, value)
-                        elif command_type == "set_track_monitoring":
-                            track_index = params.get("track_index", 0)
-                            value = params.get("value", "auto")
-                            result = self._set_track_monitoring(track_index, value)
-                        elif command_type == "set_track_mute":
-                            track_index = params.get("track_index", 0)
-                            value = params.get("value", False)
-                            result = self._set_track_mute(track_index, value)
-                        elif command_type == "start_playback":
-                            result = self._start_playback()
-                        elif command_type == "stop_playback":
-                            result = self._stop_playback()
-                        elif command_type == "load_instrument_or_effect":
-                            track_index = params.get("track_index", 0)
-                            uri = params.get("uri", "")
-                            track_type = params.get("track_type", "regular")
-                            result = self._load_instrument_or_effect(track_index, uri, track_type)
-                        elif command_type == "load_browser_item":
-                            track_index = params.get("track_index", 0)
-                            item_uri = params.get("item_uri", "")
-                            track_type = params.get("track_type", "regular")
-                            result = self._load_browser_item(track_index, item_uri, track_type)
-                        # ── Arrangement view commands ──────────────────────────────
-                        elif command_type == "switch_to_arrangement_view":
-                            result = self._switch_to_arrangement_view()
-                        elif command_type == "set_current_song_time":
-                            time_val = params.get("time", 0.0)
-                            result = self._set_current_song_time(time_val)
-                        elif command_type == "duplicate_session_clip_to_arrangement":
-                            track_index = params.get("track_index", 0)
-                            clip_index = params.get("clip_index", 0)
-                            destination_time = params.get("destination_time", 0.0)
-                            result = self._duplicate_session_clip_to_arrangement(
-                                track_index, clip_index, destination_time)
-                        elif command_type == "map_rack_magnitude":
-                            track_index = params.get("track_index", 0)
-                            device_index = params.get("device_index", 0)
-                            macro_name = params.get("macro_name", "Magnitude")
-                            result = self._map_rack_magnitude(
-                                track_index, device_index, macro_name)
-                        elif command_type == "inspect_rack":
-                            track_index = params.get("track_index", 0)
-                            device_index = params.get("device_index", 0)
-                            result = self._inspect_rack(track_index, device_index)
-                        elif command_type == "create_locator":
-                            name = params.get("name", "")
-                            time_val = params.get("time", 0.0)
-                            result = self._create_locator(name, time_val)
-
-                        # Put the result in the queue
-                        response_queue.put({"status": "success", "result": result})
-                    except Exception as e:
-                        self.log_message("Error in main thread task: " + str(e))
-                        self.log_message(traceback.format_exc())
-                        response_queue.put({"status": "error", "message": str(e)})
-                
-                # Schedule the task to run on the main thread
-                try:
-                    self.schedule_message(0, main_thread_task)
-                except AssertionError:
-                    # If we're already on the main thread, execute directly
-                    main_thread_task()
-                
-                # create_audio_clip decodes/imports the file on the main
-                # thread and needs more than the default headroom.
-                long_running_commands = {"create_audio_clip": 60.0}
-                queue_timeout = long_running_commands.get(command_type, 10.0)
-                try:
-                    task_response = response_queue.get(timeout=queue_timeout)
-                    if task_response.get("status") == "error":
-                        response["status"] = "error"
-                        response["message"] = task_response.get("message", "Unknown error")
-                    else:
-                        response["result"] = task_response.get("result", {})
-                except queue.Empty:
-                    response["status"] = "error"
-                    response["message"] = "Timeout waiting for operation to complete"
-            elif command_type == "get_browser_item":
-                uri = params.get("uri", None)
-                path = params.get("path", None)
-                response["result"] = self._get_browser_item(uri, path)
-            # Add the new browser commands
-            elif command_type == "get_browser_tree":
-                category_type = params.get("category_type", "all")
-                response["result"] = self.get_browser_tree(category_type)
-            elif command_type == "get_browser_items_at_path":
-                path = params.get("path", "")
-                response["result"] = self.get_browser_items_at_path(path)
-            # Read-only arrangement command – no main-thread scheduling required
-            elif command_type == "get_arrangement_clips":
-                track_index = params.get("track_index", 0)
-                response["result"] = self._get_arrangement_clips(track_index)
-            # State-snapshot reads
-            elif command_type == "get_clip_notes":
-                track_index = params.get("track_index", 0)
-                clip_index = params.get("clip_index", 0)
-                response["result"] = self._get_clip_notes(track_index, clip_index)
-            elif command_type == "get_session_snapshot":
-                include_notes = params.get("include_notes", True)
-                include_params = params.get("include_params", True)
-                response["result"] = self._get_session_snapshot(
-                    include_notes=include_notes,
-                    include_params=include_params,
-                )
-            else:
+            # Route the command through the COMMANDS table. Wire parameter
+            # names are the handler's keyword arguments, so **params both
+            # dispatches and enforces arity; per-command defaults live on the
+            # handler signatures.
+            spec = COMMANDS.get(command_type)
+            if spec is None:
                 response["status"] = "error"
                 response["message"] = "Unknown command: " + command_type
+                return response
+
+            method_name, main_thread, queue_timeout, _advertise = spec
+            handler = getattr(self, method_name)
+
+            if not main_thread:
+                # Read-only commands run directly on this client thread.
+                response["result"] = handler(**params)
+                return response
+
+            # Commands that modify Live's state must run on Live's main
+            # thread. Use a thread-safe approach with a response queue.
+            response_queue = queue.Queue()
+
+            # Define a function to execute on the main thread
+            def main_thread_task():
+                try:
+                    # The handler call happens inside the task so a bad
+                    # parameter set (TypeError) reports through the same
+                    # error envelope as any other handler failure.
+                    result = handler(**params)
+                    # Put the result in the queue
+                    response_queue.put({"status": "success", "result": result})
+                except Exception as e:
+                    self.log_message("Error in main thread task: " + str(e))
+                    self.log_message(traceback.format_exc())
+                    response_queue.put({"status": "error", "message": str(e)})
+
+            # Schedule the task to run on the main thread
+            try:
+                self.schedule_message(0, main_thread_task)
+            except AssertionError:
+                # If we're already on the main thread, execute directly
+                main_thread_task()
+
+            # queue_timeout comes from the COMMANDS row; None means the
+            # default budget (create_audio_clip's 60.0 is the one override —
+            # it decodes/imports the file on the main thread).
+            if queue_timeout is None:
+                queue_timeout = 10.0
+            try:
+                task_response = response_queue.get(timeout=queue_timeout)
+                if task_response.get("status") == "error":
+                    response["status"] = "error"
+                    response["message"] = task_response.get("message", "Unknown error")
+                else:
+                    response["result"] = task_response.get("result", {})
+            except queue.Empty:
+                response["status"] = "error"
+                response["message"] = "Timeout waiting for operation to complete"
         except Exception as e:
             self.log_message("Error processing command: " + str(e))
             self.log_message(traceback.format_exc())
@@ -592,7 +435,7 @@ class AbletonMCP(ControlSurface):
             self.log_message("Error getting session info: " + str(e))
             raise
     
-    def _get_track_info(self, track_index):
+    def _get_track_info(self, track_index=0):
         """Get information about a track"""
         try:
             if track_index < 0 or track_index >= len(self._song.tracks):
@@ -647,7 +490,7 @@ class AbletonMCP(ControlSurface):
             self.log_message("Error getting track info: " + str(e))
             raise
     
-    def _create_midi_track(self, index):
+    def _create_midi_track(self, index=-1):
         """Create a new MIDI track at the specified index"""
         try:
             # Create the track
@@ -666,7 +509,7 @@ class AbletonMCP(ControlSurface):
             self.log_message("Error creating MIDI track: " + str(e))
             raise
 
-    def _set_track_name(self, track_index, name):
+    def _set_track_name(self, track_index=0, name=""):
         """Set the name of a track"""
         try:
             if track_index < 0 or track_index >= len(self._song.tracks):
@@ -684,7 +527,7 @@ class AbletonMCP(ControlSurface):
             self.log_message("Error setting track name: " + str(e))
             raise
     
-    def _create_clip(self, track_index, clip_index, length):
+    def _create_clip(self, track_index=0, clip_index=0, length=4.0):
         """Create a new MIDI clip in the specified track and clip slot"""
         try:
             if track_index < 0 or track_index >= len(self._song.tracks):
@@ -740,7 +583,7 @@ class AbletonMCP(ControlSurface):
                              % len(track.devices))
         return track, track.devices[device_index]
 
-    def _get_device_parameters(self, track_index, device_index, track_type="regular"):
+    def _get_device_parameters(self, track_index=0, device_index=0, track_type="regular"):
         """List every automatable parameter on a device, with its current value"""
         try:
             track, device = self._resolve_device(track_index, device_index, track_type)
@@ -776,8 +619,8 @@ class AbletonMCP(ControlSurface):
             self.log_message("Error getting device parameters: " + str(e))
             raise
 
-    def _set_device_parameter(self, track_index, device_index, parameter, value,
-                              track_type="regular"):
+    def _set_device_parameter(self, track_index=0, device_index=0, parameter=None,
+                              value=0.0, track_type="regular"):
         """Set one device parameter, addressed by integer index or by name"""
         try:
             track, device = self._resolve_device(track_index, device_index, track_type)
@@ -832,7 +675,7 @@ class AbletonMCP(ControlSurface):
             self.log_message("Error setting device parameter: " + str(e))
             raise
 
-    def _delete_device(self, track_index, device_index, track_type="regular"):
+    def _delete_device(self, track_index=0, device_index=0, track_type="regular"):
         """Remove a device from a track's chain"""
         try:
             track, device = self._resolve_device(track_index, device_index, track_type)
@@ -879,7 +722,20 @@ class AbletonMCP(ControlSurface):
             self.log_message("Error setting track " + field + ": " + str(e))
             raise
 
-    def _set_clip_gain(self, track_index, clip_index, gain, arrangement=True):
+    # Thin wire adapters: the set_track_volume / set_track_pan commands share
+    # one implementation (_set_track_mixer) that also needs the mixer field
+    # name, which is not a wire parameter. The COMMANDS table stays a pure
+    # literal, so the field is injected here rather than by an adapter row.
+
+    def _set_track_volume(self, track_index=0, value=0.85, track_type="regular"):
+        """Set a track's volume fader (0.0-1.0, 0.85 = 0 dB)."""
+        return self._set_track_mixer(track_index, "volume", value, track_type)
+
+    def _set_track_pan(self, track_index=0, value=0.0, track_type="regular"):
+        """Set a track's pan (-1.0 hard left to 1.0 hard right)."""
+        return self._set_track_mixer(track_index, "panning", value, track_type)
+
+    def _set_clip_gain(self, track_index=0, clip_index=0, gain=0.5, arrangement=True):
         """Set one audio clip's gain, without touching the track fader.
 
         This is what fixes a single section sung too loud: it changes that clip
@@ -945,7 +801,7 @@ class AbletonMCP(ControlSurface):
             return None
         return getattr(obj, "display_name", str(obj))
 
-    def _get_track_routing(self, track_index):
+    def _get_track_routing(self, track_index=0):
         """Report a track's input/output routing and every option available to it"""
         try:
             track = self._resolve_track(track_index)
@@ -964,7 +820,8 @@ class AbletonMCP(ControlSurface):
             self.log_message("Error getting track routing: " + str(e))
             raise
 
-    def _set_track_routing(self, track_index, field, target):
+    def _set_track_routing(self, track_index=0, field="output_routing_type",
+                           target="Main"):
         """Set one routing field by its display name, e.g. output type 'Main'"""
         try:
             track = self._resolve_track(track_index)
@@ -989,7 +846,7 @@ class AbletonMCP(ControlSurface):
             self.log_message("Error setting track routing: " + str(e))
             raise
 
-    def _set_count_in(self, bars, metronome=None):
+    def _set_count_in(self, bars=1, metronome=None):
         """Set the record count-in, so a performer gets a lead-in before punching in.
 
         This is the correct way to get a count-in: it happens only when
@@ -1034,7 +891,7 @@ class AbletonMCP(ControlSurface):
             self.log_message("Error setting count-in: " + str(e))
             raise
 
-    def _set_track_send(self, track_index, send_index, value):
+    def _set_track_send(self, track_index=0, send_index=0, value=0.0):
         """Set how much of a track is sent to a return track (0.0-1.0).
 
         A newly created return track receives nothing until this is raised —
@@ -1069,7 +926,7 @@ class AbletonMCP(ControlSurface):
             self.log_message("Error setting track send: " + str(e))
             raise
 
-    def _set_track_mute(self, track_index, value):
+    def _set_track_mute(self, track_index=0, value=False):
         """Mute or unmute a track"""
         try:
             track = self._resolve_track(track_index)
@@ -1083,7 +940,7 @@ class AbletonMCP(ControlSurface):
             self.log_message("Error setting track mute: " + str(e))
             raise
 
-    def _delete_track(self, track_index):
+    def _delete_track(self, track_index=0):
         """Delete a track from the song"""
         try:
             if track_index < 0 or track_index >= len(self._song.tracks):
@@ -1103,7 +960,7 @@ class AbletonMCP(ControlSurface):
             self.log_message("Error deleting track: " + str(e))
             raise
 
-    def _create_audio_clip(self, track_index, clip_index, path):
+    def _create_audio_clip(self, track_index=0, clip_index=0, path=""):
         """Create an audio clip in the specified audio track clip slot by importing a file.
 
         Requires Ableton Live 12.0.5 or newer (the underlying
@@ -1151,7 +1008,9 @@ class AbletonMCP(ControlSurface):
             self.log_message("Error creating audio clip: " + str(e))
             raise
 
-    def _add_notes_to_clip(self, track_index, clip_index, notes):
+    # notes defaults to an empty tuple, not [] — same "no notes" wire default
+    # the dispatcher used to supply, without a mutable default argument.
+    def _add_notes_to_clip(self, track_index=0, clip_index=0, notes=()):
         """Add MIDI notes to a clip"""
         try:
             if track_index < 0 or track_index >= len(self._song.tracks):
@@ -1191,7 +1050,7 @@ class AbletonMCP(ControlSurface):
             self.log_message("Error adding notes to clip: " + str(e))
             raise
     
-    def _set_clip_name(self, track_index, clip_index, name):
+    def _set_clip_name(self, track_index=0, clip_index=0, name=""):
         """Set the name of a clip"""
         try:
             if track_index < 0 or track_index >= len(self._song.tracks):
@@ -1218,7 +1077,7 @@ class AbletonMCP(ControlSurface):
             self.log_message("Error setting clip name: " + str(e))
             raise
 
-    def _set_arrangement_clip_name(self, track_index, clip_index, name):
+    def _set_arrangement_clip_name(self, track_index=0, clip_index=0, name=""):
         """Set the name of a clip placed in the Arrangement timeline.
 
         clip_index indexes into track.arrangement_clips, in the same order
@@ -1245,7 +1104,7 @@ class AbletonMCP(ControlSurface):
             self.log_message("Error setting arrangement clip name: " + str(e))
             raise
 
-    def _set_tempo(self, tempo):
+    def _set_tempo(self, tempo=120.0):
         """Set the tempo of the session"""
         try:
             self._song.tempo = tempo
@@ -1258,7 +1117,7 @@ class AbletonMCP(ControlSurface):
             self.log_message("Error setting tempo: " + str(e))
             raise
     
-    def _fire_clip(self, track_index, clip_index):
+    def _fire_clip(self, track_index=0, clip_index=0):
         """Fire a clip"""
         try:
             if track_index < 0 or track_index >= len(self._song.tracks):
@@ -1284,7 +1143,7 @@ class AbletonMCP(ControlSurface):
             self.log_message("Error firing clip: " + str(e))
             raise
     
-    def _stop_clip(self, track_index, clip_index):
+    def _stop_clip(self, track_index=0, clip_index=0):
         """Stop a clip"""
         try:
             if track_index < 0 or track_index >= len(self._song.tracks):
@@ -1307,7 +1166,7 @@ class AbletonMCP(ControlSurface):
             self.log_message("Error stopping clip: " + str(e))
             raise
 
-    def _delete_clip(self, track_index, clip_index):
+    def _delete_clip(self, track_index=0, clip_index=0):
         """Delete the clip in the given clip slot, freeing the slot for reuse."""
         try:
             if track_index < 0 or track_index >= len(self._song.tracks):
@@ -1371,16 +1230,20 @@ class AbletonMCP(ControlSurface):
             self.log_message("Error switching to arrangement view: " + str(e))
             raise
 
-    def _set_current_song_time(self, time_val):
-        """Move the arrangement playhead to a position in beats"""
+    def _set_current_song_time(self, time=0.0):
+        """Move the arrangement playhead to a position in beats.
+
+        The parameter is named for the wire ("time"); it shadows the time
+        module inside this method only, and the body never uses the module.
+        """
         try:
-            self._song.current_song_time = float(time_val)
+            self._song.current_song_time = float(time)
             return {"current_song_time": self._song.current_song_time}
         except Exception as e:
             self.log_message("Error setting current song time: " + str(e))
             raise
 
-    def _get_arrangement_clips(self, track_index):
+    def _get_arrangement_clips(self, track_index=0):
         """Return all clips placed in the Arrangement timeline for a track.
 
         Each clip dict contains:
@@ -1422,7 +1285,7 @@ class AbletonMCP(ControlSurface):
             self.log_message("Error getting arrangement clips: " + str(e))
             raise
 
-    def _clear_notes_from_clip(self, track_index, clip_index):
+    def _clear_notes_from_clip(self, track_index=0, clip_index=0):
         """Remove all MIDI notes from a Session clip.
 
         Pairs with _add_notes_to_clip to make a real replace (clear, then add),
@@ -1482,7 +1345,8 @@ class AbletonMCP(ControlSurface):
             self.log_message("Error clearing notes from clip: " + str(e))
             raise
 
-    def _duplicate_session_clip_to_arrangement(self, track_index, clip_index, destination_time):
+    def _duplicate_session_clip_to_arrangement(self, track_index=0, clip_index=0,
+                                               destination_time=0.0):
         """Copy a Session-view clip into the Arrangement timeline.
 
         Uses the real Live API:
@@ -1524,17 +1388,21 @@ class AbletonMCP(ControlSurface):
             self.log_message("Error duplicating clip to arrangement: " + str(e))
             raise
 
-    def _create_locator(self, name, time_val):
+    def _create_locator(self, name="", time=0.0):
         """Create (or rename) a named locator at the given beat position.
 
         Uses Live's Song.set_or_delete_cue(), which toggles a cue at the
         current_song_time. We temporarily move the playhead, toggle, then
         restore. If a cue already exists at that time we just rename it
         instead of toggling (which would delete it).
+
+        The second parameter is named for the wire ("time"); it shadows the
+        time module inside this method only, and the body never uses the
+        module.
         """
         try:
             song = self._song
-            target_time = float(time_val)
+            target_time = float(time)
             tolerance = 1e-3
 
             # See if a cue already exists at (or near) the target time
@@ -1580,7 +1448,7 @@ class AbletonMCP(ControlSurface):
 
     # ── Browser implementations ───────────────────────────────────────────────
 
-    def _get_browser_item(self, uri, path):
+    def _get_browser_item(self, uri=None, path=None):
         """Get a browser item by URI or path"""
         try:
             # Access the application's browser instance instead of creating a new one
@@ -1710,7 +1578,7 @@ class AbletonMCP(ControlSurface):
             self.log_message("Error saving set: " + str(e))
             raise
 
-    def _create_audio_track(self, index):
+    def _create_audio_track(self, index=-1):
         """Create a new audio track"""
         try:
             self._song.create_audio_track(index)
@@ -1732,34 +1600,34 @@ class AbletonMCP(ControlSurface):
             self.log_message("Error creating return track: " + str(e))
             raise
 
-    def _set_track_arm(self, track_index, armed):
+    def _set_track_arm(self, track_index=0, value=True):
         """Arm or disarm a track for recording"""
         try:
             track = self._resolve_track(track_index)
             if not track.can_be_armed:
                 raise ValueError("Track %d cannot be armed" % track_index)
-            track.arm = bool(armed)
+            track.arm = bool(value)
             return {"track_index": track_index, "track_name": track.name,
                     "arm": bool(track.arm)}
         except Exception as e:
             self.log_message("Error arming track: " + str(e))
             raise
 
-    def _set_track_monitoring(self, track_index, state):
+    def _set_track_monitoring(self, track_index=0, value="auto"):
         """Set input monitoring. 0 = In, 1 = Auto, 2 = Off (Live's own ordering)."""
         try:
             track = self._resolve_track(track_index)
             names = {"in": 0, "auto": 1, "off": 2}
-            if isinstance(state, str):
-                key = state.strip().lower()
+            if isinstance(value, str):
+                key = value.strip().lower()
                 if key not in names:
                     raise ValueError("monitoring must be 'in', 'auto' or 'off'")
-                value = names[key]
+                state = names[key]
             else:
-                value = int(state)
-            if value not in (0, 1, 2):
+                state = int(value)
+            if state not in (0, 1, 2):
                 raise ValueError("monitoring state must be 0 (In), 1 (Auto) or 2 (Off)")
-            track.current_monitoring_state = value
+            track.current_monitoring_state = state
             inverse = {0: "in", 1: "auto", 2: "off"}
             return {"track_index": track_index, "track_name": track.name,
                     "monitoring": inverse[int(track.current_monitoring_state)]}
@@ -1767,7 +1635,7 @@ class AbletonMCP(ControlSurface):
             self.log_message("Error setting monitoring: " + str(e))
             raise
 
-    def _load_instrument_or_effect(self, track_index, uri, track_type="regular"):
+    def _load_instrument_or_effect(self, track_index=0, uri="", track_type="regular"):
         """Load an instrument or effect onto a track by its browser URI.
 
         The command dispatcher above calls this method, but it was never
@@ -1779,7 +1647,7 @@ class AbletonMCP(ControlSurface):
         """
         return self._load_browser_item(track_index, uri, track_type)
 
-    def _load_browser_item(self, track_index, item_uri, track_type="regular"):
+    def _load_browser_item(self, track_index=0, item_uri="", track_type="regular"):
         """Load a browser item onto a track by its URI.
 
         track_type accepts "regular", "return" or "master", so effects can be
@@ -1928,7 +1796,7 @@ class AbletonMCP(ControlSurface):
                 return hit[0], hit[1]
         return None, None
 
-    def _inspect_rack(self, track_index, device_index=0):
+    def _inspect_rack(self, track_index=0, device_index=0):
         """Inspect a rack's nested devices and blend parameters."""
         if track_index < 0 or track_index >= len(self._song.tracks):
             raise IndexError("Track index out of range")
@@ -1966,7 +1834,7 @@ class AbletonMCP(ControlSurface):
             "devices": devices_info,
         }
 
-    def _map_rack_magnitude(self, track_index, device_index=0, macro_name="Magnitude"):
+    def _map_rack_magnitude(self, track_index=0, device_index=0, macro_name="Magnitude"):
         """Rename Macro 1 and map nested Dry/Wet (or Mix/Amount) params to it."""
         if track_index < 0 or track_index >= len(self._song.tracks):
             raise IndexError("Track index out of range")
@@ -2396,7 +2264,7 @@ class AbletonMCP(ControlSurface):
             self.log_message("master_track serialize failed: " + str(e))
             return None
 
-    def _get_clip_notes(self, track_index, clip_index):
+    def _get_clip_notes(self, track_index=0, clip_index=0):
         try:
             if track_index < 0 or track_index >= len(self._song.tracks):
                 raise IndexError("Track index out of range")
@@ -2614,7 +2482,7 @@ class AbletonMCP(ControlSurface):
             self.log_message(traceback.format_exc())
             raise
     
-    def get_browser_items_at_path(self, path):
+    def get_browser_items_at_path(self, path=""):
         """
         Get browser items at a specific path.
         

@@ -13,9 +13,13 @@ advertised by neither `SCRIPT_CAPABILITIES` nor the legacy set
 (docs/REFACTOR_PLAN.md §1 item 4, repaired by plan PR5). These tests keep
 the halves from drifting again.
 
-These parsers read today's structures (the elif ladders and membership
-lists); they are the "migration adapter #3" the plan expects to be rewritten
-against the dispatch table (PR6) and the commands registry (PR8).
+Plan PR6 replaced the Remote Script's elif ladders with the module-level
+`COMMANDS` literal, so the Remote-Script-side parsers here read that table
+(the RS half of "migration adapter #3", §5): the main-thread set is the rows
+with the main_thread flag, the advertised set is derived from the advertise
+flag, and per-command queue timeouts are the rows' queue_timeout column. The
+server-side parsers still read server.py's ladder structures until the PR8
+commands registry completes the adapter.
 
 Runs anywhere — no Ableton, no network.
 """
@@ -65,30 +69,35 @@ def _server_modifying_commands():
     raise AssertionError("is_modifying_command membership list not found in server.py")
 
 
-def _remote_script_main_thread_commands():
-    """(b) the Remote Script's `command_type in [...]` main-thread list."""
-    fn = _remote_script_function("_process_command")
-    for node in ast.walk(fn):
-        if (
-            isinstance(node, ast.Compare)
-            and isinstance(node.left, ast.Name)
-            and node.left.id == "command_type"
-            and len(node.ops) == 1
-            and isinstance(node.ops[0], ast.In)
-            and isinstance(node.comparators[0], (ast.List, ast.Tuple))
-        ):
-            return [ast.literal_eval(e) for e in node.comparators[0].elts]
-    raise AssertionError("main-thread membership list not found in _process_command")
-
-
-def _script_capabilities():
-    """(c) the Remote Script's module-level SCRIPT_CAPABILITIES list."""
+def _remote_script_commands_table():
+    """The Remote Script's module-level COMMANDS literal:
+    name -> (method, main_thread, queue_timeout, advertise)."""
     for node in _parse(REMOTE_SCRIPT).body:
         if isinstance(node, ast.Assign):
             for target in node.targets:
-                if isinstance(target, ast.Name) and target.id == "SCRIPT_CAPABILITIES":
-                    return [ast.literal_eval(e) for e in node.value.elts]
-    raise AssertionError("SCRIPT_CAPABILITIES not found in the Remote Script")
+                if isinstance(target, ast.Name) and target.id == "COMMANDS":
+                    return ast.literal_eval(node.value)
+    raise AssertionError("COMMANDS table not found in the Remote Script")
+
+
+def _remote_script_main_thread_commands():
+    """(b) the commands the Remote Script schedules onto Live's main thread —
+    the COMMANDS rows whose main_thread flag is set."""
+    return {
+        name
+        for name, row in _remote_script_commands_table().items()
+        if row[1]
+    }
+
+
+def _script_capabilities():
+    """(c) the advertised capability set — SCRIPT_CAPABILITIES as the Remote
+    Script derives it, from the COMMANDS rows whose advertise flag is set."""
+    return {
+        name
+        for name, row in _remote_script_commands_table().items()
+        if row[3]
+    }
 
 
 def _server_sent_commands():
@@ -112,23 +121,9 @@ def _server_sent_commands():
 # importable outside Live.
 
 
-def _remote_script_function(name):
-    for node in ast.walk(_parse(REMOTE_SCRIPT)):
-        if isinstance(node, ast.ClassDef) and node.name == "AbletonMCP":
-            fns = [
-                n
-                for n in node.body
-                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-                and n.name == name
-            ]
-            if fns:
-                return fns[-1]  # the definition Python keeps
-    raise AssertionError(f"AbletonMCP.{name} not found in the Remote Script")
-
-
-def _long_running_timeouts(root):
-    """The `long_running_commands = {...}` dict literal in the given tree."""
-    for node in ast.walk(root):
+def _server_long_running_timeouts():
+    """The `long_running_commands = {...}` dict literal in server.py."""
+    for node in ast.walk(_parse(SERVER)):
         if (
             isinstance(node, ast.Assign)
             and any(
@@ -138,7 +133,17 @@ def _long_running_timeouts(root):
             and isinstance(node.value, ast.Dict)
         ):
             return ast.literal_eval(node.value)
-    raise AssertionError("long_running_commands dict not found")
+    raise AssertionError("long_running_commands dict not found in server.py")
+
+
+def _remote_script_queue_timeouts():
+    """Per-command queue-timeout overrides from the COMMANDS table — the rows
+    whose queue_timeout column is not None (None means the 10.0 default)."""
+    return {
+        name: row[2]
+        for name, row in _remote_script_commands_table().items()
+        if row[2] is not None
+    }
 
 
 # --------------------------------------------------------------------------
@@ -147,12 +152,12 @@ def _long_running_timeouts(root):
 
 def test_modifying_command_sets_agree_across_the_halves():
     server_side = set(_server_modifying_commands())
-    script_side = set(_remote_script_main_thread_commands())
+    script_side = _remote_script_main_thread_commands()
     # The orphans must still be dispatchable RS-side — vanishing here means
     # they were dropped (or exposed) without updating KNOWN_ORPHANS.
     assert KNOWN_ORPHANS <= script_side, (
         f"known orphan commands missing from the Remote Script main-thread "
-        f"list: {sorted(KNOWN_ORPHANS - script_side)}"
+        f"set: {sorted(KNOWN_ORPHANS - script_side)}"
     )
     assert server_side == script_side - KNOWN_ORPHANS, (
         f"server-only: {sorted(server_side - script_side)}; "
@@ -162,7 +167,7 @@ def test_modifying_command_sets_agree_across_the_halves():
 
 
 def test_every_sent_command_is_advertised_or_legacy():
-    advertised = set(_script_capabilities()) | set(_LEGACY_CAPABILITIES)
+    advertised = _script_capabilities() | set(_LEGACY_CAPABILITIES)
     missing = _server_sent_commands() - advertised
     assert missing == set(), (
         f"commands the server sends but no capability list advertises: "
@@ -174,12 +179,8 @@ def test_long_running_commands_have_timeout_headroom():
     # The server's socket timeout must outlast the Remote Script's own queue
     # timeout by a margin, or the server gives up while Live is still working
     # and the late reply desyncs the connection.
-    server_timeouts = _long_running_timeouts(
-        _parse(SERVER)
-    )
-    script_timeouts = _long_running_timeouts(
-        _remote_script_function("_process_command")
-    )
+    server_timeouts = _server_long_running_timeouts()
+    script_timeouts = _remote_script_queue_timeouts()
     assert "create_audio_clip" in script_timeouts
     for command, script_timeout in script_timeouts.items():
         assert command in server_timeouts, (
