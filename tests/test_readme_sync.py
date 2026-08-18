@@ -14,7 +14,7 @@ import asyncio
 import re
 from pathlib import Path
 
-import ableton_mcp.server as server
+from ableton_mcp.app import build_app
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -40,7 +40,7 @@ def _readme_tool_names():
 
 
 def test_every_registered_tool_is_in_the_readme_reference():
-    registered = {t.name for t in asyncio.run(server.mcp.list_tools())}
+    registered = {t.name for t in asyncio.run(build_app().list_tools())}
     missing = registered - _readme_tool_names()
     assert missing == set(), (
         f"tools registered but missing from the README tool reference: "

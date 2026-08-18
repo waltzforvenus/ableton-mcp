@@ -12,9 +12,12 @@ Run from the repo root:
 """
 
 import json
+from types import SimpleNamespace
+
 import pytest
 
 import ableton_mcp.server as server
+from ableton_mcp.app import Deps
 
 
 # --------------------------------------------------------------------------
@@ -22,7 +25,7 @@ import ableton_mcp.server as server
 # --------------------------------------------------------------------------
 
 class FakeConnection:
-    """Stand-in for AbletonConnection. Records every command sent and returns
+    """Stand-in for the Ableton client. Records every command sent and returns
     a canned response (or raises) so we can test the tool logic in isolation."""
 
     def __init__(self, response=None, raise_exc=None):
@@ -37,24 +40,32 @@ class FakeConnection:
         return self.response
 
 
+class PermissiveHandshake:
+    """Tools gate on ScriptHandshake.require(), which needs a live Remote
+    Script handshake. Report every capability as present (and never touch the
+    wire) so the tests exercise the tool body rather than the missing-script
+    early return."""
+
+    def require(self, name, min_version=None, *, send_command=None):
+        return None
+
+
+def _ctx(deps):
+    """The two-line stub ctx: exactly the attribute path server._deps reads."""
+    return SimpleNamespace(request_context=SimpleNamespace(lifespan_context=deps))
+
+
 @pytest.fixture
-def fake_conn(monkeypatch):
-    """Factory: install a FakeConnection as the active Ableton connection and
-    return it so the test can inspect what was sent."""
+def fake_conn():
+    """Factory: build a FakeConnection wrapped in Deps + stub ctx (no
+    monkeypatching — dependencies are injected the way the composition root
+    injects the real ones) and return the connection; its ``ctx`` attribute
+    is what the test hands to the tool."""
     def _make(response=None, raise_exc=None):
         conn = FakeConnection(response=response, raise_exc=raise_exc)
-        monkeypatch.setattr(server, "get_ableton_connection", lambda: conn)
+        conn.ctx = _ctx(Deps(client=conn, handshake=PermissiveHandshake()))
         return conn
     return _make
-
-
-@pytest.fixture(autouse=True)
-def _script_capabilities_available(monkeypatch):
-    """Tools gate on require_capability(), which needs a live Remote Script
-    handshake. Report every capability as present so the tests exercise the
-    tool body rather than the missing-script early return."""
-    import ableton_mcp.script_handshake as sh
-    monkeypatch.setattr(sh, "require_capability", lambda name: None)
 
 
 # A representative clip payload as the Remote Script would return it.
@@ -76,13 +87,13 @@ def _sample_response(notes=SAMPLE_NOTES, name="Fred Pattern", length=8.0):
 
 def test_read_sends_correct_command_and_params(fake_conn):
     conn = fake_conn(response=_sample_response())
-    server.get_clip_notes(None, track_index=2, clip_index=5)
+    server.get_clip_notes(conn.ctx, track_index=2, clip_index=5)
     assert conn.sent == [("get_clip_notes", {"track_index": 2, "clip_index": 5})]
 
 
 def test_read_returns_the_payload_as_json(fake_conn):
-    fake_conn(response=_sample_response(name="Fred Pattern", length=8.0))
-    payload = json.loads(server.get_clip_notes(None, 0, 0))
+    conn = fake_conn(response=_sample_response(name="Fred Pattern", length=8.0))
+    payload = json.loads(server.get_clip_notes(conn.ctx, 0, 0))
     assert payload["clip_name"] == "Fred Pattern"
     assert payload["length"] == 8.0
     assert payload["note_count"] == 3
@@ -90,15 +101,15 @@ def test_read_returns_the_payload_as_json(fake_conn):
 
 
 def test_read_empty_clip_is_zero_notes_not_an_error(fake_conn):
-    fake_conn(response=_sample_response(notes=[]))
-    payload = json.loads(server.get_clip_notes(None, 0, 0))
+    conn = fake_conn(response=_sample_response(notes=[]))
+    payload = json.loads(server.get_clip_notes(conn.ctx, 0, 0))
     assert payload["notes"] == []
     assert payload["note_count"] == 0
 
 
 def test_read_connection_error_is_caught_and_reported(fake_conn):
-    fake_conn(raise_exc=Exception("boom"))
-    out = server.get_clip_notes(None, 0, 0)
+    conn = fake_conn(raise_exc=Exception("boom"))
+    out = server.get_clip_notes(conn.ctx, 0, 0)
     assert out.startswith("Error getting clip notes:")
     assert "boom" in out
 
@@ -106,9 +117,9 @@ def test_read_connection_error_is_caught_and_reported(fake_conn):
 def test_read_output_feeds_straight_into_add_notes(fake_conn):
     """The reader's note dicts are shaped exactly as add_notes_to_clip wants."""
     conn = fake_conn(response=_sample_response())
-    notes = json.loads(server.get_clip_notes(None, 0, 0))["notes"]
+    notes = json.loads(server.get_clip_notes(conn.ctx, 0, 0))["notes"]
     conn.response = {"note_count": len(notes)}
-    server.add_notes_to_clip(None, 0, 0, notes)
+    server.add_notes_to_clip(conn.ctx, 0, 0, notes)
     written = [c for c in conn.sent if c[0] == "add_notes_to_clip"][0][1]["notes"]
     assert written == SAMPLE_NOTES
 
@@ -116,7 +127,7 @@ def test_read_output_feeds_straight_into_add_notes(fake_conn):
 def test_add_notes_forwards_track_clip_and_notes(fake_conn):
     conn = fake_conn(response={"note_count": 1})
     one = [{"pitch": 60, "start_time": 0.0, "duration": 1.0, "velocity": 100, "mute": False}]
-    server.add_notes_to_clip(None, 3, 7, one)
+    server.add_notes_to_clip(conn.ctx, 3, 7, one)
     assert conn.sent == [("add_notes_to_clip",
                           {"track_index": 3, "clip_index": 7, "notes": one})]
 
@@ -127,20 +138,20 @@ def test_add_notes_forwards_track_clip_and_notes(fake_conn):
 
 def test_clear_sends_correct_command_and_params(fake_conn):
     conn = fake_conn(response={"clip_name": "Fred", "cleared_count": 3})
-    server.clear_notes_from_clip(None, track_index=1, clip_index=4)
+    server.clear_notes_from_clip(conn.ctx, track_index=1, clip_index=4)
     assert conn.sent == [("clear_notes_from_clip", {"track_index": 1, "clip_index": 4})]
 
 
 def test_clear_output_reports_count_and_name(fake_conn):
-    fake_conn(response={"clip_name": "Fred Pattern", "cleared_count": 5})
-    out = server.clear_notes_from_clip(None, 0, 0)
+    conn = fake_conn(response={"clip_name": "Fred Pattern", "cleared_count": 5})
+    out = server.clear_notes_from_clip(conn.ctx, 0, 0)
     assert "Cleared 5 note" in out
     assert "Fred Pattern" in out
 
 
 def test_clear_connection_error_is_reported(fake_conn):
-    fake_conn(raise_exc=Exception("boom"))
-    out = server.clear_notes_from_clip(None, 0, 0)
+    conn = fake_conn(raise_exc=Exception("boom"))
+    out = server.clear_notes_from_clip(conn.ctx, 0, 0)
     assert out.startswith("Error clearing notes from clip:")
     assert "boom" in out
 
@@ -151,7 +162,7 @@ def test_true_replace_loop_read_clear_add(fake_conn):
     conn = fake_conn(response=_sample_response())
 
     # read
-    notes = json.loads(server.get_clip_notes(None, 0, 0))["notes"]
+    notes = json.loads(server.get_clip_notes(conn.ctx, 0, 0))["notes"]
 
     # modify: transpose up a fifth
     for n in notes:
@@ -159,9 +170,9 @@ def test_true_replace_loop_read_clear_add(fake_conn):
 
     # clear, then write the modified notes back
     conn.response = {"clip_name": "Fred Pattern", "cleared_count": 3}
-    server.clear_notes_from_clip(None, 0, 0)
+    server.clear_notes_from_clip(conn.ctx, 0, 0)
     conn.response = {"note_count": 3}
-    server.add_notes_to_clip(None, 0, 0, notes)
+    server.add_notes_to_clip(conn.ctx, 0, 0, notes)
 
     # the command sequence is read -> clear -> add, in that order
     assert [c[0] for c in conn.sent] == [

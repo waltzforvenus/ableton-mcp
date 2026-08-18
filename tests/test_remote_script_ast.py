@@ -35,7 +35,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 REMOTE_SCRIPT = REPO_ROOT / "AbletonMCP_Remote_Script" / "__init__.py"
-SERVER = REPO_ROOT / "src" / "ableton_mcp" / "server.py"
+COMMANDS_REGISTRY = REPO_ROOT / "src" / "ableton_mcp" / "commands.py"
 GOLDENS_DIR = REPO_ROOT / "tests" / "goldens"
 
 
@@ -155,21 +155,30 @@ def _binds_keywords(fndef, kw_names):
     return True
 
 
-def _server_modifying_list():
-    """The `is_modifying_command = command_type in [...]` list in server.py,
-    entries in order (duplicates preserved)."""
-    for node in ast.walk(_parse(SERVER)):
-        if (
-            isinstance(node, ast.Assign)
-            and any(
-                isinstance(t, ast.Name) and t.id == "is_modifying_command"
-                for t in node.targets
+def _registry_dict_node():
+    """The ast.Dict node of the server-side commands.py `COMMANDS` registry.
+
+    Returned as the raw node (not evaluated) for the same reason as
+    `_commands_dict_node`: a duplicate key silently keeps the last row, and
+    only the raw node still shows both. The assignment is annotated
+    (`COMMANDS: dict[str, CommandSpec] = {...}`), so both AnnAssign and plain
+    Assign are accepted.
+    """
+    for node in _parse(COMMANDS_REGISTRY).body:
+        target = None
+        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            target = node.target.id
+        elif isinstance(node, ast.Assign):
+            for t in node.targets:
+                if isinstance(t, ast.Name):
+                    target = t.id
+        if target == "COMMANDS":
+            assert isinstance(node.value, ast.Dict), (
+                "commands.py COMMANDS must be a dict literal so this "
+                "guardrail can see duplicate keys"
             )
-            and isinstance(node.value, ast.Compare)
-            and isinstance(node.value.comparators[0], (ast.List, ast.Tuple))
-        ):
-            return [ast.literal_eval(e) for e in node.value.comparators[0].elts]
-    raise AssertionError("is_modifying_command membership list not found in server.py")
+            return node.value
+    raise AssertionError("COMMANDS registry not found in src/ableton_mcp/commands.py")
 
 
 def _duplicates(seq):
@@ -288,17 +297,23 @@ def test_command_table_references_only_existing_methods():
 
 
 # --------------------------------------------------------------------------
-# (5) No duplicate entries inside the server's modifying-command list
+# (5) No duplicate keys in the server's commands.py registry literal
 # --------------------------------------------------------------------------
 
-def test_no_duplicate_entries_in_server_modifying_command_list():
-    # The Remote Script half of this check is now test (3): its membership
-    # list became the COMMANDS table, where the duplicate hazard is a
-    # duplicate dict key. The server's list ladder still exists until PR8.
-    server_dupes = _duplicates(_server_modifying_list())
-    assert server_dupes == [], (
-        f"duplicate server is_modifying_command entries: {sorted(server_dupes)}"
-    )
+def test_no_duplicate_keys_in_server_command_registry():
+    # The server's modifying-command membership list became the commands.py
+    # registry (PR8, the server half of migration adapter #3). The duplicate
+    # hazard followed it: a duplicate dict key silently keeps the last
+    # CommandSpec — the same failure mode as the RS table's test (3).
+    keys = []
+    for key in _registry_dict_node().keys:
+        assert key is not None, "COMMANDS registry must not use **-expansion"
+        assert isinstance(key, ast.Constant) and isinstance(key.value, str), (
+            "COMMANDS registry keys must be string literals"
+        )
+        keys.append(key.value)
+    duplicated = _duplicates(keys)
+    assert duplicated == [], f"registry rows defined more than once: {sorted(duplicated)}"
 
 
 # --------------------------------------------------------------------------

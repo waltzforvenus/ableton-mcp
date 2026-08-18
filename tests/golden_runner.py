@@ -3,29 +3,28 @@ section 6 PR3).
 
 Two pieces:
 
-- ``FakeWireClient`` — a scripted stand-in for ``AbletonConnection``. It is
+- ``FakeWireClient`` — a scripted stand-in for the Ableton client. It is
   constructed with the *ordered* wire exchange a tool is expected to perform
   (command name AND params are asserted on every send), and returns canned
   responses. This freezes the wire protocol: which commands, with which
   params, in which order.
 
-- ``call_tool(name, args, fake)`` — migration adapter #1 from the plan.
-  Pre-refactor it monkeypatches ``ableton_mcp.server.get_ableton_connection``
-  and ``ableton_mcp.script_handshake.require_capability`` (the gated tools
-  import the latter inside the function body, so the module attribute is what
-  resolves at call time), and snapshots/restores the handshake module state
-  (``_script_info`` / ``_handshake_done``) around each call, because
-  ``get_remote_script_info`` runs a real handshake that mutates them.
-  Post-refactor this adapter is rewritten to build ``Deps``; nothing else in
-  the golden suite may change.
-
-Tools are called with ``ctx=None`` exactly as tests/test_clip_notes.py does.
+- ``call_tool(name, args, fake)`` — migration adapter #1 from the plan, in
+  its post-refactor (PR8) shape: it builds a ``Deps`` around the fake client
+  and an all-capabilities handshake, and hands the tool a two-line stub ctx.
+  No module attribute is swapped and nothing outlives a call — every
+  ``call_tool`` gets a fresh ``ScriptHandshake``, so get_remote_script_info's
+  real handshake cannot leak state into later cases the way the old
+  module-global cache could.
 """
 
 # `import ableton_mcp.server` resolves through the editable install (uv sync)
 # both under pytest and when tests/record_goldens.py runs as a script.
+from types import SimpleNamespace
+
 import ableton_mcp.server as server
-import ableton_mcp.script_handshake as script_handshake
+from ableton_mcp.app import Deps
+from ableton_mcp.handshake import ScriptHandshake
 
 
 class WireMismatch(BaseException):
@@ -40,8 +39,23 @@ class WireMismatch(BaseException):
     """
 
 
+class AllCapabilitiesHandshake(ScriptHandshake):
+    """A ScriptHandshake whose gate always passes and never touches the wire.
+
+    ``require`` is the only override: gated tools must run their bodies (and
+    their scripted wire exchanges) rather than the missing-capability early
+    return, and the lazy-handshake attempt must not inject a get_script_info
+    exchange the case never scripted. ``perform``/``info`` stay real, so
+    get_remote_script_info exercises the true handshake logic against its
+    canned wire response.
+    """
+
+    def require(self, name, min_version=None, *, send_command=None):
+        return None
+
+
 class FakeWireClient:
-    """Scripted AbletonConnection double.
+    """Scripted Ableton client double (satisfies the AbletonClient seam).
 
     ``script`` is an ordered list of steps, each a dict:
 
@@ -58,6 +72,11 @@ class FakeWireClient:
         self.script = list(script)
         self.cursor = 0
         self.sent = []  # list of (command_type, params) actually sent
+
+    def ensure_connected(self):
+        """The real client's pre-flight connect (AbletonClient.ensure_connected)
+        is a no-op here: the scripted peer is always "reachable" — per-step
+        failures are simulated with {"raise": ...} instead."""
 
     def send_command(self, command_type, params=None):
         params = params or {}
@@ -103,29 +122,18 @@ class FakeWireClient:
             )
 
 
+def make_ctx(deps):
+    """The two-line stub ctx: exactly the attribute path _deps() reads."""
+    return SimpleNamespace(request_context=SimpleNamespace(lifespan_context=deps))
+
+
 def call_tool(name, args, fake):
     """Call the MCP tool ``name`` with ``args`` against ``fake``, isolated.
 
-    Swaps in the fake connection and a permissive require_capability, and
-    snapshots/restores the handshake module state, so every call sees the
-    same world regardless of what ran before it (get_remote_script_info's
-    real handshake would otherwise leak `_script_info` into later calls).
+    Every call builds a fresh Deps (fake client + fresh all-capabilities
+    handshake), so every call sees the same world regardless of what ran
+    before it.
     """
     tool = getattr(server, name)
-
-    orig_get_conn = server.get_ableton_connection
-    orig_require = script_handshake.require_capability
-    with script_handshake._lock:
-        orig_info = script_handshake._script_info
-        orig_done = script_handshake._handshake_done
-
-    server.get_ableton_connection = lambda: fake
-    script_handshake.require_capability = lambda name, *args, **kwargs: None
-    try:
-        return tool(None, **args)
-    finally:
-        server.get_ableton_connection = orig_get_conn
-        script_handshake.require_capability = orig_require
-        with script_handshake._lock:
-            script_handshake._script_info = orig_info
-            script_handshake._handshake_done = orig_done
+    deps = Deps(client=fake, handshake=AllCapabilitiesHandshake())
+    return tool(make_ctx(deps), **args)

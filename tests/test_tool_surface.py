@@ -10,13 +10,18 @@ in one assertion (docs/REFACTOR_PLAN.md §5 guardrail table).
 Docstrings are read by the model at runtime, so they are part of the
 interface — every tool must carry a non-empty description.
 
-Runs anywhere — no Ableton, no network (nothing connects until a tool runs).
+The surface is read from the app the composition root actually builds
+(``build_app()``), so a tool that appends to server.TOOLS but fails FastMCP
+registration cannot slip past.
+
+Runs anywhere — no Ableton, no network (build_app wires nothing until its
+lifespan runs, and list_tools never enters the lifespan).
 """
 
 import asyncio
 from pathlib import Path
 
-import ableton_mcp.server as server
+from ableton_mcp.app import build_app
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -25,7 +30,7 @@ EXPECTED_TOOL_COUNT = 46
 
 
 def _registered_tools():
-    return asyncio.run(server.mcp.list_tools())
+    return asyncio.run(build_app().list_tools())
 
 
 def _snapshot_names():

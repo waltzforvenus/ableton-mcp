@@ -1,6 +1,6 @@
 """
 Guardrails for the contract between the two halves of the project: the MCP
-server (`src/ableton_mcp/server.py`) and the Ableton Remote Script
+server (the ``ableton_mcp`` package) and the Ableton Remote Script
 (`AbletonMCP_Remote_Script/__init__.py`).
 
 The Remote Script cannot import the server package inside Live, so nothing
@@ -13,13 +13,16 @@ advertised by neither `SCRIPT_CAPABILITIES` nor the legacy set
 (docs/REFACTOR_PLAN.md §1 item 4, repaired by plan PR5). These tests keep
 the halves from drifting again.
 
-Plan PR6 replaced the Remote Script's elif ladders with the module-level
-`COMMANDS` literal, so the Remote-Script-side parsers here read that table
-(the RS half of "migration adapter #3", §5): the main-thread set is the rows
-with the main_thread flag, the advertised set is derived from the advertise
-flag, and per-command queue timeouts are the rows' queue_timeout column. The
-server-side parsers still read server.py's ladder structures until the PR8
-commands registry completes the adapter.
+Both halves of "migration adapter #3" (§5) are now complete: plan PR6
+replaced the Remote Script's elif ladders with the module-level `COMMANDS`
+literal, which the Remote-Script-side parsers here read via AST; plan PR8
+replaced the server's embedded modifying/timeout lists with the
+`ableton_mcp.commands` registry, which the server side imports directly —
+the registry is a plain importable dict, so no AST is needed there. What
+stays AST-extracted from server.py is the set of `send_command("X", ...)`
+literals, cross-checked against the registry so a tool cannot send a command
+the registry (and therefore the transport's timeout policy) knows nothing
+about.
 
 Runs anywhere — no Ableton, no network.
 """
@@ -28,24 +31,26 @@ import ast
 from functools import lru_cache
 from pathlib import Path
 
-from ableton_mcp.script_handshake import _LEGACY_CAPABILITIES
+from ableton_mcp.commands import COMMANDS
+from ableton_mcp.handshake import LEGACY_CAPABILITIES
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 REMOTE_SCRIPT = REPO_ROOT / "AbletonMCP_Remote_Script" / "__init__.py"
 SERVER = REPO_ROOT / "src" / "ableton_mcp" / "server.py"
+HANDSHAKE = REPO_ROOT / "src" / "ableton_mcp" / "handshake.py"
 
 # The two rack commands are dispatchable on the Remote Script's main thread
-# but deliberately have no server-side tool (and so no modifying-list entry):
-# docs/REFACTOR_PLAN.md §9 defers the expose-or-delete decision. This constant
-# pins that state — the equality check below tolerates exactly these two, and
-# asserts they are still present RS-side so they can neither be dropped nor
-# resurrected server-side without this test noticing.
+# but deliberately have no server-side tool (and so no modifying registry
+# row): docs/REFACTOR_PLAN.md §9 defers the expose-or-delete decision. This
+# constant pins that state — the equality check below tolerates exactly these
+# two, and asserts they are still present RS-side so they can neither be
+# dropped nor resurrected server-side without this test noticing.
 KNOWN_ORPHANS = frozenset({"map_rack_magnitude", "inspect_rack"})
 
 
 # --------------------------------------------------------------------------
-# AST extraction — (a) through (e) of the contract
+# Extraction — (a) through (e) of the contract
 # --------------------------------------------------------------------------
 
 @lru_cache(maxsize=None)
@@ -53,20 +58,9 @@ def _parse(path):
     return ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
 
 
-def _server_modifying_commands():
-    """(a) server.py's `is_modifying_command = command_type in [...]` list."""
-    for node in ast.walk(_parse(SERVER)):
-        if (
-            isinstance(node, ast.Assign)
-            and any(
-                isinstance(t, ast.Name) and t.id == "is_modifying_command"
-                for t in node.targets
-            )
-            and isinstance(node.value, ast.Compare)
-            and isinstance(node.value.comparators[0], (ast.List, ast.Tuple))
-        ):
-            return [ast.literal_eval(e) for e in node.value.comparators[0].elts]
-    raise AssertionError("is_modifying_command membership list not found in server.py")
+def _registry_modifying_commands():
+    """(a) the commands.py registry rows flagged as state-modifying."""
+    return {name for name, spec in COMMANDS.items() if spec.modifying}
 
 
 def _remote_script_commands_table():
@@ -100,10 +94,10 @@ def _script_capabilities():
     }
 
 
-def _server_sent_commands():
-    """(d) every `<x>.send_command("X", ...)` first-arg literal in server.py."""
+def _sent_command_literals(path):
+    """Every `<x>.send_command("X", ...)` first-arg literal in a source file."""
     sent = set()
-    for node in ast.walk(_parse(SERVER)):
+    for node in ast.walk(_parse(path)):
         if (
             isinstance(node, ast.Call)
             and isinstance(node.func, ast.Attribute)
@@ -113,27 +107,29 @@ def _server_sent_commands():
             and isinstance(node.args[0].value, str)
         ):
             sent.add(node.args[0].value)
-    assert sent, "no send_command call sites found in server.py"
     return sent
 
 
-# (e) _LEGACY_CAPABILITIES is imported directly — script_handshake.py is
-# importable outside Live.
+def _server_sent_commands():
+    """(d) every command the server package can put on the wire: the
+    registry's keys plus the AST-extracted send_command literals from the
+    tools (server.py) and the handshake (get_script_info)."""
+    literals = _sent_command_literals(SERVER) | _sent_command_literals(HANDSHAKE)
+    assert literals, "no send_command call sites found in the server package"
+    return set(COMMANDS) | literals
 
 
-def _server_long_running_timeouts():
-    """The `long_running_commands = {...}` dict literal in server.py."""
-    for node in ast.walk(_parse(SERVER)):
-        if (
-            isinstance(node, ast.Assign)
-            and any(
-                isinstance(t, ast.Name) and t.id == "long_running_commands"
-                for t in node.targets
-            )
-            and isinstance(node.value, ast.Dict)
-        ):
-            return ast.literal_eval(node.value)
-    raise AssertionError("long_running_commands dict not found in server.py")
+# (e) LEGACY_CAPABILITIES is imported directly — handshake.py is importable
+# outside Live.
+
+
+def _registry_timeout_overrides():
+    """The registry rows with an explicit socket-timeout override."""
+    return {
+        name: spec.timeout
+        for name, spec in COMMANDS.items()
+        if spec.timeout is not None
+    }
 
 
 def _remote_script_queue_timeouts():
@@ -151,7 +147,7 @@ def _remote_script_queue_timeouts():
 # --------------------------------------------------------------------------
 
 def test_modifying_command_sets_agree_across_the_halves():
-    server_side = set(_server_modifying_commands())
+    server_side = _registry_modifying_commands()
     script_side = _remote_script_main_thread_commands()
     # The orphans must still be dispatchable RS-side — vanishing here means
     # they were dropped (or exposed) without updating KNOWN_ORPHANS.
@@ -166,8 +162,20 @@ def test_modifying_command_sets_agree_across_the_halves():
     )
 
 
+def test_every_sent_command_literal_has_a_registry_row():
+    # The registry is the transport's timeout policy AND the model's gating
+    # data: a tool sending a command with no row would silently get default
+    # treatment — the exact half-done-upstream-port failure §5 guards.
+    literals = _sent_command_literals(SERVER) | _sent_command_literals(HANDSHAKE)
+    missing = literals - set(COMMANDS)
+    assert missing == set(), (
+        f"send_command literals without a commands.py registry row: "
+        f"{sorted(missing)}"
+    )
+
+
 def test_every_sent_command_is_advertised_or_legacy():
-    advertised = _script_capabilities() | set(_LEGACY_CAPABILITIES)
+    advertised = _script_capabilities() | set(LEGACY_CAPABILITIES)
     missing = _server_sent_commands() - advertised
     assert missing == set(), (
         f"commands the server sends but no capability list advertises: "
@@ -179,7 +187,7 @@ def test_long_running_commands_have_timeout_headroom():
     # The server's socket timeout must outlast the Remote Script's own queue
     # timeout by a margin, or the server gives up while Live is still working
     # and the late reply desyncs the connection.
-    server_timeouts = _server_long_running_timeouts()
+    server_timeouts = _registry_timeout_overrides()
     script_timeouts = _remote_script_queue_timeouts()
     assert "create_audio_clip" in script_timeouts
     for command, script_timeout in script_timeouts.items():
