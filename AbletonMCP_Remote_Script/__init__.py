@@ -25,7 +25,7 @@ HOST = "127.0.0.1"
 
 # Bumped whenever the TCP command surface changes; the MCP server compares
 # this to EXPECTED_REMOTE_SCRIPT_VERSION.
-SCRIPT_VERSION = "1.7.0"
+SCRIPT_VERSION = "1.8.0"
 PROTOCOL_VERSION = 1
 
 SCRIPT_CAPABILITIES = [
@@ -42,6 +42,7 @@ SCRIPT_CAPABILITIES = [
     "create_audio_clip",
     "add_notes_to_clip",
     "load_instrument_or_effect",
+    "load_browser_item",
     "get_arrangement_clips",
     "duplicate_session_clip_to_arrangement",
     "create_locator",
@@ -296,12 +297,11 @@ class AbletonMCP(ControlSurface):
                                  "delete_clip", "delete_track",
                                  "delete_device", "set_device_parameter",
                                  "set_track_volume", "set_track_pan", "set_track_mute",
-                                 "create_audio_track", "create_return_track",
+                                 "create_return_track",
                                  "set_track_arm", "set_track_monitoring", "save_set",
                                  "set_track_send", "set_count_in",
                                  "back_to_arrangement", "set_track_routing", "set_clip_gain",
                                  "set_arrangement_clip_name",
-                                 "delete_clip",
                                  "clear_notes_from_clip",
                                  "set_tempo", "fire_clip", "stop_clip",
                                  "start_playback", "stop_playback",
@@ -398,9 +398,6 @@ class AbletonMCP(ControlSurface):
                             value = params.get("value", 0.0)
                             track_type = params.get("track_type", "regular")
                             result = self._set_track_mixer(track_index, "panning", value, track_type)
-                        elif command_type == "create_audio_track":
-                            index = params.get("index", -1)
-                            result = self._create_audio_track(index)
                         elif command_type == "create_return_track":
                             result = self._create_return_track()
                         elif command_type == "save_set":
@@ -512,13 +509,6 @@ class AbletonMCP(ControlSurface):
                 uri = params.get("uri", None)
                 path = params.get("path", None)
                 response["result"] = self._get_browser_item(uri, path)
-            elif command_type == "get_browser_categories":
-                category_type = params.get("category_type", "all")
-                response["result"] = self._get_browser_categories(category_type)
-            elif command_type == "get_browser_items":
-                path = params.get("path", "")
-                item_type = params.get("item_type", "all")
-                response["result"] = self._get_browser_items(path, item_type)
             # Add the new browser commands
             elif command_type == "get_browser_tree":
                 category_type = params.get("category_type", "all")
@@ -535,10 +525,6 @@ class AbletonMCP(ControlSurface):
                 track_index = params.get("track_index", 0)
                 clip_index = params.get("clip_index", 0)
                 response["result"] = self._get_clip_notes(track_index, clip_index)
-            elif command_type == "get_device_parameters":
-                track_index = params.get("track_index", 0)
-                device_index = params.get("device_index", 0)
-                response["result"] = self._get_device_parameters(track_index, device_index)
             elif command_type == "get_session_snapshot":
                 include_notes = params.get("include_notes", True)
                 include_params = params.get("include_params", True)
@@ -546,38 +532,6 @@ class AbletonMCP(ControlSurface):
                     include_notes=include_notes,
                     include_params=include_params,
                 )
-            elif command_type == "set_device_parameter":
-                response_queue = queue.Queue()
-
-                def main_thread_task():
-                    try:
-                        result = self._set_device_parameter(
-                            params.get("track_index", 0),
-                            params.get("device_index", 0),
-                            params.get("parameter_index", 0),
-                            params.get("value", 0.0),
-                        )
-                        response_queue.put({"status": "success", "result": result})
-                    except Exception as e:
-                        self.log_message("Error in main thread task: " + str(e))
-                        self.log_message(traceback.format_exc())
-                        response_queue.put({"status": "error", "message": str(e)})
-
-                try:
-                    self.schedule_message(0, main_thread_task)
-                except AssertionError:
-                    main_thread_task()
-
-                try:
-                    task_response = response_queue.get(timeout=10.0)
-                    if task_response.get("status") == "error":
-                        response["status"] = "error"
-                        response["message"] = task_response.get("message", "Unknown error")
-                    else:
-                        response["result"] = task_response.get("result", {})
-                except queue.Empty:
-                    response["status"] = "error"
-                    response["message"] = "Timeout waiting for operation to complete"
             else:
                 response["status"] = "error"
                 response["message"] = "Unknown command: " + command_type
@@ -712,26 +666,6 @@ class AbletonMCP(ControlSurface):
             self.log_message("Error creating MIDI track: " + str(e))
             raise
 
-    def _create_audio_track(self, index):
-        """Create a new audio track at the specified index"""
-        try:
-            # Create the track
-            self._song.create_audio_track(index)
-
-            # Get the new track
-            new_track_index = len(self._song.tracks) - 1 if index == -1 else index
-            new_track = self._song.tracks[new_track_index]
-
-            result = {
-                "index": new_track_index,
-                "name": new_track.name
-            }
-            return result
-        except Exception as e:
-            self.log_message("Error creating audio track: " + str(e))
-            raise
-
-
     def _set_track_name(self, track_index, name):
         """Set the name of a track"""
         try:
@@ -777,37 +711,6 @@ class AbletonMCP(ControlSurface):
             return result
         except Exception as e:
             self.log_message("Error creating clip: " + str(e))
-            raise
-
-    def _delete_clip(self, track_index, clip_index):
-        """Delete the clip in the specified track and clip slot, emptying the slot"""
-        try:
-            if track_index < 0 or track_index >= len(self._song.tracks):
-                raise IndexError("Track index out of range")
-
-            track = self._song.tracks[track_index]
-
-            if clip_index < 0 or clip_index >= len(track.clip_slots):
-                raise IndexError("Clip index out of range")
-
-            clip_slot = track.clip_slots[clip_index]
-
-            if not clip_slot.has_clip:
-                raise Exception("Clip slot is already empty")
-
-            # Read the name before deleting — the clip object is gone afterwards
-            deleted_name = clip_slot.clip.name
-
-            clip_slot.delete_clip()
-
-            result = {
-                "track_index": track_index,
-                "clip_index": clip_index,
-                "deleted_clip_name": deleted_name
-            }
-            return result
-        except Exception as e:
-            self.log_message("Error deleting clip: " + str(e))
             raise
 
     def _resolve_track(self, track_index, track_type="regular"):
@@ -899,6 +802,9 @@ class AbletonMCP(ControlSurface):
                                      % (parameter, names))
 
             value = float(value)
+            # Read before writing so the result can report what the caller
+            # just overwrote (upstream's one good idea in its version).
+            old_value = float(target.value)
             # Clamp rather than raise: Live throws on out-of-range assignment,
             # and a caller asking for "as low as it goes" should just get the min.
             clamped = max(target.min, min(target.max, value))
@@ -915,6 +821,7 @@ class AbletonMCP(ControlSurface):
                 "device_name": device.name,
                 "parameter_name": target.name,
                 "requested": value,
+                "old_value": old_value,
                 "value": target.value,
                 "display_value": shown,
                 "clamped": clamped != value,
@@ -1416,9 +1323,12 @@ class AbletonMCP(ControlSurface):
             if not clip_slot.has_clip:
                 return {"deleted": False, "reason": "Clip slot was already empty"}
 
+            # Read the name before deleting — the clip object is gone afterwards
+            deleted_name = clip_slot.clip.name
+
             clip_slot.delete_clip()
 
-            return {"deleted": True}
+            return {"deleted": True, "deleted_clip_name": deleted_name}
         except Exception as e:
             self.log_message("Error deleting clip: " + str(e))
             raise
@@ -2512,22 +2422,6 @@ class AbletonMCP(ControlSurface):
             self.log_message("Error getting clip notes: " + str(e))
             raise
 
-    def _get_device_parameters(self, track_index, device_index):
-        try:
-            if track_index < 0 or track_index >= len(self._song.tracks):
-                raise IndexError("Track index out of range")
-            track = self._song.tracks[track_index]
-            if device_index < 0 or device_index >= len(track.devices):
-                raise IndexError("Device index out of range")
-            device = track.devices[device_index]
-            return {
-                "track_index": track_index,
-                "device": self._serialize_device(device, device_index, include_params=True),
-            }
-        except Exception as e:
-            self.log_message("Error getting device parameters: " + str(e))
-            raise
-
     def _get_session_snapshot(self, include_notes=True, include_params=True):
         """Full v2 project state dump, returned to the caller."""
         try:
@@ -2602,33 +2496,6 @@ class AbletonMCP(ControlSurface):
             }
         except Exception as e:
             self.log_message("Error getting session snapshot: " + str(e))
-            raise
-
-    def _set_device_parameter(self, track_index, device_index, parameter_index, value):
-        try:
-            if track_index < 0 or track_index >= len(self._song.tracks):
-                raise IndexError("Track index out of range")
-            track = self._song.tracks[track_index]
-            if device_index < 0 or device_index >= len(track.devices):
-                raise IndexError("Device index out of range")
-            device = track.devices[device_index]
-            if parameter_index < 0 or parameter_index >= len(device.parameters):
-                raise IndexError("Parameter index out of range")
-            param = device.parameters[parameter_index]
-            old = float(param.value)
-            param.value = float(value)
-            return {
-                "track_index": track_index,
-                "device_index": device_index,
-                "parameter_index": parameter_index,
-                "name": param.name,
-                "old_value": old,
-                "value": float(param.value),
-                "min": float(param.min),
-                "max": float(param.max),
-            }
-        except Exception as e:
-            self.log_message("Error setting device parameter: " + str(e))
             raise
 
     def get_browser_tree(self, category_type="all"):

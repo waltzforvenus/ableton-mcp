@@ -16,9 +16,13 @@ error string. (get_remote_script_info is the one tool whose handshake
 swallows the send error and returns JSON with the error embedded — the
 golden records that real behavior.)
 
-Pure data — no imports, so it is loadable from both pytest and the recorder
-script.
+Pure data, with one exception: EXPECTED_REMOTE_SCRIPT_VERSION is imported so
+the up-to-date handshake case tracks the package's expected script version
+instead of hardcoding it (both pytest's conftest and record_goldens.py put the
+repo root on sys.path before this module loads).
 """
+
+from MCP_Server.remote_script_install import EXPECTED_REMOTE_SCRIPT_VERSION
 
 
 def _case(tool, name, args, wire):
@@ -60,7 +64,7 @@ BASE_CASES = [
     # info plus expected_version.
     _case("get_remote_script_info", "success_up_to_date", {}, [
         _ok("get_script_info", {}, {
-            "script_version": "1.7.0",
+            "script_version": EXPECTED_REMOTE_SCRIPT_VERSION,
             "capabilities": ["delete_clip", "get_clip_notes", "get_session_snapshot"],
         }),
     ]),

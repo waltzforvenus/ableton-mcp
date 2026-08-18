@@ -127,7 +127,7 @@ def call_tool(name, args, fake):
         orig_done = script_handshake._handshake_done
 
     server.get_ableton_connection = lambda: fake
-    script_handshake.require_capability = lambda name: None
+    script_handshake.require_capability = lambda name, *args, **kwargs: None
     try:
         return tool(None, **args)
     finally:

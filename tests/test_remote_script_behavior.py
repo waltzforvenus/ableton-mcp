@@ -6,10 +6,10 @@ Every test drives the real ``AbletonMCP._process_command`` dispatch through
 envelope and on the fake Live objects' mutated state. This level tests the
 Remote Script half in isolation — MCP_Server is deliberately not imported.
 
-The three strict-xfail tests encode the *intended* fork behavior of the
-device-parameter pair, broken since the 2026-08 upstream merge (`4878234`)
-left duplicate method definitions in the class body; fixing them (plan
-section 6 PR5) flips these markers.
+The device-parameter tests encode the fork behavior of that pair, which was
+broken from the 2026-08 upstream merge (`4878234`, duplicate method
+definitions in the class body) until the plan-PR5 repair; they landed as
+strict xfails proving the breakage and now pass outright.
 
 Runs anywhere: no Ableton, no network.
     uv run pytest -v
@@ -46,18 +46,10 @@ def _base_note(note):
 
 
 # --------------------------------------------------------------------------
-# Known defects — strict xfail, encoding the INTENDED fork behavior
-# (docs/REFACTOR_PLAN.md section 1 item 1; fixed by section 6 PR5)
+# Device parameters — the fork behavior (track_type, name-or-index, clamping)
+# restored by plan PR5 after the 2026-08 merge broke it
 # --------------------------------------------------------------------------
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Upstream merge 4878234 defines _get_device_parameters twice; "
-           "upstream's later 2-arg definition wins and the dispatcher passes "
-           "track_type, so the command returns a TypeError error envelope "
-           "instead of the fork behavior (docs/REFACTOR_PLAN.md section 1, "
-           "section 6 PR5).",
-)
 def test_get_device_parameters_on_return_track():
     harness = make_harness()
     result = _ok(harness.process(_cmd(
@@ -73,15 +65,6 @@ def test_get_device_parameters_on_return_track():
     assert all("is_quantized" in p for p in result["parameters"])
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Upstream merge 4878234 defines _set_device_parameter twice; "
-           "upstream's later parameter_index-only definition wins and the "
-           "dispatcher passes name/track_type args, so every "
-           "set_device_parameter returns a TypeError error envelope instead "
-           "of the fork's name-resolution-and-clamping behavior "
-           "(docs/REFACTOR_PLAN.md section 1, section 6 PR5).",
-)
 def test_set_device_parameter_by_name_clamps_out_of_range():
     harness = make_harness()
     result = _ok(harness.process(_cmd(
@@ -96,14 +79,6 @@ def test_set_device_parameter_by_name_clamps_out_of_range():
     assert param.value == 127.0
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Upstream merge 4878234 defines _set_device_parameter twice; "
-           "upstream's later parameter_index-only definition wins and the "
-           "dispatcher passes 5 arguments, so even plain index-addressed "
-           "set_device_parameter returns a TypeError error envelope "
-           "(docs/REFACTOR_PLAN.md section 1, section 6 PR5).",
-)
 def test_set_device_parameter_by_index_default_track_type():
     harness = make_harness()
     result = _ok(harness.process(_cmd(
@@ -113,6 +88,20 @@ def test_set_device_parameter_by_index_default_track_type():
     assert result["value"] == 30.0
     assert result["clamped"] is False
     assert harness.song.tracks[0].devices[0].parameters[1].value == 30.0
+
+
+def test_set_device_parameter_reports_old_value():
+    # Grafted from upstream's (otherwise discarded) version during the PR5
+    # repair: the result reports the value the write overwrote.
+    harness = make_harness()
+    param = harness.song.tracks[0].devices[0].parameters[1]
+    assert param.value == 60.0  # the fake's initial Filter Freq
+    result = _ok(harness.process(_cmd(
+        "set_device_parameter",
+        track_index=0, device_index=0, parameter="Filter Freq", value=30.0)))
+    assert result["old_value"] == 60.0
+    assert result["value"] == 30.0
+    assert param.value == 30.0
 
 
 # --------------------------------------------------------------------------
@@ -294,9 +283,9 @@ def test_extended_read_failure_falls_back_to_legacy_get_notes():
 # --------------------------------------------------------------------------
 
 def test_delete_clip_current_semantics():
-    # Current behavior: the later (upstream) _delete_clip definition wins —
-    # occupied slot deletes and reports deleted true; an already-empty slot
-    # is a no-op reporting deleted false.
+    # The PR5 repair kept upstream's semantics: an occupied slot deletes and
+    # reports deleted true; an already-empty slot is a no-op reporting
+    # deleted false, not an error.
     harness = make_harness()
     occupied = _ok(harness.process(_cmd("delete_clip", track_index=0,
                                         clip_index=0)))
@@ -307,6 +296,15 @@ def test_delete_clip_current_semantics():
                                      clip_index=0)))
     assert empty["deleted"] is False
     assert "empty" in empty["reason"]
+
+
+def test_delete_clip_echoes_the_deleted_clip_name():
+    # The fork's name echo, restored onto upstream's version by the PR5
+    # repair: read before deletion, reported after.
+    harness = make_harness()
+    result = _ok(harness.process(_cmd("delete_clip", track_index=0,
+                                      clip_index=0)))
+    assert result == {"deleted": True, "deleted_clip_name": "Lead Riff"}
 
 
 def test_fire_clip_and_stop_clip():

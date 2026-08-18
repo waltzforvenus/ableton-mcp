@@ -5,12 +5,13 @@ server (`MCP_Server/server.py`) and the Ableton Remote Script
 
 The Remote Script cannot import the server package inside Live, so nothing
 reconciles their shared lists at runtime — they are reconciled here, by test
-(docs/REFACTOR_PLAN.md §3.4 and the §5 guardrail table). The lists have
-already drifted silently: `set_arrangement_clip_name` runs on Live's main
-thread but gets the short non-modifying server timeout, and
-`load_browser_item` — the command the three load tools actually send — is
+(docs/REFACTOR_PLAN.md §3.4 and the §5 guardrail table). The lists had
+drifted silently once already — `set_arrangement_clip_name` ran on Live's
+main thread but got the short non-modifying server timeout, and
+`load_browser_item` — the command the three load tools actually send — was
 advertised by neither `SCRIPT_CAPABILITIES` nor the legacy set
-(docs/REFACTOR_PLAN.md §1 item 4).
+(docs/REFACTOR_PLAN.md §1 item 4, repaired by plan PR5). These tests keep
+the halves from drifting again.
 
 These parsers read today's structures (the elif ladders and membership
 lists); they are the "migration adapter #3" the plan expects to be rewritten
@@ -23,14 +24,20 @@ import ast
 from functools import lru_cache
 from pathlib import Path
 
-import pytest
-
 from MCP_Server.script_handshake import _LEGACY_CAPABILITIES
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 REMOTE_SCRIPT = REPO_ROOT / "AbletonMCP_Remote_Script" / "__init__.py"
 SERVER = REPO_ROOT / "MCP_Server" / "server.py"
+
+# The two rack commands are dispatchable on the Remote Script's main thread
+# but deliberately have no server-side tool (and so no modifying-list entry):
+# docs/REFACTOR_PLAN.md §9 defers the expose-or-delete decision. This constant
+# pins that state — the equality check below tolerates exactly these two, and
+# asserts they are still present RS-side so they can neither be dropped nor
+# resurrected server-side without this test noticing.
+KNOWN_ORPHANS = frozenset({"map_rack_magnitude", "inspect_rack"})
 
 
 # --------------------------------------------------------------------------
@@ -138,31 +145,22 @@ def _long_running_timeouts(root):
 # The contract tests
 # --------------------------------------------------------------------------
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="the server's modifying-command list and the Remote Script's "
-    "main-thread list disagree since upstream merge 4878234: "
-    "set_arrangement_clip_name, map_rack_magnitude and inspect_rack run on "
-    "Live's main thread but are missing server-side (so e.g. "
-    "set_arrangement_clip_name gets the short 10 s timeout); see "
-    "docs/REFACTOR_PLAN.md §1 item 4 (fix scheduled as PR5)",
-)
 def test_modifying_command_sets_agree_across_the_halves():
     server_side = set(_server_modifying_commands())
     script_side = set(_remote_script_main_thread_commands())
-    assert server_side == script_side, (
+    # The orphans must still be dispatchable RS-side — vanishing here means
+    # they were dropped (or exposed) without updating KNOWN_ORPHANS.
+    assert KNOWN_ORPHANS <= script_side, (
+        f"known orphan commands missing from the Remote Script main-thread "
+        f"list: {sorted(KNOWN_ORPHANS - script_side)}"
+    )
+    assert server_side == script_side - KNOWN_ORPHANS, (
         f"server-only: {sorted(server_side - script_side)}; "
-        f"remote-script-only: {sorted(script_side - server_side)}"
+        f"remote-script-only (beyond the known orphans): "
+        f"{sorted(script_side - KNOWN_ORPHANS - server_side)}"
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="load_browser_item — the command the three load tools actually "
-    "send — appears in neither SCRIPT_CAPABILITIES nor _LEGACY_CAPABILITIES, "
-    "so any capability gate on it would fail even against a current install; "
-    "see docs/REFACTOR_PLAN.md §1 item 4 (fix scheduled as PR5)",
-)
 def test_every_sent_command_is_advertised_or_legacy():
     advertised = set(_script_capabilities()) | set(_LEGACY_CAPABILITIES)
     missing = _server_sent_commands() - advertised

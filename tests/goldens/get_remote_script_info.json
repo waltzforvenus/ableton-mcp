@@ -2,7 +2,7 @@
   "cases": [
     {
       "args": {},
-      "expect": "{\n  \"script_version\": \"1.7.0\",\n  \"capabilities\": [\n    \"delete_clip\",\n    \"get_clip_notes\",\n    \"get_session_snapshot\"\n  ],\n  \"expected_version\": \"1.7.0\",\n  \"up_to_date\": true,\n  \"error\": null\n}",
+      "expect": "{\n  \"script_version\": \"1.8.0\",\n  \"capabilities\": [\n    \"delete_clip\",\n    \"get_clip_notes\",\n    \"get_session_snapshot\"\n  ],\n  \"expected_version\": \"1.8.0\",\n  \"up_to_date\": true,\n  \"error\": null\n}",
       "name": "success_up_to_date",
       "wire": [
         {
@@ -14,14 +14,14 @@
               "get_clip_notes",
               "get_session_snapshot"
             ],
-            "script_version": "1.7.0"
+            "script_version": "1.8.0"
           }
         }
       ]
     },
     {
       "args": {},
-      "expect": "{\n  \"script_version\": \"1.6.0\",\n  \"capabilities\": [\n    \"get_clip_notes\"\n  ],\n  \"expected_version\": \"1.7.0\",\n  \"up_to_date\": false,\n  \"error\": null\n}",
+      "expect": "{\n  \"script_version\": \"1.6.0\",\n  \"capabilities\": [\n    \"get_clip_notes\"\n  ],\n  \"expected_version\": \"1.8.0\",\n  \"up_to_date\": false,\n  \"error\": null\n}",
       "name": "success_version_mismatch",
       "wire": [
         {
@@ -38,7 +38,7 @@
     },
     {
       "args": {},
-      "expect": "{\n  \"script_version\": \"legacy\",\n  \"capabilities\": [],\n  \"expected_version\": \"1.7.0\",\n  \"up_to_date\": false,\n  \"error\": \"Unknown command: get_script_info\"\n}",
+      "expect": "{\n  \"script_version\": \"legacy\",\n  \"capabilities\": [],\n  \"expected_version\": \"1.8.0\",\n  \"up_to_date\": false,\n  \"error\": \"Unknown command: get_script_info\"\n}",
       "name": "legacy_script",
       "wire": [
         {
@@ -50,7 +50,7 @@
     },
     {
       "args": {},
-      "expect": "{\n  \"script_version\": null,\n  \"capabilities\": [],\n  \"expected_version\": \"1.7.0\",\n  \"up_to_date\": false,\n  \"error\": \"boom\"\n}",
+      "expect": "{\n  \"script_version\": null,\n  \"capabilities\": [],\n  \"expected_version\": \"1.8.0\",\n  \"up_to_date\": false,\n  \"error\": \"boom\"\n}",
       "name": "error",
       "wire": [
         {

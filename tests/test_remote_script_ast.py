@@ -7,15 +7,17 @@ structural invariants whose silent violation shipped real regressions
 (docs/REFACTOR_PLAN.md §1 and the §5 guardrail table):
 
 - the 2026-08 upstream merge (commit 4878234) left four methods defined twice
-  in the `AbletonMCP` class body; Python keeps the later definition, so the
-  dispatch code calls the losing fork signatures and the device-parameter
-  pair TypeErrors at runtime,
+  in the `AbletonMCP` class body; Python kept the later definition, so the
+  dispatch code called the losing fork signatures and the device-parameter
+  pair TypeError'd at runtime (repaired by plan PR5),
 - the same merge left duplicate/unreachable dispatch branches, duplicate
-  membership-list entries, and branches that call methods which do not exist,
+  membership-list entries, and branches that call methods which do not exist
+  (also repaired by PR5),
 - upstream binds the command socket to 0.0.0.0; this fork must stay loopback.
 
-Tests that detect a currently-shipped defect are strict xfails naming the
-commit that caused it; each fix (plan PR5) flips exactly one marker.
+These landed as strict xfails proving the suite detected each shipped defect;
+the PR5 repair flipped them and the markers are gone — every test here must
+now pass outright.
 
 Runs anywhere — no Ableton, no network.
 """
@@ -23,8 +25,6 @@ Runs anywhere — no Ableton, no network.
 import ast
 from functools import lru_cache
 from pathlib import Path
-
-import pytest
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -203,13 +203,6 @@ def _duplicates(seq):
 # (1) No method defined twice in any class body
 # --------------------------------------------------------------------------
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="upstream merge 4878234 left _create_audio_track, _delete_clip, "
-    "_get_device_parameters and _set_device_parameter each defined twice in "
-    "the AbletonMCP class body — the later (upstream) definitions win; see "
-    "docs/REFACTOR_PLAN.md §1 item 1 (fix scheduled as PR5)",
-)
 def test_no_method_is_defined_twice_in_any_class():
     duplicated = {}
     for cls in _class_defs(_parse(REMOTE_SCRIPT)):
@@ -223,14 +216,6 @@ def test_no_method_is_defined_twice_in_any_class():
 # (2) Every dispatch call binds against the WINNING definition
 # --------------------------------------------------------------------------
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="upstream merge 4878234: dispatch passes the fork signatures "
-    "(3-arg _get_device_parameters, 5-arg _set_device_parameter) but the "
-    "winning class-body definitions are upstream's narrower ones, so both "
-    "commands TypeError inside Live; see docs/REFACTOR_PLAN.md §1 item 1 "
-    "(fix scheduled as PR5)",
-)
 def test_dispatch_calls_match_winning_method_signatures():
     winning = _winning_defs(_ableton_mcp_class())
     mismatches = []
@@ -252,14 +237,6 @@ def test_dispatch_calls_match_winning_method_signatures():
 # (3) No duplicate command literals across the dispatch ladders
 # --------------------------------------------------------------------------
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="upstream merge 4878234 left dead dispatch branches: "
-    "get_device_parameters tested twice, set_device_parameter both in the "
-    "main-thread membership list and as its own (unreachable) branch, "
-    "create_audio_track handled twice inside main_thread_task; see "
-    "docs/REFACTOR_PLAN.md §1 item 3 (fix scheduled as PR5)",
-)
 def test_no_duplicate_dispatch_literals():
     fn = _process_command()
     top_level = list(_walk_skipping_nested_defs(fn))
@@ -284,13 +261,6 @@ def test_no_duplicate_dispatch_literals():
 # (4) Dispatch only references methods that exist
 # --------------------------------------------------------------------------
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="upstream merge 4878234 kept dispatch branches for "
-    "get_browser_categories / get_browser_items, whose handler methods "
-    "(_get_browser_categories, _get_browser_items) do not exist anywhere in "
-    "the file; see docs/REFACTOR_PLAN.md §1 item 3 (fix scheduled as PR5)",
-)
 def test_dispatch_references_only_existing_methods():
     winning = _winning_defs(_ableton_mcp_class())
     missing = sorted(
@@ -310,14 +280,6 @@ def test_dispatch_references_only_existing_methods():
 # (5) No duplicate entries inside the modifying-command lists (both halves)
 # --------------------------------------------------------------------------
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="upstream merge 4878234 left duplicate entries in the "
-    "modifying-command lists: create_audio_track and delete_clip twice in the "
-    "Remote Script's main-thread membership list, set_device_parameter twice "
-    "in server.py's is_modifying_command list; see docs/REFACTOR_PLAN.md "
-    "Appendix A (fix scheduled as PR5)",
-)
 def test_no_duplicate_entries_in_modifying_command_lists():
     membership_lists = _command_membership_lists(
         _walk_skipping_nested_defs(_process_command())

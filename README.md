@@ -213,11 +213,15 @@ Brought in and kept: the bundled Remote Script installer
 `create_locator`, `clear_notes_from_clip`, `get_clip_notes`,
 `get_session_snapshot`, and the arrangement tooling.
 
-Where both projects had independently written the same tool, the merge kept one
-of each — `clear_clip_notes` folded into upstream's `clear_notes_from_clip`,
-and this fork's parameter-by-name device tools kept over upstream's
-index-only versions. Duplicates were not harmless: the MCP framework registers
-tools by name, so the loser was silently overwritten depending on file order.
+Where both projects had independently written the same tool, one of each was
+kept — `clear_clip_notes` folded into upstream's `clear_notes_from_clip`, and
+this fork's parameter-by-name device tools over upstream's index-only
+versions. Duplicates were not harmless: the MCP framework registers tools by
+name, so the loser was silently overwritten depending on file order — and the
+merge initially left both device-tool handlers defined twice inside the Remote
+Script itself, which broke them at runtime until script v1.8.0 removed the
+duplicates. Run `ableton-mcp-install-script` after updating so Live loads the
+repaired script.
 
 ---
 

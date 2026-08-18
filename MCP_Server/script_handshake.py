@@ -112,15 +112,65 @@ def handshake(send_command) -> dict[str, Any]:
     return info
 
 
-def require_capability(name: str) -> str | None:
-    """Return an error message if capability missing, else None."""
-    if script_has_capability(name):
+def _parse_version(text: Any) -> tuple[int, ...] | None:
+    """"1.8.0" -> (1, 8, 0); None for anything that is not dotted integers."""
+    try:
+        return tuple(int(part) for part in str(text).strip().split("."))
+    except (AttributeError, ValueError):
         return None
-    info = get_cached_script_info() or {}
-    return (
-        f"Ableton Remote Script missing capability '{name}' "
-        f"(loaded={info.get('script_version')!r}, "
-        f"expected={EXPECTED_REMOTE_SCRIPT_VERSION}). "
-        f"Run `ableton-mcp-install-script` to update the User Remote Script, "
-        f"then restart Ableton Live."
-    )
+
+
+def require_capability(name: str, min_version: str | None = None) -> str | None:
+    """Return an error message if the loaded Remote Script cannot serve
+    ``name``, else None (docs/REFACTOR_PLAN.md §4; interim PR5 shape — PR8
+    absorbs this into ``ScriptHandshake.require``).
+
+    ``min_version`` additionally requires the script to be at least that
+    version. Capability names alone cannot gate the commands repaired in
+    1.8.0: the broken 1.7.0 script already *advertises* them, so only a
+    version compare tells a repaired install from a broken one.
+
+    The gate answers only from a successful handshake. If none is cached
+    (Ableton was not running when the server started), it attempts one
+    lazily; if Live is still unreachable, the gate PASSES and the actual
+    send fails with the truthful connection error — never a misleading
+    "re-run the installer" about a script nobody has seen.
+    """
+    info = get_cached_script_info()
+    if not info or info.get("script_version") is None:
+        # No successful handshake yet — a cached script_version of None means
+        # the startup handshake itself failed (e.g. Live unreachable). Try
+        # once, lazily. Imported here to avoid a module import cycle.
+        try:
+            from .server import get_ableton_connection
+
+            handshake(get_ableton_connection().send_command)
+        except Exception:
+            pass
+        info = get_cached_script_info()
+    if not info or info.get("script_version") is None:
+        return None
+
+    if not script_has_capability(name):
+        return (
+            f"Ableton Remote Script missing capability '{name}' "
+            f"(loaded={info.get('script_version')!r}, "
+            f"expected={EXPECTED_REMOTE_SCRIPT_VERSION}). "
+            f"Run `ableton-mcp-install-script` to update the User Remote Script, "
+            f"then restart Ableton Live."
+        )
+
+    if min_version is not None:
+        loaded = info.get("script_version")
+        required = _parse_version(min_version)
+        parsed = _parse_version(loaded)
+        # "legacy" and anything unparseable count as older than min_version.
+        if required is not None and (parsed is None or parsed < required):
+            return (
+                f"Ableton Remote Script v{loaded} is older than v{min_version}, "
+                f"which '{name}' requires. "
+                f"Run `ableton-mcp-install-script` to update the User Remote "
+                f"Script, then restart Ableton Live."
+            )
+
+    return None

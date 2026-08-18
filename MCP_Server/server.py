@@ -132,8 +132,8 @@ class AbletonConnection:
             "set_track_volume", "set_track_pan", "set_track_mute",
             "create_return_track", "set_track_arm", "set_track_monitoring", "save_set",
             "set_track_send", "set_count_in", "back_to_arrangement", "set_track_routing",
-            "set_clip_gain",
-            "set_tempo", "fire_clip", "stop_clip", "set_device_parameter",
+            "set_clip_gain", "set_arrangement_clip_name",
+            "set_tempo", "fire_clip", "stop_clip",
             "start_playback", "stop_playback", "load_instrument_or_effect",
             # The load_* tools actually send load_browser_item; without it here
             # they got the short non-modifying socket timeout and appeared to
@@ -740,6 +740,13 @@ def get_device_parameters(ctx: Context, track_index: int, device_index: int,
     - device_index: The index of the device in that track's chain (0 = first)
     """
     try:
+        from .script_handshake import require_capability
+
+        # 1.7.0 scripts advertise this capability but serve a broken handler
+        # (duplicate class-body definitions), so gate on version, not name.
+        missing = require_capability("get_device_parameters", min_version="1.8.0")
+        if missing:
+            return missing
         ableton = get_ableton_connection()
         result = ableton.send_command("get_device_parameters", {
             "track_index": track_index,
@@ -770,6 +777,13 @@ def set_device_parameter(ctx: Context, track_index: int, device_index: int,
     - value: The value to set, in the parameter's own units
     """
     try:
+        from .script_handshake import require_capability
+
+        # 1.7.0 scripts advertise this capability but serve a broken handler
+        # (duplicate class-body definitions), so gate on version, not name.
+        missing = require_capability("set_device_parameter", min_version="1.8.0")
+        if missing:
+            return missing
         ableton = get_ableton_connection()
         # Accept an integer index passed as a string without making the caller care.
         param: Any = parameter
