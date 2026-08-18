@@ -1,0 +1,42 @@
+{
+  "cases": [
+    {
+      "args": {
+        "clip_index": 0,
+        "track_index": 0
+      },
+      "expect": "Stopped clip at track 0, slot 0",
+      "name": "success",
+      "wire": [
+        {
+          "command": "stop_clip",
+          "params": {
+            "clip_index": 0,
+            "track_index": 0
+          },
+          "response": {
+            "stopped": true
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "clip_index": 0,
+        "track_index": 0
+      },
+      "expect": "Error stopping clip: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "stop_clip",
+          "params": {
+            "clip_index": 0,
+            "track_index": 0
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

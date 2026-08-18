@@ -1,0 +1,43 @@
+{
+  "cases": [
+    {
+      "args": {
+        "clip_index": 0,
+        "track_index": 0
+      },
+      "expect": "Cleared 5 note(s) from clip 'Beat' (track 0, slot 0)",
+      "name": "success",
+      "wire": [
+        {
+          "command": "clear_notes_from_clip",
+          "params": {
+            "clip_index": 0,
+            "track_index": 0
+          },
+          "response": {
+            "cleared_count": 5,
+            "clip_name": "Beat"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "clip_index": 0,
+        "track_index": 0
+      },
+      "expect": "Error clearing notes from clip: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "clear_notes_from_clip",
+          "params": {
+            "clip_index": 0,
+            "track_index": 0
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

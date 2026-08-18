@@ -1,0 +1,39 @@
+{
+  "cases": [
+    {
+      "args": {
+        "track_index": 2
+      },
+      "expect": "Deleted track 2 ('Old Synth'); 3 tracks remain",
+      "name": "success",
+      "wire": [
+        {
+          "command": "delete_track",
+          "params": {
+            "track_index": 2
+          },
+          "response": {
+            "deleted_track_name": "Old Synth",
+            "remaining_track_count": 3
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "track_index": 2
+      },
+      "expect": "Error deleting track: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "delete_track",
+          "params": {
+            "track_index": 2
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

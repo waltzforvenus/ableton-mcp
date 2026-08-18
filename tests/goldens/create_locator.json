@@ -1,0 +1,43 @@
+{
+  "cases": [
+    {
+      "args": {
+        "name": "Chorus",
+        "time": 16.0
+      },
+      "expect": "Locator 'Chorus' set at beat 16.0",
+      "name": "success",
+      "wire": [
+        {
+          "command": "create_locator",
+          "params": {
+            "name": "Chorus",
+            "time": 16.0
+          },
+          "response": {
+            "name": "Chorus",
+            "time": 16.0
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "name": "Chorus",
+        "time": 16.0
+      },
+      "expect": "Error creating locator: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "create_locator",
+          "params": {
+            "name": "Chorus",
+            "time": 16.0
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

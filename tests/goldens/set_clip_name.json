@@ -1,0 +1,46 @@
+{
+  "cases": [
+    {
+      "args": {
+        "clip_index": 1,
+        "name": "Chorus",
+        "track_index": 0
+      },
+      "expect": "Renamed clip at track 0, slot 1 to 'Chorus'",
+      "name": "success",
+      "wire": [
+        {
+          "command": "set_clip_name",
+          "params": {
+            "clip_index": 1,
+            "name": "Chorus",
+            "track_index": 0
+          },
+          "response": {
+            "name": "Chorus"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "clip_index": 1,
+        "name": "Chorus",
+        "track_index": 0
+      },
+      "expect": "Error setting clip name: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "set_clip_name",
+          "params": {
+            "clip_index": 1,
+            "name": "Chorus",
+            "track_index": 0
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

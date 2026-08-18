@@ -1,0 +1,30 @@
+{
+  "cases": [
+    {
+      "args": {},
+      "expect": "Started playback",
+      "name": "success",
+      "wire": [
+        {
+          "command": "start_playback",
+          "params": {},
+          "response": {
+            "playing": true
+          }
+        }
+      ]
+    },
+    {
+      "args": {},
+      "expect": "Error starting playback: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "start_playback",
+          "params": {},
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

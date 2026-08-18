@@ -1,0 +1,106 @@
+{
+  "cases": [
+    {
+      "args": {
+        "clip_index": 0,
+        "notes": [
+          {
+            "duration": 0.5,
+            "mute": false,
+            "pitch": 60,
+            "start_time": 0.0,
+            "velocity": 100
+          },
+          {
+            "duration": 0.25,
+            "mute": true,
+            "pitch": 64,
+            "start_time": 1.0,
+            "velocity": 90
+          }
+        ],
+        "track_index": 0
+      },
+      "expect": "Added 2 notes to clip at track 0, slot 0",
+      "name": "success",
+      "wire": [
+        {
+          "command": "add_notes_to_clip",
+          "params": {
+            "clip_index": 0,
+            "notes": [
+              {
+                "duration": 0.5,
+                "mute": false,
+                "pitch": 60,
+                "start_time": 0.0,
+                "velocity": 100
+              },
+              {
+                "duration": 0.25,
+                "mute": true,
+                "pitch": 64,
+                "start_time": 1.0,
+                "velocity": 90
+              }
+            ],
+            "track_index": 0
+          },
+          "response": {
+            "note_count": 2
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "clip_index": 0,
+        "notes": [
+          {
+            "duration": 0.5,
+            "mute": false,
+            "pitch": 60,
+            "start_time": 0.0,
+            "velocity": 100
+          },
+          {
+            "duration": 0.25,
+            "mute": true,
+            "pitch": 64,
+            "start_time": 1.0,
+            "velocity": 90
+          }
+        ],
+        "track_index": 0
+      },
+      "expect": "Error adding notes to clip: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "add_notes_to_clip",
+          "params": {
+            "clip_index": 0,
+            "notes": [
+              {
+                "duration": 0.5,
+                "mute": false,
+                "pitch": 60,
+                "start_time": 0.0,
+                "velocity": 100
+              },
+              {
+                "duration": 0.25,
+                "mute": true,
+                "pitch": 64,
+                "start_time": 1.0,
+                "velocity": 90
+              }
+            ],
+            "track_index": 0
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

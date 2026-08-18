@@ -1,0 +1,53 @@
+{
+  "cases": [
+    {
+      "args": {
+        "index": 2
+      },
+      "expect": "Created new MIDI track: 3-MIDI",
+      "name": "success",
+      "wire": [
+        {
+          "command": "create_midi_track",
+          "params": {
+            "index": 2
+          },
+          "response": {
+            "index": 2,
+            "name": "3-MIDI"
+          }
+        }
+      ]
+    },
+    {
+      "args": {},
+      "expect": "Created new MIDI track: unknown",
+      "name": "success_unnamed_result",
+      "wire": [
+        {
+          "command": "create_midi_track",
+          "params": {
+            "index": -1
+          },
+          "response": {}
+        }
+      ]
+    },
+    {
+      "args": {
+        "index": 2
+      },
+      "expect": "Error creating MIDI track: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "create_midi_track",
+          "params": {
+            "index": 2
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

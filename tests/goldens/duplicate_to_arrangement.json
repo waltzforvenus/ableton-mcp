@@ -1,0 +1,47 @@
+{
+  "cases": [
+    {
+      "args": {
+        "clip_index": 0,
+        "destination_time": 16.0,
+        "track_index": 0
+      },
+      "expect": "Duplicated 'Chorus Beat' from Session slot 0 on 'Drums' to arrangement at beat 16.0",
+      "name": "success",
+      "wire": [
+        {
+          "command": "duplicate_session_clip_to_arrangement",
+          "params": {
+            "clip_index": 0,
+            "destination_time": 16.0,
+            "track_index": 0
+          },
+          "response": {
+            "clip_name": "Chorus Beat",
+            "track_name": "Drums"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "clip_index": 0,
+        "destination_time": 16.0,
+        "track_index": 0
+      },
+      "expect": "Error duplicating clip to arrangement: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "duplicate_session_clip_to_arrangement",
+          "params": {
+            "clip_index": 0,
+            "destination_time": 16.0,
+            "track_index": 0
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,77 @@
+{
+  "cases": [
+    {
+      "args": {
+        "clip_index": 1,
+        "gain": 0.42,
+        "track_index": 0
+      },
+      "expect": "Set 'Take 2' on 'Vocals' to -3.5 dB",
+      "name": "success_display",
+      "wire": [
+        {
+          "command": "set_clip_gain",
+          "params": {
+            "arrangement": true,
+            "clip_index": 1,
+            "gain": 0.42,
+            "track_index": 0
+          },
+          "response": {
+            "clip_name": "Take 2",
+            "gain": 0.42,
+            "gain_display": "-3.5 dB",
+            "track_name": "Vocals"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "arrangement": false,
+        "clip_index": 1,
+        "gain": 0.42,
+        "track_index": 0
+      },
+      "expect": "Set 'Take 2' on 'Vocals' to 0.42",
+      "name": "success_no_display",
+      "wire": [
+        {
+          "command": "set_clip_gain",
+          "params": {
+            "arrangement": false,
+            "clip_index": 1,
+            "gain": 0.42,
+            "track_index": 0
+          },
+          "response": {
+            "clip_name": "Take 2",
+            "gain": 0.42,
+            "track_name": "Vocals"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "clip_index": 1,
+        "gain": 0.42,
+        "track_index": 0
+      },
+      "expect": "Error setting clip gain: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "set_clip_gain",
+          "params": {
+            "arrangement": true,
+            "clip_index": 1,
+            "gain": 0.42,
+            "track_index": 0
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

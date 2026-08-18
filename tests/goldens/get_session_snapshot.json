@@ -1,0 +1,102 @@
+{
+  "cases": [
+    {
+      "args": {},
+      "expect": "{\n  \"tempo\": 120.0,\n  \"track_count\": 1,\n  \"tracks\": [\n    {\n      \"clips\": [\n        {\n          \"name\": \"Bassline\",\n          \"notes\": [\n            {\n              \"duration\": 0.5,\n              \"mute\": false,\n              \"pitch\": 60,\n              \"start_time\": 0.0,\n              \"velocity\": 100\n            },\n            {\n              \"duration\": 0.25,\n              \"mute\": true,\n              \"pitch\": 64,\n              \"start_time\": 1.0,\n              \"velocity\": 90\n            }\n          ]\n        }\n      ],\n      \"devices\": [\n        {\n          \"name\": \"Operator\",\n          \"parameters\": [\n            {\n              \"name\": \"Volume\",\n              \"value\": 0.85\n            }\n          ]\n        }\n      ],\n      \"index\": 0,\n      \"name\": \"1-MIDI\"\n    }\n  ]\n}",
+      "name": "success_defaults",
+      "wire": [
+        {
+          "command": "get_session_snapshot",
+          "params": {
+            "include_notes": true,
+            "include_params": true
+          },
+          "response": {
+            "tempo": 120.0,
+            "track_count": 1,
+            "tracks": [
+              {
+                "clips": [
+                  {
+                    "name": "Bassline",
+                    "notes": [
+                      {
+                        "duration": 0.5,
+                        "mute": false,
+                        "pitch": 60,
+                        "start_time": 0.0,
+                        "velocity": 100
+                      },
+                      {
+                        "duration": 0.25,
+                        "mute": true,
+                        "pitch": 64,
+                        "start_time": 1.0,
+                        "velocity": 90
+                      }
+                    ]
+                  }
+                ],
+                "devices": [
+                  {
+                    "name": "Operator",
+                    "parameters": [
+                      {
+                        "name": "Volume",
+                        "value": 0.85
+                      }
+                    ]
+                  }
+                ],
+                "index": 0,
+                "name": "1-MIDI"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "include_notes": false,
+        "include_params": false
+      },
+      "expect": "{\n  \"tempo\": 120.0,\n  \"track_count\": 1,\n  \"tracks\": [\n    {\n      \"index\": 0,\n      \"name\": \"1-MIDI\"\n    }\n  ]\n}",
+      "name": "success_lean",
+      "wire": [
+        {
+          "command": "get_session_snapshot",
+          "params": {
+            "include_notes": false,
+            "include_params": false
+          },
+          "response": {
+            "tempo": 120.0,
+            "track_count": 1,
+            "tracks": [
+              {
+                "index": 0,
+                "name": "1-MIDI"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "args": {},
+      "expect": "Error getting session snapshot: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "get_session_snapshot",
+          "params": {
+            "include_notes": true,
+            "include_params": true
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "cases": [
+    {
+      "args": {
+        "name": "Drums",
+        "track_index": 0
+      },
+      "expect": "Renamed track to: Drums",
+      "name": "success",
+      "wire": [
+        {
+          "command": "set_track_name",
+          "params": {
+            "name": "Drums",
+            "track_index": 0
+          },
+          "response": {
+            "name": "Drums"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "name": "Drums",
+        "track_index": 0
+      },
+      "expect": "Error setting track name: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "set_track_name",
+          "params": {
+            "name": "Drums",
+            "track_index": 0
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

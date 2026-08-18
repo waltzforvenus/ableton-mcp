@@ -1,0 +1,65 @@
+{
+  "cases": [
+    {
+      "args": {
+        "track_index": 1
+      },
+      "expect": "{\n  \"arm\": true,\n  \"clip_slots\": [\n    {\n      \"clip\": {\n        \"length\": 4.0,\n        \"name\": \"Take 1\"\n      },\n      \"has_clip\": true,\n      \"index\": 0\n    },\n    {\n      \"clip\": null,\n      \"has_clip\": false,\n      \"index\": 1\n    }\n  ],\n  \"devices\": [\n    {\n      \"class_name\": \"Reverb\",\n      \"index\": 0,\n      \"name\": \"Reverb\"\n    }\n  ],\n  \"index\": 1,\n  \"is_midi_track\": false,\n  \"mute\": false,\n  \"name\": \"2-Audio\",\n  \"solo\": false\n}",
+      "name": "success",
+      "wire": [
+        {
+          "command": "get_track_info",
+          "params": {
+            "track_index": 1
+          },
+          "response": {
+            "arm": true,
+            "clip_slots": [
+              {
+                "clip": {
+                  "length": 4.0,
+                  "name": "Take 1"
+                },
+                "has_clip": true,
+                "index": 0
+              },
+              {
+                "clip": null,
+                "has_clip": false,
+                "index": 1
+              }
+            ],
+            "devices": [
+              {
+                "class_name": "Reverb",
+                "index": 0,
+                "name": "Reverb"
+              }
+            ],
+            "index": 1,
+            "is_midi_track": false,
+            "mute": false,
+            "name": "2-Audio",
+            "solo": false
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "track_index": 1
+      },
+      "expect": "Error getting track info: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "get_track_info",
+          "params": {
+            "track_index": 1
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

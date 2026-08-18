@@ -1,0 +1,46 @@
+{
+  "cases": [
+    {
+      "args": {
+        "track_index": 0,
+        "value": 0.85
+      },
+      "expect": "Set 'Drums' volume to 0.0 dB",
+      "name": "success",
+      "wire": [
+        {
+          "command": "set_track_volume",
+          "params": {
+            "track_index": 0,
+            "track_type": "regular",
+            "value": 0.85
+          },
+          "response": {
+            "display_value": "0.0 dB",
+            "track_name": "Drums",
+            "value": 0.85
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "track_index": 0,
+        "value": 0.85
+      },
+      "expect": "Error setting track volume: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "set_track_volume",
+          "params": {
+            "track_index": 0,
+            "track_type": "regular",
+            "value": 0.85
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

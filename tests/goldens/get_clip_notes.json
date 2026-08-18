@@ -1,0 +1,60 @@
+{
+  "cases": [
+    {
+      "args": {
+        "clip_index": 2,
+        "track_index": 0
+      },
+      "expect": "{\n  \"clip_name\": \"Bassline\",\n  \"length\": 4.0,\n  \"note_count\": 2,\n  \"notes\": [\n    {\n      \"duration\": 0.5,\n      \"mute\": false,\n      \"pitch\": 60,\n      \"start_time\": 0.0,\n      \"velocity\": 100\n    },\n    {\n      \"duration\": 0.25,\n      \"mute\": true,\n      \"pitch\": 64,\n      \"start_time\": 1.0,\n      \"velocity\": 90\n    }\n  ]\n}",
+      "name": "success",
+      "wire": [
+        {
+          "command": "get_clip_notes",
+          "params": {
+            "clip_index": 2,
+            "track_index": 0
+          },
+          "response": {
+            "clip_name": "Bassline",
+            "length": 4.0,
+            "note_count": 2,
+            "notes": [
+              {
+                "duration": 0.5,
+                "mute": false,
+                "pitch": 60,
+                "start_time": 0.0,
+                "velocity": 100
+              },
+              {
+                "duration": 0.25,
+                "mute": true,
+                "pitch": 64,
+                "start_time": 1.0,
+                "velocity": 90
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "clip_index": 2,
+        "track_index": 0
+      },
+      "expect": "Error getting clip notes: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "get_clip_notes",
+          "params": {
+            "clip_index": 2,
+            "track_index": 0
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

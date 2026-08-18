@@ -1,0 +1,45 @@
+{
+  "cases": [
+    {
+      "args": {
+        "device_index": 2,
+        "track_index": 0
+      },
+      "expect": "Deleted 'Compressor' from track 0; 2 devices remain",
+      "name": "success",
+      "wire": [
+        {
+          "command": "delete_device",
+          "params": {
+            "device_index": 2,
+            "track_index": 0,
+            "track_type": "regular"
+          },
+          "response": {
+            "deleted_device_name": "Compressor",
+            "remaining_device_count": 2
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "device_index": 2,
+        "track_index": 0
+      },
+      "expect": "Error deleting device: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "delete_device",
+          "params": {
+            "device_index": 2,
+            "track_index": 0,
+            "track_type": "regular"
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,47 @@
+{
+  "cases": [
+    {
+      "args": {
+        "clip_index": 0,
+        "length": 8.0,
+        "track_index": 1
+      },
+      "expect": "Created new clip at track 1, slot 0 with length 8.0 beats",
+      "name": "success",
+      "wire": [
+        {
+          "command": "create_clip",
+          "params": {
+            "clip_index": 0,
+            "length": 8.0,
+            "track_index": 1
+          },
+          "response": {
+            "length": 8.0,
+            "name": "Clip"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "clip_index": 0,
+        "length": 8.0,
+        "track_index": 1
+      },
+      "expect": "Error creating clip: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "create_clip",
+          "params": {
+            "clip_index": 0,
+            "length": 8.0,
+            "track_index": 1
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

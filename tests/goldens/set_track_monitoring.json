@@ -1,0 +1,43 @@
+{
+  "cases": [
+    {
+      "args": {
+        "state": "in",
+        "track_index": 0
+      },
+      "expect": "Track 0 ('Guitar') monitoring set to in",
+      "name": "success",
+      "wire": [
+        {
+          "command": "set_track_monitoring",
+          "params": {
+            "track_index": 0,
+            "value": "in"
+          },
+          "response": {
+            "monitoring": "in",
+            "track_name": "Guitar"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "state": "in",
+        "track_index": 0
+      },
+      "expect": "Error setting monitoring: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "set_track_monitoring",
+          "params": {
+            "track_index": 0,
+            "value": "in"
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

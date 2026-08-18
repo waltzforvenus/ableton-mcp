@@ -1,0 +1,94 @@
+{
+  "cases": [
+    {
+      "args": {
+        "device_index": 1,
+        "track_index": 0
+      },
+      "expect": "{\n  \"device_name\": \"Reverb\",\n  \"parameters\": [\n    {\n      \"display_value\": \"100 %\",\n      \"index\": 0,\n      \"max\": 1.0,\n      \"min\": 0.0,\n      \"name\": \"Dry/Wet\",\n      \"value\": 1.0\n    },\n    {\n      \"display_value\": \"1.20 s\",\n      \"index\": 1,\n      \"max\": 60000.0,\n      \"min\": 100.0,\n      \"name\": \"Decay Time\",\n      \"value\": 1200.0\n    }\n  ]\n}",
+      "name": "success",
+      "wire": [
+        {
+          "command": "get_device_parameters",
+          "params": {
+            "device_index": 1,
+            "track_index": 0,
+            "track_type": "regular"
+          },
+          "response": {
+            "device_name": "Reverb",
+            "parameters": [
+              {
+                "display_value": "100 %",
+                "index": 0,
+                "max": 1.0,
+                "min": 0.0,
+                "name": "Dry/Wet",
+                "value": 1.0
+              },
+              {
+                "display_value": "1.20 s",
+                "index": 1,
+                "max": 60000.0,
+                "min": 100.0,
+                "name": "Decay Time",
+                "value": 1200.0
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "device_index": 0,
+        "track_index": 0,
+        "track_type": "return"
+      },
+      "expect": "{\n  \"device_name\": \"Delay\",\n  \"parameters\": [\n    {\n      \"display_value\": \"35 %\",\n      \"index\": 0,\n      \"max\": 0.95,\n      \"min\": 0.0,\n      \"name\": \"Feedback\",\n      \"value\": 0.35\n    }\n  ]\n}",
+      "name": "success_return_track",
+      "wire": [
+        {
+          "command": "get_device_parameters",
+          "params": {
+            "device_index": 0,
+            "track_index": 0,
+            "track_type": "return"
+          },
+          "response": {
+            "device_name": "Delay",
+            "parameters": [
+              {
+                "display_value": "35 %",
+                "index": 0,
+                "max": 0.95,
+                "min": 0.0,
+                "name": "Feedback",
+                "value": 0.35
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "device_index": 1,
+        "track_index": 0
+      },
+      "expect": "Error getting device parameters: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "get_device_parameters",
+          "params": {
+            "device_index": 1,
+            "track_index": 0,
+            "track_type": "regular"
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,62 @@
+{
+  "cases": [
+    {
+      "args": {
+        "track_index": 1
+      },
+      "expect": "Track 1 ('Vocals') armed",
+      "name": "success_armed",
+      "wire": [
+        {
+          "command": "set_track_arm",
+          "params": {
+            "track_index": 1,
+            "value": true
+          },
+          "response": {
+            "arm": true,
+            "track_name": "Vocals"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "armed": false,
+        "track_index": 1
+      },
+      "expect": "Track 1 ('Vocals') disarmed",
+      "name": "success_disarmed",
+      "wire": [
+        {
+          "command": "set_track_arm",
+          "params": {
+            "track_index": 1,
+            "value": false
+          },
+          "response": {
+            "arm": false,
+            "track_name": "Vocals"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "track_index": 1
+      },
+      "expect": "Error arming track: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "set_track_arm",
+          "params": {
+            "track_index": 1,
+            "value": true
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

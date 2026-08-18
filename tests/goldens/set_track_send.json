@@ -1,0 +1,71 @@
+{
+  "cases": [
+    {
+      "args": {
+        "send_index": 1,
+        "track_index": 0,
+        "value": 0.65
+      },
+      "expect": "Set 'Vocals' send 1 to -12.0 dB",
+      "name": "success_display",
+      "wire": [
+        {
+          "command": "set_track_send",
+          "params": {
+            "send_index": 1,
+            "track_index": 0,
+            "value": 0.65
+          },
+          "response": {
+            "display_value": "-12.0 dB",
+            "track_name": "Vocals",
+            "value": 0.65
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "send_index": 1,
+        "track_index": 0,
+        "value": 0.65
+      },
+      "expect": "Set 'Vocals' send 1 to 0.65",
+      "name": "success_no_display",
+      "wire": [
+        {
+          "command": "set_track_send",
+          "params": {
+            "send_index": 1,
+            "track_index": 0,
+            "value": 0.65
+          },
+          "response": {
+            "track_name": "Vocals",
+            "value": 0.65
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "send_index": 1,
+        "track_index": 0,
+        "value": 0.65
+      },
+      "expect": "Error setting track send: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "set_track_send",
+          "params": {
+            "send_index": 1,
+            "track_index": 0,
+            "value": 0.65
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

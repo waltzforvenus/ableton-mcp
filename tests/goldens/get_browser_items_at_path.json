@@ -1,0 +1,141 @@
+{
+  "cases": [
+    {
+      "args": {
+        "path": "instruments/Drum Rack"
+      },
+      "expect": "{\n  \"items\": [\n    {\n      \"is_device\": false,\n      \"is_folder\": false,\n      \"is_loadable\": true,\n      \"name\": \"Kit One\",\n      \"uri\": \"query:Drums#Kit%20One\"\n    },\n    {\n      \"is_device\": false,\n      \"is_folder\": true,\n      \"is_loadable\": false,\n      \"name\": \"More Kits\",\n      \"uri\": \"\"\n    }\n  ],\n  \"path\": \"instruments/Drum Rack\"\n}",
+      "name": "success",
+      "wire": [
+        {
+          "command": "get_browser_items_at_path",
+          "params": {
+            "path": "instruments/Drum Rack"
+          },
+          "response": {
+            "items": [
+              {
+                "is_device": false,
+                "is_folder": false,
+                "is_loadable": true,
+                "name": "Kit One",
+                "uri": "query:Drums#Kit%20One"
+              },
+              {
+                "is_device": false,
+                "is_folder": true,
+                "is_loadable": false,
+                "name": "More Kits",
+                "uri": ""
+              }
+            ],
+            "path": "instruments/Drum Rack"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "path": "bogus/thing"
+      },
+      "expect": "Error: Unknown category 'bogus'\nAvailable browser categories: instruments, sounds, drums",
+      "name": "error_payload_with_categories",
+      "wire": [
+        {
+          "command": "get_browser_items_at_path",
+          "params": {
+            "path": "bogus/thing"
+          },
+          "response": {
+            "available_categories": [
+              "instruments",
+              "sounds",
+              "drums"
+            ],
+            "error": "Unknown category 'bogus'"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "path": "instruments"
+      },
+      "expect": "Error: The Ableton browser is not available. Make sure Ableton Live is fully loaded and try again.",
+      "name": "error_browser_unavailable",
+      "wire": [
+        {
+          "command": "get_browser_items_at_path",
+          "params": {
+            "path": "instruments"
+          },
+          "raise": "Browser is not available"
+        }
+      ]
+    },
+    {
+      "args": {
+        "path": "instruments"
+      },
+      "expect": "Error: Could not access the Ableton Live application. Make sure Ableton Live is running and the Remote Script is loaded.",
+      "name": "error_live_app_unavailable",
+      "wire": [
+        {
+          "command": "get_browser_items_at_path",
+          "params": {
+            "path": "instruments"
+          },
+          "raise": "Could not access Live application"
+        }
+      ]
+    },
+    {
+      "args": {
+        "path": "bogus"
+      },
+      "expect": "Error: Unknown or unavailable category 'bogus'. Please check the available categories using get_browser_tree.",
+      "name": "error_unknown_category",
+      "wire": [
+        {
+          "command": "get_browser_items_at_path",
+          "params": {
+            "path": "bogus"
+          },
+          "raise": "Unknown or unavailable category 'bogus'"
+        }
+      ]
+    },
+    {
+      "args": {
+        "path": "instruments/Nope"
+      },
+      "expect": "Error: Path part 'Nope' not found. Please check the path and try again.",
+      "name": "error_path_not_found",
+      "wire": [
+        {
+          "command": "get_browser_items_at_path",
+          "params": {
+            "path": "instruments/Nope"
+          },
+          "raise": "Path part 'Nope' not found"
+        }
+      ]
+    },
+    {
+      "args": {
+        "path": "instruments/Drum Rack"
+      },
+      "expect": "Error getting browser items at path: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "get_browser_items_at_path",
+          "params": {
+            "path": "instruments/Drum Rack"
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

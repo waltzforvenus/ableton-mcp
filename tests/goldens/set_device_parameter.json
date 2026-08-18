@@ -1,0 +1,83 @@
+{
+  "cases": [
+    {
+      "args": {
+        "device_index": 1,
+        "parameter": "Dry/Wet",
+        "track_index": 0,
+        "value": 1.5
+      },
+      "expect": "Set Reverb 'Dry/Wet' to 100 % (clamped)",
+      "name": "success_clamped_by_name",
+      "wire": [
+        {
+          "command": "set_device_parameter",
+          "params": {
+            "device_index": 1,
+            "parameter": "Dry/Wet",
+            "track_index": 0,
+            "track_type": "regular",
+            "value": 1.5
+          },
+          "response": {
+            "clamped": true,
+            "device_name": "Reverb",
+            "display_value": "100 %",
+            "parameter_name": "Dry/Wet",
+            "value": 1.0
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "device_index": 0,
+        "parameter": "3",
+        "track_index": 1,
+        "value": 0.35
+      },
+      "expect": "Set Delay 'Feedback' to 0.35",
+      "name": "success_by_index_string",
+      "wire": [
+        {
+          "command": "set_device_parameter",
+          "params": {
+            "device_index": 0,
+            "parameter": 3,
+            "track_index": 1,
+            "track_type": "regular",
+            "value": 0.35
+          },
+          "response": {
+            "device_name": "Delay",
+            "parameter_name": "Feedback",
+            "value": 0.35
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "device_index": 1,
+        "parameter": "Dry/Wet",
+        "track_index": 0,
+        "value": 1.5
+      },
+      "expect": "Error setting device parameter: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "set_device_parameter",
+          "params": {
+            "device_index": 1,
+            "parameter": "Dry/Wet",
+            "track_index": 0,
+            "track_type": "regular",
+            "value": 1.5
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

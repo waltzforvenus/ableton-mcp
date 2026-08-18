@@ -1,0 +1,166 @@
+{
+  "cases": [
+    {
+      "args": {
+        "kit_path": "drums/acoustic",
+        "rack_uri": "Drums/Drum Rack",
+        "track_index": 0
+      },
+      "expect": "Loaded drum rack and kit 'Kit One' on track 0",
+      "name": "success",
+      "wire": [
+        {
+          "command": "load_browser_item",
+          "params": {
+            "item_uri": "Drums/Drum Rack",
+            "track_index": 0
+          },
+          "response": {
+            "loaded": true
+          }
+        },
+        {
+          "command": "get_browser_items_at_path",
+          "params": {
+            "path": "drums/acoustic"
+          },
+          "response": {
+            "items": [
+              {
+                "is_loadable": false,
+                "name": "More Kits",
+                "uri": ""
+              },
+              {
+                "is_loadable": true,
+                "name": "Kit One",
+                "uri": "query:Drums#Kit%20One"
+              },
+              {
+                "is_loadable": true,
+                "name": "Kit Two",
+                "uri": "query:Drums#Kit%20Two"
+              }
+            ]
+          }
+        },
+        {
+          "command": "load_browser_item",
+          "params": {
+            "item_uri": "query:Drums#Kit%20One",
+            "track_index": 0
+          },
+          "response": {
+            "loaded": true
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "kit_path": "drums/acoustic",
+        "rack_uri": "Drums/Drum Rack",
+        "track_index": 0
+      },
+      "expect": "Failed to load drum rack with URI 'Drums/Drum Rack'",
+      "name": "bail_rack_not_loaded",
+      "wire": [
+        {
+          "command": "load_browser_item",
+          "params": {
+            "item_uri": "Drums/Drum Rack",
+            "track_index": 0
+          },
+          "response": {
+            "loaded": false
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "kit_path": "drums/missing",
+        "rack_uri": "Drums/Drum Rack",
+        "track_index": 0
+      },
+      "expect": "Loaded drum rack but failed to find drum kit: Path part 'missing' not found",
+      "name": "bail_kit_path_error",
+      "wire": [
+        {
+          "command": "load_browser_item",
+          "params": {
+            "item_uri": "Drums/Drum Rack",
+            "track_index": 0
+          },
+          "response": {
+            "loaded": true
+          }
+        },
+        {
+          "command": "get_browser_items_at_path",
+          "params": {
+            "path": "drums/missing"
+          },
+          "response": {
+            "error": "Path part 'missing' not found"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "kit_path": "drums/empty",
+        "rack_uri": "Drums/Drum Rack",
+        "track_index": 0
+      },
+      "expect": "Loaded drum rack but no loadable drum kits found at 'drums/empty'",
+      "name": "bail_no_loadable_kits",
+      "wire": [
+        {
+          "command": "load_browser_item",
+          "params": {
+            "item_uri": "Drums/Drum Rack",
+            "track_index": 0
+          },
+          "response": {
+            "loaded": true
+          }
+        },
+        {
+          "command": "get_browser_items_at_path",
+          "params": {
+            "path": "drums/empty"
+          },
+          "response": {
+            "items": [
+              {
+                "is_loadable": false,
+                "name": "Folder",
+                "uri": ""
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "kit_path": "drums/acoustic",
+        "rack_uri": "Drums/Drum Rack",
+        "track_index": 0
+      },
+      "expect": "Error loading drum kit: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "load_browser_item",
+          "params": {
+            "item_uri": "Drums/Drum Rack",
+            "track_index": 0
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

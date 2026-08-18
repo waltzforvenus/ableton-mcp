@@ -178,7 +178,7 @@ def _send(self, name, params=None):
     return self._client.send_command(name, params or {})
 ```
 
-Multi-step orchestration is Model logic: `load_drum_kit`'s four wire calls
+Multi-step orchestration is Model logic: `load_drum_kit`'s three wire calls
 and the decisions between them (bail if the rack failed, filter
 `is_loadable`, pick the first kit) move into a service method returning a
 plain stage-tagged dict; the presenter owns every one of its strings,
@@ -408,7 +408,7 @@ hand tools a two-line stub ctx; assertions untouched), plus the
 **characterization ("golden") suite**: for each of the 46 tools, checked-in
 fixtures — `tests/goldens/<tool>.json` — recording, per case, the arguments,
 the expected **ordered wire exchange** (`(command, canned_response)` pairs;
-the fake asserts command names and order, so `load_drum_kit`'s four-call
+the fake asserts command names and order, so `load_drum_kit`'s three-call
 sequence is itself frozen), and the exact response string, for success *and*
 failure paths. Goldens are recorded against the **current monolith before
 any restructuring**, so they guard every later PR. The golden runner's

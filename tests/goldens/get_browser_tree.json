@@ -1,0 +1,121 @@
+{
+  "cases": [
+    {
+      "args": {
+        "category_type": "instruments"
+      },
+      "expect": "Browser tree for 'instruments' (showing 4 folders):\n\n\u2022 Instruments (path: instruments)\n  \u2022 Drum Rack (path: instruments/Drum Rack) [...]\n    \u2022 Kits (path: instruments/Drum Rack/Kits)\n  \u2022 Operator (path: instruments/Operator)\n\n",
+      "name": "success_tree",
+      "wire": [
+        {
+          "command": "get_browser_tree",
+          "params": {
+            "category_type": "instruments"
+          },
+          "response": {
+            "categories": [
+              {
+                "children": [
+                  {
+                    "children": [
+                      {
+                        "children": [],
+                        "has_more": false,
+                        "name": "Kits",
+                        "path": "instruments/Drum Rack/Kits"
+                      }
+                    ],
+                    "has_more": true,
+                    "name": "Drum Rack",
+                    "path": "instruments/Drum Rack"
+                  },
+                  {
+                    "children": [],
+                    "has_more": false,
+                    "name": "Operator",
+                    "path": "instruments/Operator"
+                  }
+                ],
+                "has_more": false,
+                "name": "Instruments",
+                "path": "instruments"
+              }
+            ],
+            "total_folders": 4
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "category_type": "bogus"
+      },
+      "expect": "No categories found for 'bogus'. Available browser categories: instruments, sounds, drums",
+      "name": "success_no_categories",
+      "wire": [
+        {
+          "command": "get_browser_tree",
+          "params": {
+            "category_type": "bogus"
+          },
+          "response": {
+            "available_categories": [
+              "instruments",
+              "sounds",
+              "drums"
+            ],
+            "categories": []
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "category_type": "all"
+      },
+      "expect": "Error: The Ableton browser is not available. Make sure Ableton Live is fully loaded and try again.",
+      "name": "error_browser_unavailable",
+      "wire": [
+        {
+          "command": "get_browser_tree",
+          "params": {
+            "category_type": "all"
+          },
+          "raise": "Browser is not available"
+        }
+      ]
+    },
+    {
+      "args": {
+        "category_type": "all"
+      },
+      "expect": "Error: Could not access the Ableton Live application. Make sure Ableton Live is running and the Remote Script is loaded.",
+      "name": "error_live_app_unavailable",
+      "wire": [
+        {
+          "command": "get_browser_tree",
+          "params": {
+            "category_type": "all"
+          },
+          "raise": "Could not access Live application"
+        }
+      ]
+    },
+    {
+      "args": {
+        "category_type": "instruments"
+      },
+      "expect": "Error getting browser tree: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "get_browser_tree",
+          "params": {
+            "category_type": "instruments"
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

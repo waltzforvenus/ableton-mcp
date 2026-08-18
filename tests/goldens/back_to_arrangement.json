@@ -1,0 +1,30 @@
+{
+  "cases": [
+    {
+      "args": {},
+      "expect": "All tracks returned to Arrangement playback",
+      "name": "success",
+      "wire": [
+        {
+          "command": "back_to_arrangement",
+          "params": {},
+          "response": {
+            "ok": true
+          }
+        }
+      ]
+    },
+    {
+      "args": {},
+      "expect": "Error returning to arrangement: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "back_to_arrangement",
+          "params": {},
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

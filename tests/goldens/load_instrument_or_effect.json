@@ -1,0 +1,94 @@
+{
+  "cases": [
+    {
+      "args": {
+        "track_index": 0,
+        "uri": "query:Synths#Operator"
+      },
+      "expect": "Loaded instrument with URI 'query:Synths#Operator' on track 0. New devices: Operator",
+      "name": "success_new_devices",
+      "wire": [
+        {
+          "command": "load_browser_item",
+          "params": {
+            "item_uri": "query:Synths#Operator",
+            "track_index": 0,
+            "track_type": "regular"
+          },
+          "response": {
+            "loaded": true,
+            "new_devices": [
+              "Operator"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "track_index": 0,
+        "uri": "query:Synths#Operator"
+      },
+      "expect": "Loaded instrument with URI 'query:Synths#Operator' on track 0. Devices on track: Operator, Reverb",
+      "name": "success_no_new_devices",
+      "wire": [
+        {
+          "command": "load_browser_item",
+          "params": {
+            "item_uri": "query:Synths#Operator",
+            "track_index": 0,
+            "track_type": "regular"
+          },
+          "response": {
+            "devices_after": [
+              "Operator",
+              "Reverb"
+            ],
+            "loaded": true,
+            "new_devices": []
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "track_index": 0,
+        "uri": "query:Synths#Operator"
+      },
+      "expect": "Failed to load instrument with URI 'query:Synths#Operator'",
+      "name": "not_loaded",
+      "wire": [
+        {
+          "command": "load_browser_item",
+          "params": {
+            "item_uri": "query:Synths#Operator",
+            "track_index": 0,
+            "track_type": "regular"
+          },
+          "response": {
+            "loaded": false
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "track_index": 0,
+        "uri": "query:Synths#Operator"
+      },
+      "expect": "Error loading instrument by URI: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "load_browser_item",
+          "params": {
+            "item_uri": "query:Synths#Operator",
+            "track_index": 0,
+            "track_type": "regular"
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}
