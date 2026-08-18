@@ -1479,3 +1479,12 @@ def create_locator(
     except Exception as e:
         logger.error(f"Error creating locator: {str(e)}")
         return f"Error creating locator: {str(e)}"
+
+
+# Main execution
+def main():
+    """Run the MCP server"""
+    mcp.run()
+
+if __name__ == "__main__":
+    main()
