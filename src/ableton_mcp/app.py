@@ -17,9 +17,10 @@ from typing import Any, AsyncIterator, Dict, Mapping, Optional, Protocol
 
 from mcp.server.fastmcp import FastMCP
 
-from . import server
+from . import tools
 from .connection import AbletonClient
 from .handshake import ScriptHandshake
+from .services import AbletonService
 
 logger = logging.getLogger("AbletonMCPServer")
 
@@ -55,6 +56,7 @@ class Deps:
 
     client: AbletonClientProtocol
     handshake: ScriptHandshake
+    service: AbletonService
 
 
 def build_deps(settings: Settings) -> Deps:
@@ -64,7 +66,8 @@ def build_deps(settings: Settings) -> Deps:
     handshake = ScriptHandshake()
     client = AbletonClient(settings.host, settings.port,
                            on_reconnect=handshake.invalidate)
-    return Deps(client=client, handshake=handshake)
+    service = AbletonService(client, handshake)
+    return Deps(client=client, handshake=handshake, service=service)
 
 
 def build_app(settings: Optional[Settings] = None,
@@ -108,7 +111,7 @@ def build_app(settings: Optional[Settings] = None,
             logger.info("AbletonMCP server shut down")
 
     app = FastMCP("AbletonMCP", lifespan=server_lifespan)
-    for fn in server.TOOLS:
+    for fn in tools.TOOLS:
         app.add_tool(fn)
     return app
 

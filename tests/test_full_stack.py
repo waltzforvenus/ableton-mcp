@@ -24,9 +24,10 @@ from types import SimpleNamespace
 
 from mcp.shared.memory import create_connected_server_and_client_session
 
-import ableton_mcp.server as server
+import ableton_mcp.tools as tools
 from ableton_mcp.app import Deps, build_app
 from ableton_mcp.handshake import ScriptHandshake
+from ableton_mcp.services import AbletonService
 from fake_ableton import make_harness
 
 
@@ -60,7 +61,9 @@ def _make_deps():
     handler, exactly as production would)."""
     harness = make_harness()
     client = FakeAbletonClient(harness)
-    return Deps(client=client, handshake=ScriptHandshake()), harness
+    handshake = ScriptHandshake()
+    return Deps(client=client, handshake=handshake,
+                service=AbletonService(client, handshake)), harness
 
 
 def _ctx(deps):
@@ -90,8 +93,8 @@ def test_in_memory_session_matches_direct_calls():
     # byte-equality here proves the lifespan yielded Deps and FastMCP handed
     # them to the sync tool through ctx.request_context.lifespan_context.
     direct_deps, _ = _make_deps()
-    assert info_result.content[0].text == server.get_session_info(_ctx(direct_deps))
-    assert notes_result.content[0].text == server.get_clip_notes(
+    assert info_result.content[0].text == tools.get_session_info(_ctx(direct_deps))
+    assert notes_result.content[0].text == tools.get_clip_notes(
         _ctx(direct_deps), track_index=0, clip_index=0)
 
     # get_clip_notes is gated: the text must be the clip payload, not the
@@ -124,11 +127,11 @@ def test_scenario_build_a_midi_clip_and_read_it_back():
     deps, harness = _make_deps()
     ctx = _ctx(deps)
 
-    out = server.create_midi_track(ctx, index=-1)
+    out = tools.create_midi_track(ctx, index=-1)
     assert out == "Created new MIDI track: 4 MIDI"
     track_index = len(harness.song.tracks) - 1
 
-    out = server.create_clip(ctx, track_index=track_index, clip_index=0,
+    out = tools.create_clip(ctx, track_index=track_index, clip_index=0,
                              length=4.0)
     assert out == (f"Created new clip at track {track_index}, slot 0 "
                    f"with length 4.0 beats")
@@ -138,11 +141,11 @@ def test_scenario_build_a_midi_clip_and_read_it_back():
         {"pitch": 64, "start_time": 1.0, "duration": 0.5, "velocity": 90, "mute": False},
         {"pitch": 67, "start_time": 2.0, "duration": 1.0, "velocity": 80, "mute": True},
     ]
-    out = server.add_notes_to_clip(ctx, track_index, 0, notes)
+    out = tools.add_notes_to_clip(ctx, track_index, 0, notes)
     assert out == f"Added 3 notes to clip at track {track_index}, slot 0"
 
     # Read back through the gated reader (a REAL handshake ran lazily first).
-    payload = json.loads(server.get_clip_notes(ctx, track_index, 0))
+    payload = json.loads(tools.get_clip_notes(ctx, track_index, 0))
     assert payload["note_count"] == 3
     read_back = [
         {key: note[key]
@@ -170,7 +173,7 @@ def test_scenario_set_device_parameter_by_name_reports_clamping():
     deps, harness = _make_deps()
     ctx = _ctx(deps)
 
-    out = server.set_device_parameter(ctx, track_index=0, device_index=0,
+    out = tools.set_device_parameter(ctx, track_index=0, device_index=0,
                                       parameter="Filter Freq", value=9999.0)
     assert out == "Set Operator 'Filter Freq' to 127.00 Hz (clamped)"
 
@@ -184,6 +187,6 @@ def test_scenario_error_text_comes_through_the_real_envelope():
     # tool with AbletonConnection's wrapped message shape.
     deps, _harness = _make_deps()
     ctx = _ctx(deps)
-    out = server.create_clip(ctx, track_index=0, clip_index=0, length=4.0)
+    out = tools.create_clip(ctx, track_index=0, clip_index=0, length=4.0)
     assert out == ("Error creating clip: Communication error with Ableton: "
                    "Clip slot already has a clip")

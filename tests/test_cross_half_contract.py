@@ -19,10 +19,12 @@ literal, which the Remote-Script-side parsers here read via AST; plan PR8
 replaced the server's embedded modifying/timeout lists with the
 `ableton_mcp.commands` registry, which the server side imports directly —
 the registry is a plain importable dict, so no AST is needed there. What
-stays AST-extracted from server.py is the set of `send_command("X", ...)`
-literals, cross-checked against the registry so a tool cannot send a command
-the registry (and therefore the transport's timeout policy) knows nothing
-about.
+stays AST-extracted is the set of wire-command literals the server can send:
+`_send("X", ...)` calls in services.py (plan PR9 moved every tool's sends
+behind AbletonService._send) plus `send_command("X", ...)` calls in
+handshake.py, cross-checked against the registry so a tool cannot send a
+command the registry (and therefore the transport's timeout policy) knows
+nothing about.
 
 Runs anywhere — no Ableton, no network.
 """
@@ -37,7 +39,7 @@ from ableton_mcp.handshake import LEGACY_CAPABILITIES
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 REMOTE_SCRIPT = REPO_ROOT / "AbletonMCP_Remote_Script" / "__init__.py"
-SERVER = REPO_ROOT / "src" / "ableton_mcp" / "server.py"
+SERVICES = REPO_ROOT / "src" / "ableton_mcp" / "services.py"
 HANDSHAKE = REPO_ROOT / "src" / "ableton_mcp" / "handshake.py"
 
 # The two rack commands are dispatchable on the Remote Script's main thread
@@ -95,13 +97,24 @@ def _script_capabilities():
 
 
 def _sent_command_literals(path):
-    """Every `<x>.send_command("X", ...)` first-arg literal in a source file."""
+    """Every wire-command first-arg literal in a source file: calls named
+    `send_command` (the transport seam — handshake.py calls it as a bare
+    injected callable, so both `<x>.send_command(...)` and
+    `send_command(...)` shapes count) and `_send` (AbletonService's private
+    send, the only way the tool layer reaches the wire since the PR9 MVC
+    split)."""
     sent = set()
     for node in ast.walk(_parse(path)):
+        if not isinstance(node, ast.Call):
+            continue
+        if isinstance(node.func, ast.Attribute):
+            called = node.func.attr
+        elif isinstance(node.func, ast.Name):
+            called = node.func.id
+        else:
+            continue
         if (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and node.func.attr == "send_command"
+            called in ("send_command", "_send")
             and node.args
             and isinstance(node.args[0], ast.Constant)
             and isinstance(node.args[0].value, str)
@@ -112,9 +125,9 @@ def _sent_command_literals(path):
 
 def _server_sent_commands():
     """(d) every command the server package can put on the wire: the
-    registry's keys plus the AST-extracted send_command literals from the
-    tools (server.py) and the handshake (get_script_info)."""
-    literals = _sent_command_literals(SERVER) | _sent_command_literals(HANDSHAKE)
+    registry's keys plus the AST-extracted wire literals from the service
+    layer (services.py) and the handshake (get_script_info)."""
+    literals = _sent_command_literals(SERVICES) | _sent_command_literals(HANDSHAKE)
     assert literals, "no send_command call sites found in the server package"
     return set(COMMANDS) | literals
 
@@ -166,7 +179,9 @@ def test_every_sent_command_literal_has_a_registry_row():
     # The registry is the transport's timeout policy AND the model's gating
     # data: a tool sending a command with no row would silently get default
     # treatment — the exact half-done-upstream-port failure §5 guards.
-    literals = _sent_command_literals(SERVER) | _sent_command_literals(HANDSHAKE)
+    # (AbletonService._send would also KeyError at runtime now, but this
+    # test catches the drift without executing anything.)
+    literals = _sent_command_literals(SERVICES) | _sent_command_literals(HANDSHAKE)
     missing = literals - set(COMMANDS)
     assert missing == set(), (
         f"send_command literals without a commands.py registry row: "

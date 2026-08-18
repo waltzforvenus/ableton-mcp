@@ -18,13 +18,14 @@ Two pieces:
   module-global cache could.
 """
 
-# `import ableton_mcp.server` resolves through the editable install (uv sync)
+# `import ableton_mcp.tools` resolves through the editable install (uv sync)
 # both under pytest and when tests/record_goldens.py runs as a script.
 from types import SimpleNamespace
 
-import ableton_mcp.server as server
+import ableton_mcp.tools as tools
 from ableton_mcp.app import Deps
 from ableton_mcp.handshake import ScriptHandshake
+from ableton_mcp.services import AbletonService
 
 
 class WireMismatch(BaseException):
@@ -131,9 +132,11 @@ def call_tool(name, args, fake):
     """Call the MCP tool ``name`` with ``args`` against ``fake``, isolated.
 
     Every call builds a fresh Deps (fake client + fresh all-capabilities
-    handshake), so every call sees the same world regardless of what ran
-    before it.
+    handshake + a real AbletonService over both), so every call sees the
+    same world regardless of what ran before it.
     """
-    tool = getattr(server, name)
-    deps = Deps(client=fake, handshake=AllCapabilitiesHandshake())
+    tool = getattr(tools, name)
+    handshake = AllCapabilitiesHandshake()
+    deps = Deps(client=fake, handshake=handshake,
+                service=AbletonService(fake, handshake))
     return tool(make_ctx(deps), **args)

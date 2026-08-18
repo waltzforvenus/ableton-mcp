@@ -2,7 +2,7 @@
 Level 1, section 6 PR3).
 
 Replays every recorded case in tests/goldens/*.json through the real
-ableton_mcp.server tool functions (Ableton socket faked, no network) and
+ableton_mcp.tools tool functions (Ableton socket faked, no network) and
 asserts:
 
 - the tool's response string is byte-identical to the recorded ``expect``;
