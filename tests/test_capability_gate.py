@@ -1,6 +1,7 @@
 """Unit tests for the interim min-version capability gate
-(docs/REFACTOR_PLAN.md §4, added by plan PR5 in MCP_Server/script_handshake.py;
-plan PR8 later absorbs it into ScriptHandshake.require).
+(docs/REFACTOR_PLAN.md §4, added by plan PR5 in
+src/ableton_mcp/script_handshake.py; plan PR8 later absorbs it into
+ScriptHandshake.require).
 
 The gate's contract, in order:
 
@@ -22,9 +23,9 @@ Runs anywhere — no Ableton, no network.
 
 import pytest
 
-import MCP_Server.script_handshake as sh
-import MCP_Server.server as server
-from MCP_Server.remote_script_install import EXPECTED_REMOTE_SCRIPT_VERSION
+import ableton_mcp.script_handshake as sh
+import ableton_mcp.server as server
+from ableton_mcp.remote_script_install import EXPECTED_REMOTE_SCRIPT_VERSION
 
 
 def _info(script_version, capabilities):

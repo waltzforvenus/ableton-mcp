@@ -166,7 +166,7 @@ The startup event, the recorder lifecycle, and the network client are gone
 too — not disabled behind a flag, deleted. You can confirm it yourself:
 
 ```bash
-grep -ri "telemetry\|supabase\|dataset\|trajectory" MCP_Server/ AbletonMCP_Remote_Script/
+grep -ri "telemetry\|supabase\|dataset\|trajectory" src/ableton_mcp/ AbletonMCP_Remote_Script/
 # no matches
 ```
 
@@ -241,7 +241,7 @@ repaired script.
 ## Components
 
 1. **Ableton Remote Script** (`AbletonMCP_Remote_Script/__init__.py`) — a MIDI Remote Script for Ableton Live that creates a socket server to receive and execute commands
-2. **MCP Server** (`MCP_Server/server.py`) — a Python server that implements the Model Context Protocol and connects to the Remote Script
+2. **MCP Server** (`src/ableton_mcp/server.py`) — a Python server that implements the Model Context Protocol and connects to the Remote Script
 
 ---
 

@@ -35,7 +35,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 REMOTE_SCRIPT = REPO_ROOT / "AbletonMCP_Remote_Script" / "__init__.py"
-SERVER = REPO_ROOT / "MCP_Server" / "server.py"
+SERVER = REPO_ROOT / "src" / "ableton_mcp" / "server.py"
 GOLDENS_DIR = REPO_ROOT / "tests" / "goldens"
 
 
@@ -316,12 +316,12 @@ def test_socket_binds_to_loopback():
 # --------------------------------------------------------------------------
 
 def test_script_version_matches_expected_version():
-    from MCP_Server.remote_script_install import EXPECTED_REMOTE_SCRIPT_VERSION
+    from ableton_mcp.remote_script_install import EXPECTED_REMOTE_SCRIPT_VERSION
 
     script_version = _module_constant(_parse(REMOTE_SCRIPT), "SCRIPT_VERSION")
     assert script_version == EXPECTED_REMOTE_SCRIPT_VERSION, (
         "SCRIPT_VERSION (Remote Script) and EXPECTED_REMOTE_SCRIPT_VERSION "
-        "(MCP_Server/remote_script_install.py) are compared at runtime and "
+        "(src/ableton_mcp/remote_script_install.py) are compared at runtime and "
         "must be bumped in the same commit"
     )
 

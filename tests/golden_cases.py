@@ -18,11 +18,11 @@ golden records that real behavior.)
 
 Pure data, with one exception: EXPECTED_REMOTE_SCRIPT_VERSION is imported so
 the up-to-date handshake case tracks the package's expected script version
-instead of hardcoding it (both pytest's conftest and record_goldens.py put the
-repo root on sys.path before this module loads).
+instead of hardcoding it (the editable install resolves the import both under
+pytest and when record_goldens.py runs as a script).
 """
 
-from MCP_Server.remote_script_install import EXPECTED_REMOTE_SCRIPT_VERSION
+from ableton_mcp.remote_script_install import EXPECTED_REMOTE_SCRIPT_VERSION
 
 
 def _case(tool, name, args, wire):

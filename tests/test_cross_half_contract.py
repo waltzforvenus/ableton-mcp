@@ -1,6 +1,6 @@
 """
 Guardrails for the contract between the two halves of the project: the MCP
-server (`MCP_Server/server.py`) and the Ableton Remote Script
+server (`src/ableton_mcp/server.py`) and the Ableton Remote Script
 (`AbletonMCP_Remote_Script/__init__.py`).
 
 The Remote Script cannot import the server package inside Live, so nothing
@@ -28,12 +28,12 @@ import ast
 from functools import lru_cache
 from pathlib import Path
 
-from MCP_Server.script_handshake import _LEGACY_CAPABILITIES
+from ableton_mcp.script_handshake import _LEGACY_CAPABILITIES
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 REMOTE_SCRIPT = REPO_ROOT / "AbletonMCP_Remote_Script" / "__init__.py"
-SERVER = REPO_ROOT / "MCP_Server" / "server.py"
+SERVER = REPO_ROOT / "src" / "ableton_mcp" / "server.py"
 
 # The two rack commands are dispatchable on the Remote Script's main thread
 # but deliberately have no server-side tool (and so no modifying-list entry):

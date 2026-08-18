@@ -18,7 +18,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CANONICAL = REPO_ROOT / "AbletonMCP_Remote_Script" / "__init__.py"
 BUNDLED = (
-    REPO_ROOT / "MCP_Server" / "bundled_ableton_remote_script" / "AbletonMCP_init.py"
+    REPO_ROOT / "src" / "ableton_mcp" / "bundled_ableton_remote_script" / "AbletonMCP_init.py"
 )
 
 
@@ -30,6 +30,6 @@ def test_bundled_remote_script_is_byte_identical_to_canonical():
             "Bundled Remote Script differs from the canonical one. Regenerate "
             "it — never edit it by hand:\n"
             "  cp AbletonMCP_Remote_Script/__init__.py "
-            "MCP_Server/bundled_ableton_remote_script/AbletonMCP_init.py\n"
+            "src/ableton_mcp/bundled_ableton_remote_script/AbletonMCP_init.py\n"
             "(or: uv run ableton-mcp-install-script --sync-bundle)"
         )

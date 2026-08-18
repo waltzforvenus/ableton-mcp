@@ -14,7 +14,7 @@ import asyncio
 import re
 from pathlib import Path
 
-import MCP_Server.server as server
+import ableton_mcp.server as server
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent

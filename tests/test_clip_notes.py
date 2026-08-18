@@ -1,7 +1,7 @@
 """
 Server-side tests for the clip-notes read/clear/write loop
 (get_clip_notes, clear_notes_from_clip, add_notes_to_clip).
-These exercise the real MCP_Server.server tool functions
+These exercise the real ableton_mcp.server tool functions
 with the Ableton socket connection mocked, so they run anywhere — no Ableton,
 no network.
 
@@ -14,7 +14,7 @@ Run from the repo root:
 import json
 import pytest
 
-import MCP_Server.server as server
+import ableton_mcp.server as server
 
 
 # --------------------------------------------------------------------------
@@ -53,7 +53,7 @@ def _script_capabilities_available(monkeypatch):
     """Tools gate on require_capability(), which needs a live Remote Script
     handshake. Report every capability as present so the tests exercise the
     tool body rather than the missing-script early return."""
-    import MCP_Server.script_handshake as sh
+    import ableton_mcp.script_handshake as sh
     monkeypatch.setattr(sh, "require_capability", lambda name: None)
 
 

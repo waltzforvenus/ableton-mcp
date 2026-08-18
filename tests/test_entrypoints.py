@@ -2,7 +2,7 @@
 Guardrail: every console script of the installed ``ableton-mcp`` distribution
 must actually resolve. The `ableton-mcp` entry point was dead from the
 telemetry-removal commit e57c257 (which swept `main()` out of the end of
-`MCP_Server/server.py`, docs/REFACTOR_PLAN.md §1 item 2) until plan PR2
+`server.py`, docs/REFACTOR_PLAN.md §1 item 2) until plan PR2
 restored it; this guardrail keeps every declared entry point loadable.
 
 Runs anywhere — no Ableton, no network.

@@ -10,8 +10,8 @@ Two pieces:
   params, in which order.
 
 - ``call_tool(name, args, fake)`` — migration adapter #1 from the plan.
-  Pre-refactor it monkeypatches ``MCP_Server.server.get_ableton_connection``
-  and ``MCP_Server.script_handshake.require_capability`` (the gated tools
+  Pre-refactor it monkeypatches ``ableton_mcp.server.get_ableton_connection``
+  and ``ableton_mcp.script_handshake.require_capability`` (the gated tools
   import the latter inside the function body, so the module attribute is what
   resolves at call time), and snapshots/restores the handshake module state
   (``_script_info`` / ``_handshake_done``) around each call, because
@@ -22,17 +22,10 @@ Two pieces:
 Tools are called with ``ctx=None`` exactly as tests/test_clip_notes.py does.
 """
 
-import os
-import sys
-
-# Make `import MCP_Server.server` work both under pytest (conftest.py already
-# handles it) and when imported by tests/record_goldens.py run as a script.
-_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if _REPO_ROOT not in sys.path:
-    sys.path.insert(0, _REPO_ROOT)
-
-import MCP_Server.server as server
-import MCP_Server.script_handshake as script_handshake
+# `import ableton_mcp.server` resolves through the editable install (uv sync)
+# both under pytest and when tests/record_goldens.py runs as a script.
+import ableton_mcp.server as server
+import ableton_mcp.script_handshake as script_handshake
 
 
 class WireMismatch(BaseException):

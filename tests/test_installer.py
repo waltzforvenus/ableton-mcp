@@ -16,7 +16,7 @@ Runs anywhere — no Ableton, no network.
 
 import pytest
 
-import MCP_Server.remote_script_install as installer
+import ableton_mcp.remote_script_install as installer
 
 
 @pytest.fixture(autouse=True)

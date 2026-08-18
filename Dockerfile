@@ -17,7 +17,7 @@ RUN pip install --no-cache-dir .
 ENV ABLETON_HOST=localhost \
     ABLETON_PORT=9877
 
-# Console script rather than `python -m MCP_Server.server`: the package
+# Console script rather than `python -m ableton_mcp.server`: the package
 # __init__ imports .server, so the module form double-imports it and Python
 # warns about unpredictable behaviour.
 CMD ["ableton-mcp"]

@@ -26,18 +26,19 @@ dev = [
 ]
 
 [project.scripts]
-ableton-mcp = "MCP_Server.server:main"
-ableton-mcp-install-script = "MCP_Server.remote_script_install:main"
+ableton-mcp = "ableton_mcp.server:main"
+ableton-mcp-install-script = "ableton_mcp.remote_script_install:main"
 
 [build-system]
 requires = ["setuptools>=77.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["MCP_Server", "MCP_Server.bundled_ableton_remote_script"]
+package-dir = {"" = "src"}
+packages = ["ableton_mcp", "ableton_mcp.bundled_ableton_remote_script"]
 
 [tool.setuptools.package-data]
-"MCP_Server.bundled_ableton_remote_script" = ["AbletonMCP_init.py"]
+"ableton_mcp.bundled_ableton_remote_script" = ["AbletonMCP_init.py"]
 
 [project.urls]
 "Homepage" = "https://github.com/waltzforvenus/ableton-mcp"

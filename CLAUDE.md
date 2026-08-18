@@ -6,7 +6,7 @@ Guidance for Claude Code (and any other agent) working in this repository.
 
 An MCP server that drives Ableton Live. Two halves that must stay in step:
 
-- `MCP_Server/server.py` — the MCP server. Defines the tools, speaks stdio to
+- `src/ableton_mcp/server.py` — the MCP server. Defines the tools, speaks stdio to
   the client and JSON-over-TCP to Live.
 - `AbletonMCP_Remote_Script/__init__.py` — a MIDI Remote Script that runs
   *inside* Ableton Live, hosting the socket server and touching the Live Object
@@ -37,7 +37,7 @@ reason to reject the dependency.
 Verification, which should stay silent:
 
 ```bash
-grep -ri "telemetry\|supabase\|analytics\|dataset\|trajectory" MCP_Server/ AbletonMCP_Remote_Script/
+grep -ri "telemetry\|supabase\|analytics\|dataset\|trajectory" src/ableton_mcp/ AbletonMCP_Remote_Script/
 ```
 
 Reading Live's state and returning it *to the user's own MCP client* is fine —
@@ -72,7 +72,7 @@ which one survives depends on file order. After merging upstream, check:
 
 ```bash
 uv run python -c "
-import asyncio, MCP_Server.server as s, collections
+import asyncio, ableton_mcp.server as s, collections
 n=[t.name for t in asyncio.run(s.mcp.list_tools())]
 print(len(n), [k for k,v in collections.Counter(n).items() if v>1])"
 ```
@@ -80,12 +80,12 @@ print(len(n), [k for k,v in collections.Counter(n).items() if v>1])"
 ### The Remote Script exists twice
 
 `AbletonMCP_Remote_Script/__init__.py` is canonical.
-`MCP_Server/bundled_ableton_remote_script/AbletonMCP_init.py` is the copy that
+`src/ableton_mcp/bundled_ableton_remote_script/AbletonMCP_init.py` is the copy that
 `ableton-mcp-install-script` actually installs into Live. **Never edit the
 bundled copy by hand** — regenerate it after changing the canonical one:
 
 ```bash
-cp AbletonMCP_Remote_Script/__init__.py MCP_Server/bundled_ableton_remote_script/AbletonMCP_init.py
+cp AbletonMCP_Remote_Script/__init__.py src/ableton_mcp/bundled_ableton_remote_script/AbletonMCP_init.py
 ```
 
 They drifted once already, and the bundled copy silently reverted the loopback
@@ -95,7 +95,7 @@ bind and dropped every tool this fork adds.
 
 To add a tool end to end:
 
-1. `@mcp.tool()` function in `MCP_Server/server.py` that calls
+1. `@mcp.tool()` function in `src/ableton_mcp/server.py` that calls
    `send_command("your_command", {...})`.
 2. If it changes Live's state, add the command name to the modifying-command
    list in `server.py` (`_send_command_locked`) so it gets the longer socket
@@ -106,7 +106,7 @@ To add a tool end to end:
    the bundled copy.
 
 Bump `SCRIPT_VERSION` in the Remote Script and `EXPECTED_REMOTE_SCRIPT_VERSION`
-in `MCP_Server/remote_script_install.py` together — they are compared at
+in `src/ableton_mcp/remote_script_install.py` together — they are compared at
 runtime. Gate genuinely new commands with
 `require_capability("your_command")` so a user running an older installed
 script gets a clear "re-run the installer" message instead of a socket error.

@@ -24,7 +24,9 @@ def bundled_remote_script_init() -> Path:
     here = Path(__file__).resolve().parent
     candidates = [
         here / "bundled_ableton_remote_script" / "AbletonMCP_init.py",
-        here.parent / "AbletonMCP_Remote_Script" / "__init__.py",
+        # Repo-checkout fallback: this file lives at src/ableton_mcp/, so the
+        # canonical Remote Script is two levels up, at the repo root.
+        here.parent.parent / "AbletonMCP_Remote_Script" / "__init__.py",
     ]
     for p in candidates:
         if p.exists():
@@ -170,7 +172,8 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
     if args.sync_bundle:
-        repo = Path(__file__).resolve().parent.parent / "AbletonMCP_Remote_Script" / "__init__.py"
+        # This file lives at src/ableton_mcp/; the repo root is two levels up.
+        repo = Path(__file__).resolve().parent.parent.parent / "AbletonMCP_Remote_Script" / "__init__.py"
         dest = Path(__file__).resolve().parent / "bundled_ableton_remote_script" / "AbletonMCP_init.py"
         if not repo.exists():
             print(f"Missing {repo}")

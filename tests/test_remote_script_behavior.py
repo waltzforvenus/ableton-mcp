@@ -4,7 +4,7 @@
 Every test drives the real ``AbletonMCP._process_command`` dispatch through
 ``fake_ableton.RemoteScriptHarness.process`` and asserts on the response
 envelope and on the fake Live objects' mutated state. This level tests the
-Remote Script half in isolation — MCP_Server is deliberately not imported.
+Remote Script half in isolation — ableton_mcp is deliberately not imported.
 
 The device-parameter tests encode the fork behavior of that pair, which was
 broken from the 2026-08 upstream merge (`4878234`, duplicate method
