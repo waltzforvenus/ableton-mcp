@@ -1,0 +1,30 @@
+# CI for the telemetry-free ableton-mcp fork.
+#
+# Every guardrail in tests/ is advisory until something runs it on every push;
+# this workflow is what turns them into enforcement (docs/REFACTOR_PLAN.md §5).
+# The suite needs no Ableton and no network beyond in-process loopback, so a
+# plain ubuntu runner is enough.
+
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Run tests (no Ableton, no network)
+        run: uv run pytest
+
+      - name: Build package
+        run: uv build

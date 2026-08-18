@@ -1,0 +1,47 @@
+"""
+Guardrail: every console script of the installed ``ableton-mcp`` distribution
+must actually resolve. The `ableton-mcp` entry point has been dead since the
+telemetry-removal commit e57c257 swept `main()` out of the end of
+`MCP_Server/server.py` (docs/REFACTOR_PLAN.md §1 item 2) — pyproject still
+targets `MCP_Server.server:main`, so `ep.load()` raises. That test is a strict
+xfail: fixing the entry point (plan PR2) flips exactly this one marker.
+
+Runs anywhere — no Ableton, no network.
+"""
+
+import importlib.metadata
+
+import pytest
+
+
+DISTRIBUTION = "ableton-mcp"
+
+# Frozen contract (docs/REFACTOR_PLAN.md §2): these NAMES are referenced
+# verbatim by users' MCP client configs, README, Docker, and smithery.
+EXPECTED_CONSOLE_SCRIPTS = {"ableton-mcp", "ableton-mcp-install-script"}
+
+
+def _console_scripts():
+    """The distribution's console-script entry points, by name."""
+    dist = importlib.metadata.distribution(DISTRIBUTION)
+    return {ep.name: ep for ep in dist.entry_points if ep.group == "console_scripts"}
+
+
+def test_console_script_names_are_the_frozen_contract():
+    assert set(_console_scripts()) == EXPECTED_CONSOLE_SCRIPTS
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="`ableton-mcp` targets MCP_Server.server:main, but main() was "
+    "deleted along with the telemetry tools in commit e57c257; see "
+    "docs/REFACTOR_PLAN.md §1 item 2 (fix scheduled as PR2)",
+)
+def test_ableton_mcp_entry_point_loads():
+    target = _console_scripts()["ableton-mcp"].load()
+    assert callable(target)
+
+
+def test_install_script_entry_point_loads():
+    target = _console_scripts()["ableton-mcp-install-script"].load()
+    assert callable(target)
