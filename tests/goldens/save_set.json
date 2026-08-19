@@ -1,0 +1,50 @@
+{
+  "cases": [
+    {
+      "args": {},
+      "expect": "Saved the Live Set via song.save_set",
+      "name": "success_saved",
+      "wire": [
+        {
+          "command": "save_set",
+          "params": {},
+          "response": {
+            "method": "song.save_set",
+            "saved": true
+          }
+        }
+      ]
+    },
+    {
+      "args": {},
+      "expect": "Could NOT save \u2014 this Live build exposes no callable save through the Python API. Tried: ['song.save_set', 'song.save', 'app.save_document']. The set must be saved from Live's UI.",
+      "name": "success_not_saved",
+      "wire": [
+        {
+          "command": "save_set",
+          "params": {},
+          "response": {
+            "attempts": [
+              "song.save_set",
+              "song.save",
+              "app.save_document"
+            ],
+            "saved": false
+          }
+        }
+      ]
+    },
+    {
+      "args": {},
+      "expect": "Error saving set: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "save_set",
+          "params": {},
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

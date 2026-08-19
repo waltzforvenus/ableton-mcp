@@ -1,0 +1,40 @@
+# Release build for the telemetry-free ableton-mcp fork.
+#
+# Pushing a tag like v1.9.0 runs the full suite, builds the wheel and sdist,
+# and attaches them to a GitHub Release for that tag — the "publish" step of
+# docs/UPSTREAM.md §5. The only upload target is GitHub itself; nothing else
+# receives anything.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Run tests (no Ableton, no network)
+        run: uv run pytest
+
+      - name: Build package
+        run: uv build
+
+      - name: Create GitHub Release with the build attached
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true

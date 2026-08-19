@@ -1,0 +1,45 @@
+{
+  "cases": [
+    {
+      "args": {
+        "clip_index": 1,
+        "track_index": 0
+      },
+      "expect": "{\n  \"clip_index\": 1,\n  \"deleted_clip_name\": \"Old Take\",\n  \"had_clip\": true,\n  \"track_index\": 0\n}",
+      "name": "success",
+      "wire": [
+        {
+          "command": "delete_clip",
+          "params": {
+            "clip_index": 1,
+            "track_index": 0
+          },
+          "response": {
+            "clip_index": 1,
+            "deleted_clip_name": "Old Take",
+            "had_clip": true,
+            "track_index": 0
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "clip_index": 1,
+        "track_index": 0
+      },
+      "expect": "Error deleting clip: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "delete_clip",
+          "params": {
+            "clip_index": 1,
+            "track_index": 0
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

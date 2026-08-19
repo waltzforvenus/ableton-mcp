@@ -11,8 +11,8 @@ from pathlib import Path
 
 logger = logging.getLogger("ableton-mcp-remote-script")
 
-# Must match SCRIPT_VERSION in AbletonMCP_Remote_Script/__init__.py
-EXPECTED_REMOTE_SCRIPT_VERSION = "1.7.0"
+# Must match SCRIPT_VERSION in remote_script/__init__.py
+EXPECTED_REMOTE_SCRIPT_VERSION = "1.8.0"
 REMOTE_SCRIPT_FOLDER_NAME = "AbletonMCP"
 
 
@@ -23,8 +23,10 @@ def bundled_remote_script_init() -> Path:
     """
     here = Path(__file__).resolve().parent
     candidates = [
-        here / "bundled_ableton_remote_script" / "AbletonMCP_init.py",
-        here.parent / "AbletonMCP_Remote_Script" / "__init__.py",
+        here / "bundled_ableton_remote_script" / "remote_script_init.py",
+        # Repo-checkout fallback: this file lives at src/ableton_mcp/, so the
+        # canonical Remote Script is two levels up, at the repo root.
+        here.parent.parent / "remote_script" / "__init__.py",
     ]
     for p in candidates:
         if p.exists():
@@ -163,15 +165,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--sync-bundle",
         action="store_true",
-        help="Dev only: copy repo AbletonMCP_Remote_Script into package bundle",
+        help="Dev only: copy repo remote_script into package bundle",
     )
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
     if args.sync_bundle:
-        repo = Path(__file__).resolve().parent.parent / "AbletonMCP_Remote_Script" / "__init__.py"
-        dest = Path(__file__).resolve().parent / "bundled_ableton_remote_script" / "AbletonMCP_init.py"
+        # This file lives at src/ableton_mcp/; the repo root is two levels up.
+        repo = Path(__file__).resolve().parent.parent.parent / "remote_script" / "__init__.py"
+        dest = Path(__file__).resolve().parent / "bundled_ableton_remote_script" / "remote_script_init.py"
         if not repo.exists():
             print(f"Missing {repo}")
             return 1

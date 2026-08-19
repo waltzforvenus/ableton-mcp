@@ -1,0 +1,42 @@
+{
+  "cases": [
+    {
+      "args": {
+        "clip_index": 0,
+        "track_index": 0
+      },
+      "expect": "Started playing clip at track 0, slot 0",
+      "name": "success",
+      "wire": [
+        {
+          "command": "fire_clip",
+          "params": {
+            "clip_index": 0,
+            "track_index": 0
+          },
+          "response": {
+            "fired": true
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "clip_index": 0,
+        "track_index": 0
+      },
+      "expect": "Error firing clip: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "fire_clip",
+          "params": {
+            "clip_index": 0,
+            "track_index": 0
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "cases": [
+    {
+      "args": {
+        "track_index": 2
+      },
+      "expect": "{\n  \"available_input_routing_types\": [\n    \"No Input\",\n    \"Ext. In\"\n  ],\n  \"available_output_routing_types\": [\n    \"Main\",\n    \"Sends Only\",\n    \"Bus\"\n  ],\n  \"input_routing_type\": \"No Input\",\n  \"output_routing_type\": \"Main\",\n  \"track_name\": \"Bass\"\n}",
+      "name": "success",
+      "wire": [
+        {
+          "command": "get_track_routing",
+          "params": {
+            "track_index": 2
+          },
+          "response": {
+            "available_input_routing_types": [
+              "No Input",
+              "Ext. In"
+            ],
+            "available_output_routing_types": [
+              "Main",
+              "Sends Only",
+              "Bus"
+            ],
+            "input_routing_type": "No Input",
+            "output_routing_type": "Main",
+            "track_name": "Bass"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "track_index": 2
+      },
+      "expect": "Error getting track routing: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "get_track_routing",
+          "params": {
+            "track_index": 2
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

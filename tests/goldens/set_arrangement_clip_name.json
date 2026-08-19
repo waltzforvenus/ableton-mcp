@@ -1,0 +1,46 @@
+{
+  "cases": [
+    {
+      "args": {
+        "clip_index": 2,
+        "name": "Verse",
+        "track_index": 0
+      },
+      "expect": "Renamed arrangement clip at track 0, index 2 to 'Verse'",
+      "name": "success",
+      "wire": [
+        {
+          "command": "set_arrangement_clip_name",
+          "params": {
+            "clip_index": 2,
+            "name": "Verse",
+            "track_index": 0
+          },
+          "response": {
+            "name": "Verse"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "clip_index": 2,
+        "name": "Verse",
+        "track_index": 0
+      },
+      "expect": "Error setting arrangement clip name: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "set_arrangement_clip_name",
+          "params": {
+            "clip_index": 2,
+            "name": "Verse",
+            "track_index": 0
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

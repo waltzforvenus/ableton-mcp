@@ -1,0 +1,38 @@
+{
+  "cases": [
+    {
+      "args": {
+        "tempo": 98.5
+      },
+      "expect": "Set tempo to 98.5 BPM",
+      "name": "success",
+      "wire": [
+        {
+          "command": "set_tempo",
+          "params": {
+            "tempo": 98.5
+          },
+          "response": {
+            "tempo": 98.5
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "tempo": 98.5
+      },
+      "expect": "Error setting tempo: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "set_tempo",
+          "params": {
+            "tempo": 98.5
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

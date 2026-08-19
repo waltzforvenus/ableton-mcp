@@ -1,0 +1,43 @@
+{
+  "cases": [
+    {
+      "args": {},
+      "expect": "{\n  \"signature_denominator\": 4,\n  \"signature_numerator\": 4,\n  \"tempo\": 120.0,\n  \"track_count\": 2,\n  \"tracks\": [\n    {\n      \"index\": 0,\n      \"name\": \"1-MIDI\"\n    },\n    {\n      \"index\": 1,\n      \"name\": \"2-Audio\"\n    }\n  ]\n}",
+      "name": "success",
+      "wire": [
+        {
+          "command": "get_session_info",
+          "params": {},
+          "response": {
+            "signature_denominator": 4,
+            "signature_numerator": 4,
+            "tempo": 120.0,
+            "track_count": 2,
+            "tracks": [
+              {
+                "index": 0,
+                "name": "1-MIDI"
+              },
+              {
+                "index": 1,
+                "name": "2-Audio"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "args": {},
+      "expect": "Error getting session info: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "get_session_info",
+          "params": {},
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

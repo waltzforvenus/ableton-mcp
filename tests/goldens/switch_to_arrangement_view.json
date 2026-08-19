@@ -1,0 +1,30 @@
+{
+  "cases": [
+    {
+      "args": {},
+      "expect": "Switched to Arrangement view",
+      "name": "success",
+      "wire": [
+        {
+          "command": "switch_to_arrangement_view",
+          "params": {},
+          "response": {
+            "view": "Arranger"
+          }
+        }
+      ]
+    },
+    {
+      "args": {},
+      "expect": "Error switching to arrangement view: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "switch_to_arrangement_view",
+          "params": {},
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "cases": [
+    {
+      "args": {},
+      "expect": "Created return track 'A-Reverb' at return index 0",
+      "name": "success",
+      "wire": [
+        {
+          "command": "create_return_track",
+          "params": {},
+          "response": {
+            "name": "A-Reverb",
+            "return_index": 0
+          }
+        }
+      ]
+    },
+    {
+      "args": {},
+      "expect": "Error creating return track: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "create_return_track",
+          "params": {},
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

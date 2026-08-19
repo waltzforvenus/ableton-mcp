@@ -1,0 +1,46 @@
+{
+  "cases": [
+    {
+      "args": {
+        "target": "Bus",
+        "track_index": 2
+      },
+      "expect": "Set 'Bass' output_routing_type to Bus",
+      "name": "success",
+      "wire": [
+        {
+          "command": "set_track_routing",
+          "params": {
+            "field": "output_routing_type",
+            "target": "Bus",
+            "track_index": 2
+          },
+          "response": {
+            "field": "output_routing_type",
+            "track_name": "Bass",
+            "value": "Bus"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "target": "Bus",
+        "track_index": 2
+      },
+      "expect": "Error setting track routing: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "set_track_routing",
+          "params": {
+            "field": "output_routing_type",
+            "target": "Bus",
+            "track_index": 2
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

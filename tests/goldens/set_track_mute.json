@@ -1,0 +1,64 @@
+{
+  "cases": [
+    {
+      "args": {
+        "mute": true,
+        "track_index": 0
+      },
+      "expect": "Track 0 ('Drums') muted",
+      "name": "success_muted",
+      "wire": [
+        {
+          "command": "set_track_mute",
+          "params": {
+            "track_index": 0,
+            "value": true
+          },
+          "response": {
+            "mute": true,
+            "track_name": "Drums"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "mute": false,
+        "track_index": 0
+      },
+      "expect": "Track 0 ('Drums') unmuted",
+      "name": "success_unmuted",
+      "wire": [
+        {
+          "command": "set_track_mute",
+          "params": {
+            "track_index": 0,
+            "value": false
+          },
+          "response": {
+            "mute": false,
+            "track_name": "Drums"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "mute": true,
+        "track_index": 0
+      },
+      "expect": "Error setting track mute: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "set_track_mute",
+          "params": {
+            "track_index": 0,
+            "value": true
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

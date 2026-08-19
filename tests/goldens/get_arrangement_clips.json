@@ -1,0 +1,57 @@
+{
+  "cases": [
+    {
+      "args": {
+        "track_index": 0
+      },
+      "expect": "{\n  \"clip_count\": 2,\n  \"clips\": [\n    {\n      \"end_time\": 8.0,\n      \"index\": 0,\n      \"length\": 8.0,\n      \"name\": \"Intro\",\n      \"start_time\": 0.0,\n      \"type\": \"midi\"\n    },\n    {\n      \"end_time\": 24.0,\n      \"index\": 1,\n      \"length\": 16.0,\n      \"name\": \"Verse\",\n      \"start_time\": 8.0,\n      \"type\": \"midi\"\n    }\n  ],\n  \"track_name\": \"Drums\"\n}",
+      "name": "success",
+      "wire": [
+        {
+          "command": "get_arrangement_clips",
+          "params": {
+            "track_index": 0
+          },
+          "response": {
+            "clip_count": 2,
+            "clips": [
+              {
+                "end_time": 8.0,
+                "index": 0,
+                "length": 8.0,
+                "name": "Intro",
+                "start_time": 0.0,
+                "type": "midi"
+              },
+              {
+                "end_time": 24.0,
+                "index": 1,
+                "length": 16.0,
+                "name": "Verse",
+                "start_time": 8.0,
+                "type": "midi"
+              }
+            ],
+            "track_name": "Drums"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "track_index": 0
+      },
+      "expect": "Error getting arrangement clips: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "get_arrangement_clips",
+          "params": {
+            "track_index": 0
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

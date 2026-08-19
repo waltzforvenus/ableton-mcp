@@ -1,0 +1,64 @@
+{
+  "cases": [
+    {
+      "args": {
+        "bars": 2,
+        "metronome": true
+      },
+      "expect": "Count-in set to 2 Bars; metronome on",
+      "name": "success_metronome_on",
+      "wire": [
+        {
+          "command": "set_count_in",
+          "params": {
+            "bars": 2,
+            "metronome": true
+          },
+          "response": {
+            "count_in": "2 Bars",
+            "metronome": true
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "bars": 0,
+        "metronome": false
+      },
+      "expect": "Count-in set to None; metronome off",
+      "name": "success_metronome_off",
+      "wire": [
+        {
+          "command": "set_count_in",
+          "params": {
+            "bars": 0,
+            "metronome": false
+          },
+          "response": {
+            "count_in": "None",
+            "metronome": false
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "bars": 2,
+        "metronome": true
+      },
+      "expect": "Error setting count-in: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "set_count_in",
+          "params": {
+            "bars": 2,
+            "metronome": true
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

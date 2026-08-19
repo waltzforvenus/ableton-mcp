@@ -1,0 +1,47 @@
+{
+  "cases": [
+    {
+      "args": {
+        "clip_index": 0,
+        "path": "/tmp/loop.wav",
+        "track_index": 1
+      },
+      "expect": "Created audio clip 'loop' at track 1, slot 0 (length 16.0 beats)",
+      "name": "success",
+      "wire": [
+        {
+          "command": "create_audio_clip",
+          "params": {
+            "clip_index": 0,
+            "path": "/tmp/loop.wav",
+            "track_index": 1
+          },
+          "response": {
+            "length": 16.0,
+            "name": "loop"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "clip_index": 0,
+        "path": "/tmp/loop.wav",
+        "track_index": 1
+      },
+      "expect": "Error creating audio clip: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "create_audio_clip",
+          "params": {
+            "clip_index": 0,
+            "path": "/tmp/loop.wav",
+            "track_index": 1
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

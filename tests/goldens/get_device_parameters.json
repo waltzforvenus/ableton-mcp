@@ -1,0 +1,146 @@
+{
+  "cases": [
+    {
+      "args": {
+        "device_index": 1,
+        "track_index": 0
+      },
+      "expect": "{\n  \"device_name\": \"Reverb\",\n  \"parameters\": [\n    {\n      \"display_value\": \"100 %\",\n      \"index\": 0,\n      \"max\": 1.0,\n      \"min\": 0.0,\n      \"name\": \"Dry/Wet\",\n      \"value\": 1.0\n    },\n    {\n      \"display_value\": \"1.20 s\",\n      \"index\": 1,\n      \"max\": 60000.0,\n      \"min\": 100.0,\n      \"name\": \"Decay Time\",\n      \"value\": 1200.0\n    }\n  ]\n}",
+      "name": "success",
+      "wire": [
+        {
+          "command": "get_device_parameters",
+          "params": {
+            "device_index": 1,
+            "track_index": 0,
+            "track_type": "regular"
+          },
+          "response": {
+            "device_name": "Reverb",
+            "parameters": [
+              {
+                "display_value": "100 %",
+                "index": 0,
+                "max": 1.0,
+                "min": 0.0,
+                "name": "Dry/Wet",
+                "value": 1.0
+              },
+              {
+                "display_value": "1.20 s",
+                "index": 1,
+                "max": 60000.0,
+                "min": 100.0,
+                "name": "Decay Time",
+                "value": 1200.0
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "device_index": 0,
+        "track_index": 0,
+        "track_type": "return"
+      },
+      "expect": "{\n  \"device_name\": \"Delay\",\n  \"parameters\": [\n    {\n      \"display_value\": \"35 %\",\n      \"index\": 0,\n      \"max\": 0.95,\n      \"min\": 0.0,\n      \"name\": \"Feedback\",\n      \"value\": 0.35\n    }\n  ]\n}",
+      "name": "success_return_track",
+      "wire": [
+        {
+          "command": "get_device_parameters",
+          "params": {
+            "device_index": 0,
+            "track_index": 0,
+            "track_type": "return"
+          },
+          "response": {
+            "device_name": "Delay",
+            "parameters": [
+              {
+                "display_value": "35 %",
+                "index": 0,
+                "max": 0.95,
+                "min": 0.0,
+                "name": "Feedback",
+                "value": 0.35
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "device_index": 1,
+        "track_index": 0
+      },
+      "expect": "Ableton Remote Script v1.7.0 is older than v1.8.0, which 'get_device_parameters' requires. Run `ableton-mcp-install-script` to update the User Remote Script, then restart Ableton Live.",
+      "name": "gated_1_7_0_min_version_blocked",
+      "script_info": {
+        "capabilities": [
+          "get_session_info",
+          "get_track_info",
+          "get_script_info",
+          "get_clip_notes",
+          "get_device_parameters",
+          "get_session_snapshot",
+          "set_device_parameter",
+          "create_midi_track",
+          "create_audio_track",
+          "create_clip",
+          "create_audio_clip",
+          "add_notes_to_clip",
+          "load_instrument_or_effect",
+          "get_arrangement_clips",
+          "duplicate_session_clip_to_arrangement",
+          "create_locator",
+          "delete_clip",
+          "clear_notes_from_clip",
+          "get_track_routing",
+          "delete_track",
+          "delete_device",
+          "set_track_volume",
+          "set_track_pan",
+          "set_track_mute",
+          "create_return_track",
+          "set_track_arm",
+          "set_track_monitoring",
+          "save_set",
+          "set_track_send",
+          "set_count_in",
+          "back_to_arrangement",
+          "set_track_routing",
+          "set_clip_gain",
+          "set_arrangement_clip_name",
+          "switch_to_arrangement_view",
+          "set_current_song_time",
+          "get_browser_tree",
+          "get_browser_items_at_path"
+        ],
+        "script_version": "1.7.0"
+      },
+      "wire": []
+    },
+    {
+      "args": {
+        "device_index": 1,
+        "track_index": 0
+      },
+      "expect": "Error getting device parameters: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "get_device_parameters",
+          "params": {
+            "device_index": 1,
+            "track_index": 0,
+            "track_type": "regular"
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

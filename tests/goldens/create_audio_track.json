@@ -1,0 +1,35 @@
+{
+  "cases": [
+    {
+      "args": {},
+      "expect": "Created new audio track: 4-Audio",
+      "name": "success",
+      "wire": [
+        {
+          "command": "create_audio_track",
+          "params": {
+            "index": -1
+          },
+          "response": {
+            "index": 3,
+            "name": "4-Audio"
+          }
+        }
+      ]
+    },
+    {
+      "args": {},
+      "expect": "Error creating audio track: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "create_audio_track",
+          "params": {
+            "index": -1
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

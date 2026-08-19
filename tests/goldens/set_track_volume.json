@@ -1,0 +1,125 @@
+{
+  "cases": [
+    {
+      "args": {
+        "track_index": 0,
+        "value": 0.85
+      },
+      "expect": "Set 'Drums' volume to 0.0 dB",
+      "name": "success",
+      "wire": [
+        {
+          "command": "set_track_volume",
+          "params": {
+            "track_index": 0,
+            "track_type": "regular",
+            "value": 0.85
+          },
+          "response": {
+            "display_value": "0.0 dB",
+            "track_name": "Drums",
+            "value": 0.85
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "track_index": 0,
+        "value": 0.85
+      },
+      "expect": "Ableton Remote Script missing capability 'set_track_volume' (loaded='legacy', expected=1.8.0). Run `ableton-mcp-install-script` to update the User Remote Script, then restart Ableton Live.",
+      "name": "gated_legacy_script_blocked",
+      "script_info": {
+        "capabilities": [],
+        "script_version": "legacy"
+      },
+      "wire": []
+    },
+    {
+      "args": {
+        "track_index": 0,
+        "value": 0.85
+      },
+      "expect": "Set 'Drums' volume to 0.0 dB",
+      "name": "gated_1_7_0_passes",
+      "script_info": {
+        "capabilities": [
+          "get_session_info",
+          "get_track_info",
+          "get_script_info",
+          "get_clip_notes",
+          "get_device_parameters",
+          "get_session_snapshot",
+          "set_device_parameter",
+          "create_midi_track",
+          "create_audio_track",
+          "create_clip",
+          "create_audio_clip",
+          "add_notes_to_clip",
+          "load_instrument_or_effect",
+          "get_arrangement_clips",
+          "duplicate_session_clip_to_arrangement",
+          "create_locator",
+          "delete_clip",
+          "clear_notes_from_clip",
+          "get_track_routing",
+          "delete_track",
+          "delete_device",
+          "set_track_volume",
+          "set_track_pan",
+          "set_track_mute",
+          "create_return_track",
+          "set_track_arm",
+          "set_track_monitoring",
+          "save_set",
+          "set_track_send",
+          "set_count_in",
+          "back_to_arrangement",
+          "set_track_routing",
+          "set_clip_gain",
+          "set_arrangement_clip_name",
+          "switch_to_arrangement_view",
+          "set_current_song_time",
+          "get_browser_tree",
+          "get_browser_items_at_path"
+        ],
+        "script_version": "1.7.0"
+      },
+      "wire": [
+        {
+          "command": "set_track_volume",
+          "params": {
+            "track_index": 0,
+            "track_type": "regular",
+            "value": 0.85
+          },
+          "response": {
+            "display_value": "0.0 dB",
+            "track_name": "Drums",
+            "value": 0.85
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "track_index": 0,
+        "value": 0.85
+      },
+      "expect": "Error setting track volume: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "set_track_volume",
+          "params": {
+            "track_index": 0,
+            "track_type": "regular",
+            "value": 0.85
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

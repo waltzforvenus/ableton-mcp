@@ -1,0 +1,38 @@
+{
+  "cases": [
+    {
+      "args": {
+        "time": 8.0
+      },
+      "expect": "Playhead moved to beat 8.0",
+      "name": "success",
+      "wire": [
+        {
+          "command": "set_current_song_time",
+          "params": {
+            "time": 8.0
+          },
+          "response": {
+            "current_song_time": 8.0
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "time": 8.0
+      },
+      "expect": "Error setting arrangement time: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "set_current_song_time",
+          "params": {
+            "time": 8.0
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}
