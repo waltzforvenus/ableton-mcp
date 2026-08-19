@@ -19,7 +19,15 @@ from .remote_script_install import EXPECTED_REMOTE_SCRIPT_VERSION
 
 logger = logging.getLogger("AbletonMCPServer")
 
-# Commands present on Remote Scripts before get_script_info existed
+# Commands every AbletonMCP Remote Script that has ever existed can serve —
+# the dispatch surface of the oldest script, from before get_script_info
+# existed. The set plays two roles in the gate: it is the assumed capability
+# list for legacy handshakes (scripts too old to answer get_script_info), and
+# it is a FLOOR for every script version — a command in this set is always
+# considered available, because historical scripts did not advertise
+# everything they dispatched (1.7.0 dispatched load_browser_item but never
+# listed it in SCRIPT_CAPABILITIES), so the advertised list under-reports and
+# gating on it alone would falsely block commands that work.
 LEGACY_CAPABILITIES = frozenset({
     "get_session_info",
     "get_track_info",
@@ -36,6 +44,11 @@ LEGACY_CAPABILITIES = frozenset({
     "load_instrument_or_effect",
     "get_browser_tree",
     "get_browser_items_at_path",
+    # Dispatched by every historical script (it is the wire command all three
+    # load_* tools actually send) but only advertised in SCRIPT_CAPABILITIES
+    # from 1.8.0 — without the floor, gating it would falsely block a 1.7.0
+    # user from a command their script serves fine.
+    "load_browser_item",
 })
 
 
@@ -133,8 +146,14 @@ class ScriptHandshake:
         return info
 
     def _has_capability(self, info: Dict[str, Any], name: str) -> bool:
+        # The floor applies to EVERY script version, not just legacy
+        # handshakes: every script that has ever existed dispatches these
+        # commands, but not every version advertises them all (see the
+        # LEGACY_CAPABILITIES comment), so "advertised" under-reports.
+        if name in LEGACY_CAPABILITIES:
+            return True
         if info.get("script_version") in (None, "legacy"):
-            return name in LEGACY_CAPABILITIES
+            return False
         caps = info.get("capabilities")
         if isinstance(caps, list):
             return name in caps

@@ -198,6 +198,35 @@ def test_every_sent_command_is_advertised_or_legacy():
     )
 
 
+def test_every_registry_row_is_gated_unless_floor_or_probe():
+    # Plan PR10 pins the gated set: every registry row carries gated=True
+    # unless its command sits in the LEGACY_CAPABILITIES floor (the floor
+    # makes the gate always pass, so gating it is a semantic no-op) or is
+    # get_script_info (the handshake's own probe — the gate answers FROM its
+    # reply and cannot gate it). A future command added without gated=True
+    # fails here instead of silently shipping raw "Unknown command" socket
+    # errors to users on old Remote Scripts.
+    expected_ungated = (set(LEGACY_CAPABILITIES) | {"get_script_info"}) & set(COMMANDS)
+    ungated = {name for name, spec in COMMANDS.items() if not spec.gated}
+    assert ungated == expected_ungated, (
+        f"ungated rows outside the LEGACY floor (missing gated=True): "
+        f"{sorted(ungated - expected_ungated)}; "
+        f"floor rows needlessly gated: {sorted(expected_ungated - ungated)}"
+    )
+
+
+def test_min_version_floors_are_exactly_the_repaired_pair():
+    # The 1.8.0 min-version floor exists for the two commands whose 1.7.0
+    # handlers were broken-but-advertised (plan §4); nothing else needs one.
+    floored = {name: spec.min_script_version
+               for name, spec in COMMANDS.items()
+               if spec.min_script_version is not None}
+    assert floored == {
+        "get_device_parameters": "1.8.0",
+        "set_device_parameter": "1.8.0",
+    }
+
+
 def test_long_running_commands_have_timeout_headroom():
     # The server's socket timeout must outlast the Remote Script's own queue
     # timeout by a margin, or the server gives up while Live is still working

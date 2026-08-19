@@ -43,13 +43,19 @@ def _normalize(obj):
 
 def record_case(tool, case):
     """Run one case against the current code and return the golden entry."""
-    entry = _normalize({
+    payload = {
         "name": case["name"],
         "args": case["args"],
         "wire": case["wire"],
-    })
+    }
+    # Optional handshake seed (plan PR10's gated-path cases): recorded into
+    # the golden so replay rebuilds the identical seeded ScriptHandshake.
+    if "script_info" in case:
+        payload["script_info"] = case["script_info"]
+    entry = _normalize(payload)
     fake = FakeWireClient(entry["wire"])
-    expect = call_tool(tool, entry["args"], fake)
+    expect = call_tool(tool, entry["args"], fake,
+                       script_info=entry.get("script_info"))
     fake.assert_consumed()
     if not isinstance(expect, str):
         raise SystemExit(

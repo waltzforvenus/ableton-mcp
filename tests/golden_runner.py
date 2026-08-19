@@ -9,13 +9,18 @@ Two pieces:
   responses. This freezes the wire protocol: which commands, with which
   params, in which order.
 
-- ``call_tool(name, args, fake)`` — migration adapter #1 from the plan, in
-  its post-refactor (PR8) shape: it builds a ``Deps`` around the fake client
-  and an all-capabilities handshake, and hands the tool a two-line stub ctx.
-  No module attribute is swapped and nothing outlives a call — every
-  ``call_tool`` gets a fresh ``ScriptHandshake``, so get_remote_script_info's
-  real handshake cannot leak state into later cases the way the old
-  module-global cache could.
+- ``call_tool(name, args, fake, script_info=None)`` — migration adapter #1
+  from the plan, in its post-refactor (PR8) shape: it builds a ``Deps``
+  around the fake client and hands the tool a two-line stub ctx. Without
+  ``script_info`` the handshake is the all-capabilities stub, so gates pass
+  and the tool body's wire exchange is what gets frozen. With ``script_info``
+  (a case's optional handshake seed — plan PR10's gated-path cases) it is a
+  REAL ``ScriptHandshake`` seeded with exactly that dict, so the registry
+  gate itself runs and its verdicts (the installer messages, or a pass
+  against an old-but-capable script) are what get frozen. No module
+  attribute is swapped and nothing outlives a call — every ``call_tool``
+  gets a fresh handshake, so get_remote_script_info's real handshake cannot
+  leak state into later cases the way the old module-global cache could.
 """
 
 # `import ableton_mcp.tools` resolves through the editable install (uv sync)
@@ -128,15 +133,28 @@ def make_ctx(deps):
     return SimpleNamespace(request_context=SimpleNamespace(lifespan_context=deps))
 
 
-def call_tool(name, args, fake):
+def call_tool(name, args, fake, script_info=None):
     """Call the MCP tool ``name`` with ``args`` against ``fake``, isolated.
 
-    Every call builds a fresh Deps (fake client + fresh all-capabilities
-    handshake + a real AbletonService over both), so every call sees the
-    same world regardless of what ran before it.
+    Every call builds a fresh Deps (fake client + fresh handshake + a real
+    AbletonService over both), so every call sees the same world regardless
+    of what ran before it.
+
+    ``script_info`` (optional) seeds a REAL ``ScriptHandshake`` through its
+    public API — ``perform`` against a canned get_script_info reply carrying
+    that dict — instead of using the always-passing stub. The seeding send is
+    NOT the fake wire client, so the case's scripted exchange stays for the
+    tool itself; and because the seed caches a successful handshake, the
+    gate answers from it without a lazy get_script_info of its own. (A
+    ``{"script_version": "legacy", ...}`` seed caches the same state
+    ``require`` reads after a real "Unknown command" legacy handshake.)
     """
     tool = getattr(tools, name)
-    handshake = AllCapabilitiesHandshake()
+    if script_info is None:
+        handshake = AllCapabilitiesHandshake()
+    else:
+        handshake = ScriptHandshake()
+        handshake.perform(lambda command_type, params=None: dict(script_info))
     deps = Deps(client=fake, handshake=handshake,
                 service=AbletonService(fake, handshake))
     return tool(make_ctx(deps), **args)

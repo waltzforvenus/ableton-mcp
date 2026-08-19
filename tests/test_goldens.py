@@ -53,7 +53,11 @@ RECORDED = _load_recorded_cases()
 )
 def test_golden_replay(tool, case):
     fake = FakeWireClient(case["wire"])
-    got = call_tool(tool, case["args"], fake)
+    # Gated-path cases (plan PR10) carry a script_info handshake seed; the
+    # runner then uses a real seeded ScriptHandshake instead of the
+    # all-capabilities stub, so the registry gate itself is under replay.
+    got = call_tool(tool, case["args"], fake,
+                    script_info=case.get("script_info"))
 
     expect = case["expect"]
     assert isinstance(got, str)
