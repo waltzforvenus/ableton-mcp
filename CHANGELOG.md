@@ -12,6 +12,13 @@ separately, and a script change means **re-run
 Ships Remote Script **1.8.0**. **Re-run `ableton-mcp-install-script` and
 restart Live after upgrading** — the repairs below live in the script half.
 
+### Added (user-facing)
+
+- Installable builds without a local toolchain: every CI run uploads the
+  wheel + sdist as an `ableton-mcp-dist` workflow artifact, and every `v*`
+  tag gets a GitHub Release with the same build attached. See the README's
+  "Installing from CI builds and releases" section.
+
 ### Fixed (user-facing)
 
 - `get_device_parameters` and `set_device_parameter` work again. They had
@@ -47,6 +54,10 @@ restart Live after upgrading** — the repairs below live in the script half.
 
 ### Internal
 
+- CI now publishes its build as a workflow artifact, and a tag-triggered
+  Release workflow (`.github/workflows/release.yml`) attaches the wheel and
+  sdist to GitHub Releases — the publish step of the release checklist in
+  `docs/UPSTREAM.md`.
 - The server half restructured from the `MCP_Server/server.py` monolith into
   the `src/ableton_mcp` package (src layout, PEP 8 name): a dependency-
   injection composition root (`app.py` — no module globals, no import-time

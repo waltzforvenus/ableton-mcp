@@ -303,6 +303,48 @@ uv run ableton-mcp
 uv run pytest        # tests run without Ableton and without network
 ```
 
+### Installing from CI builds and releases
+
+Every push runs the [CI workflow](.github/workflows/ci.yml): the full test
+suite (no Ableton, no network), then a package build whose wheel and sdist
+are uploaded as a workflow artifact. Every tag starting with `v` runs the
+[Release workflow](.github/workflows/release.yml), which re-runs the suite
+and attaches the same build to a GitHub Release.
+
+**From a release (stable, no login needed):**
+
+1. Open the [Releases page](https://github.com/waltzforvenus/ableton-mcp/releases)
+   and download the `.whl` from the release you want.
+2. Install or run it:
+
+```bash
+# install the command onto your PATH
+uv tool install ./ableton_mcp-*.whl        # or: pip install ./ableton_mcp-*.whl
+
+# or run it without installing
+uvx --from ./ableton_mcp-*.whl ableton-mcp
+```
+
+**From a CI run (any branch or PR, before it's released):**
+
+1. Open the [Actions tab](https://github.com/waltzforvenus/ableton-mcp/actions),
+   pick the run for the commit you want, and download the
+   **`ableton-mcp-dist`** artifact from the run's summary page (downloading
+   artifacts requires being signed in to GitHub; artifacts expire after
+   90 days — releases don't).
+2. Unzip it and install the `.whl` exactly as above.
+
+A few notes that apply to every install method:
+
+- The wheel is pure Python — there are no compiled platform binaries, so the
+  same file works on macOS, Windows, and Linux (Python ≥ 3.10).
+- The console-script names never change: your MCP client config points at
+  `ableton-mcp` whether it came from `uvx --from git+…`, a release wheel, or
+  a CI artifact.
+- The wheel bundles the matching Remote Script. After installing or
+  upgrading, run `ableton-mcp-install-script` and restart Ableton so the
+  Live side matches — the version handshake will tell you if you forget.
+
 ---
 
 ## Usage

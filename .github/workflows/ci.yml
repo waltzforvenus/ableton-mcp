@@ -28,3 +28,12 @@ jobs:
 
       - name: Build package
         run: uv build
+
+      # Every run leaves an installable build behind, so trying a branch never
+      # requires a local Python toolchain: Actions tab -> run -> Artifacts.
+      - name: Upload built package (wheel + sdist)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ableton-mcp-dist
+          path: dist/*
+          if-no-files-found: error

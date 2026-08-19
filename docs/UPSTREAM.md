@@ -190,7 +190,10 @@ policy (plan §4):
 3. Write the CHANGELOG entry. If the Remote Script version changed, the
    entry must tell users to re-run `ableton-mcp-install-script` and restart
    Live — see the 1.8.0 entry for the shape.
-4. Tag the release; publish.
+4. Tag the release (`git tag vX.Y.Z && git push origin vX.Y.Z`). The
+   Release workflow (`.github/workflows/release.yml`) re-runs the suite,
+   builds, and attaches the wheel and sdist to the GitHub Release
+   automatically — that is the publish step.
 5. Docker / smithery images build **from the tag, not the branch**.
 6. Announce the reinstall requirement where users will see it. The
    handshake's version-mismatch warning is a server-side log line that users
