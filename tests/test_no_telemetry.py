@@ -23,7 +23,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCANNED_DIRS = (
     REPO_ROOT / "src" / "ableton_mcp",
-    REPO_ROOT / "AbletonMCP_Remote_Script",
+    REPO_ROOT / "remote_script",
 )
 
 # CLAUDE.md: grep -ri "telemetry|supabase|analytics|dataset|trajectory"
@@ -43,8 +43,8 @@ FORBIDDEN_SUBMODULES = {"urllib.request", "http.client"}
 # (enforced by test_bundle_identity), so it carries the same import.
 SOCKET_IMPORT_ALLOWLIST = {
     "src/ableton_mcp/connection.py",
-    "AbletonMCP_Remote_Script/__init__.py",
-    "src/ableton_mcp/bundled_ableton_remote_script/AbletonMCP_init.py",
+    "remote_script/__init__.py",
+    "src/ableton_mcp/bundled_ableton_remote_script/remote_script_init.py",
 }
 
 

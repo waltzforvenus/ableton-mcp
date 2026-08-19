@@ -1,7 +1,7 @@
 """
 Guardrail: the bundled Remote Script that `ableton-mcp-install-script`
 actually installs into Live must be byte-identical to the canonical
-`AbletonMCP_Remote_Script/__init__.py`.
+`remote_script/__init__.py`.
 
 The two drifted once before this fork's history began — the bundled copy
 silently reverted the loopback bind and dropped every fork-added tool — and
@@ -16,9 +16,9 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-CANONICAL = REPO_ROOT / "AbletonMCP_Remote_Script" / "__init__.py"
+CANONICAL = REPO_ROOT / "remote_script" / "__init__.py"
 BUNDLED = (
-    REPO_ROOT / "src" / "ableton_mcp" / "bundled_ableton_remote_script" / "AbletonMCP_init.py"
+    REPO_ROOT / "src" / "ableton_mcp" / "bundled_ableton_remote_script" / "remote_script_init.py"
 )
 
 
@@ -29,7 +29,7 @@ def test_bundled_remote_script_is_byte_identical_to_canonical():
         raise AssertionError(
             "Bundled Remote Script differs from the canonical one. Regenerate "
             "it — never edit it by hand:\n"
-            "  cp AbletonMCP_Remote_Script/__init__.py "
-            "src/ableton_mcp/bundled_ableton_remote_script/AbletonMCP_init.py\n"
+            "  cp remote_script/__init__.py "
+            "src/ableton_mcp/bundled_ableton_remote_script/remote_script_init.py\n"
             "(or: uv run ableton-mcp-install-script --sync-bundle)"
         )

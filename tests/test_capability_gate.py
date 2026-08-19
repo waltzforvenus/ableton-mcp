@@ -47,7 +47,9 @@ from ableton_mcp.remote_script_install import EXPECTED_REMOTE_SCRIPT_VERSION
 
 # The REAL SCRIPT_CAPABILITIES list of the 1.7.0 Remote Script, verbatim from
 # git history (commit 99ab851, the last pre-refactor state:
-# `git show 99ab851:AbletonMCP_Remote_Script/__init__.py`). Note what it does
+# `git show 99ab851:AbletonMCP_Remote_Script/__init__.py` — the directory was
+# later renamed to `remote_script/`, but paths inside old commits keep the old
+# name). Note what it does
 # NOT contain: 1.7.0 *dispatched* load_browser_item, set_tempo,
 # set_track_name, set_clip_name, fire_clip, stop_clip, start_playback and
 # stop_playback without advertising them — which is why the gate treats
@@ -320,7 +322,7 @@ def _current_advertised_capabilities():
     the script derives it (advertise-flagged COMMANDS rows), read by AST —
     the script imports _Framework and cannot be imported outside Live."""
     remote_script = (Path(__file__).resolve().parent.parent
-                     / "AbletonMCP_Remote_Script" / "__init__.py")
+                     / "remote_script" / "__init__.py")
     tree = ast.parse(remote_script.read_text(encoding="utf-8"),
                      filename=str(remote_script))
     for node in tree.body:

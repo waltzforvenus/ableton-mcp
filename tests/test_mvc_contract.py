@@ -30,7 +30,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 SERVICES = REPO_ROOT / "src" / "ableton_mcp" / "services.py"
 TOOLS_SOURCE = REPO_ROOT / "src" / "ableton_mcp" / "tools.py"
 HANDSHAKE = REPO_ROOT / "src" / "ableton_mcp" / "handshake.py"
-REMOTE_SCRIPT = REPO_ROOT / "AbletonMCP_Remote_Script" / "__init__.py"
+REMOTE_SCRIPT = REPO_ROOT / "remote_script" / "__init__.py"
 
 EXPECTED_TOOL_COUNT = 46
 

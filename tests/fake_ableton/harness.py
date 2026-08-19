@@ -1,7 +1,7 @@
 """Harness that runs the REAL canonical Remote Script against the fake LOM.
 
 docs/REFACTOR_PLAN.md section 5 Level 3: install the ``_Framework`` stub,
-import ``AbletonMCP_Remote_Script/__init__.py`` itself (never a copy), build
+import ``remote_script/__init__.py`` itself (never a copy), build
 ``AbletonMCP`` without running ``__init__`` — so no socket is bound and no
 thread is started — then wire a :class:`~fake_ableton.lom.FakeSong`, captured
 ``log_message``/``show_message``, an inline ``schedule_message``, and a
@@ -18,7 +18,7 @@ from .framework_stub import install_framework_stub
 from .lom import FakeApplication, FakeLiveConfig
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-REMOTE_SCRIPT_PATH = REPO_ROOT / "AbletonMCP_Remote_Script" / "__init__.py"
+REMOTE_SCRIPT_PATH = REPO_ROOT / "remote_script" / "__init__.py"
 
 _LOAD_COUNTER = itertools.count(1)
 

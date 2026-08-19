@@ -1,7 +1,7 @@
 """
 Guardrails for the contract between the two halves of the project: the MCP
 server (the ``ableton_mcp`` package) and the Ableton Remote Script
-(`AbletonMCP_Remote_Script/__init__.py`).
+(`remote_script/__init__.py`).
 
 The Remote Script cannot import the server package inside Live, so nothing
 reconciles their shared lists at runtime — they are reconciled here, by test
@@ -38,7 +38,7 @@ from ableton_mcp.handshake import LEGACY_CAPABILITIES
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-REMOTE_SCRIPT = REPO_ROOT / "AbletonMCP_Remote_Script" / "__init__.py"
+REMOTE_SCRIPT = REPO_ROOT / "remote_script" / "__init__.py"
 SERVICES = REPO_ROOT / "src" / "ableton_mcp" / "services.py"
 HANDSHAKE = REPO_ROOT / "src" / "ableton_mcp" / "handshake.py"
 

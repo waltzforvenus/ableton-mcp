@@ -4,7 +4,7 @@ The Remote Script's only Live-bound import is
 ``from _Framework.ControlSurface import ControlSurface`` (docs/REFACTOR_PLAN.md
 section 5 Level 3, Appendix B "ControlSurface stub contract"). Installing this
 stub into ``sys.modules`` BEFORE the canonical script is imported lets the real
-``AbletonMCP_Remote_Script/__init__.py`` execute anywhere — no Live, no
+``remote_script/__init__.py`` execute anywhere — no Live, no
 network.
 
 The stub base class implements exactly the contract Appendix B lists:

@@ -34,7 +34,7 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-REMOTE_SCRIPT = REPO_ROOT / "AbletonMCP_Remote_Script" / "__init__.py"
+REMOTE_SCRIPT = REPO_ROOT / "remote_script" / "__init__.py"
 COMMANDS_REGISTRY = REPO_ROOT / "src" / "ableton_mcp" / "commands.py"
 GOLDENS_DIR = REPO_ROOT / "tests" / "goldens"
 

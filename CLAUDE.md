@@ -8,7 +8,7 @@ An MCP server that drives Ableton Live. Two halves that must stay in step:
 
 - `src/ableton_mcp/server.py` — the MCP server. Defines the tools, speaks stdio to
   the client and JSON-over-TCP to Live.
-- `AbletonMCP_Remote_Script/__init__.py` — a MIDI Remote Script that runs
+- `remote_script/__init__.py` — a MIDI Remote Script that runs
   *inside* Ableton Live, hosting the socket server and touching the Live Object
   Model (LOM).
 
@@ -37,7 +37,7 @@ reason to reject the dependency.
 Verification, which should stay silent:
 
 ```bash
-grep -ri "telemetry\|supabase\|analytics\|dataset\|trajectory" src/ableton_mcp/ AbletonMCP_Remote_Script/
+grep -ri "telemetry\|supabase\|analytics\|dataset\|trajectory" src/ableton_mcp/ remote_script/
 ```
 
 Reading Live's state and returning it *to the user's own MCP client* is fine —
@@ -79,13 +79,13 @@ print(len(n), [k for k,v in collections.Counter(n).items() if v>1])"
 
 ### The Remote Script exists twice
 
-`AbletonMCP_Remote_Script/__init__.py` is canonical.
-`src/ableton_mcp/bundled_ableton_remote_script/AbletonMCP_init.py` is the copy that
+`remote_script/__init__.py` is canonical.
+`src/ableton_mcp/bundled_ableton_remote_script/remote_script_init.py` is the copy that
 `ableton-mcp-install-script` actually installs into Live. **Never edit the
 bundled copy by hand** — regenerate it after changing the canonical one:
 
 ```bash
-cp AbletonMCP_Remote_Script/__init__.py src/ableton_mcp/bundled_ableton_remote_script/AbletonMCP_init.py
+uv run ableton-mcp-install-script --sync-bundle
 ```
 
 They drifted once already, and the bundled copy silently reverted the loopback
