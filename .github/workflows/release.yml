@@ -11,6 +11,15 @@ on:
   push:
     tags:
       - "v*"
+  # Manual escape hatch: environments whose git credentials can push
+  # branches but not tag refs can still release — dispatch with the tag
+  # name and the release action creates the tag at the dispatched commit.
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Tag to create the release under (e.g. v1.4.0)"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -36,5 +45,6 @@ jobs:
       - name: Create GitHub Release with the build attached
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ inputs.tag_name || github.ref_name }}
           files: dist/*
           generate_release_notes: true
