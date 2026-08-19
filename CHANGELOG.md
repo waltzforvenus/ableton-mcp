@@ -9,6 +9,10 @@ separately, and a script change means **re-run
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [1.4.0] - 2026-08-19
+
 Ships Remote Script **1.8.0**. **Re-run `ableton-mcp-install-script` and
 restart Live after upgrading** — the repairs below live in the script half.
 
