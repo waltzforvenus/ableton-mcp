@@ -38,3 +38,11 @@ def test_ableton_mcp_entry_point_loads():
 def test_install_script_entry_point_loads():
     target = _console_scripts()["ableton-mcp-install-script"].load()
     assert callable(target)
+
+
+def test_package_version_matches_distribution_metadata():
+    """__version__ is single-sourced from pyproject via importlib.metadata —
+    it once hardcoded 0.1.0 against a pyproject saying 1.3.8."""
+    import ableton_mcp
+
+    assert ableton_mcp.__version__ == importlib.metadata.version(DISTRIBUTION)

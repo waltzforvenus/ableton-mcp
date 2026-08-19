@@ -241,7 +241,7 @@ repaired script.
 ## Components
 
 1. **Ableton Remote Script** (`remote_script/__init__.py`) — a MIDI Remote Script for Ableton Live that creates a socket server to receive and execute commands
-2. **MCP Server** (`src/ableton_mcp/server.py`) — a Python server that implements the Model Context Protocol and connects to the Remote Script
+2. **MCP Server** (`src/ableton_mcp/`) — a Python package that implements the Model Context Protocol and connects to the Remote Script
 
 ---
 
