@@ -35,5 +35,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ableton-mcp-dist
-          path: dist/*
+          # Not dist/*: uv build also writes a .gitignore into dist/.
+          path: |
+            dist/*.whl
+            dist/*.tar.gz
           if-no-files-found: error
