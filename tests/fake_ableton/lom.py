@@ -476,6 +476,13 @@ class FakeSong(object):
         name = "%s Return" % chr(ord("A") + len(self.return_tracks))
         self.return_tracks.append(
             FakeTrack(name, config=self.config, kind="return"))
+        # Real Live grows every track's send list when a return appears —
+        # without this, sending to the new return's index raises out-of-range
+        # against the fake but works against Live (caught by smoke_live.py).
+        letter = chr(ord("A") + len(self.return_tracks) - 1)
+        for track in self.tracks:
+            track.mixer_device.sends.append(
+                FakeParameter("Send %s" % letter, 0.0, 0.0, 1.0, unit="dB"))
 
     def delete_track(self, index):
         del self.tracks[index]
@@ -537,7 +544,13 @@ class FakeBrowser(object):
             selected = self._song.view.selected_track
         self.loads.append((item, selected))
         if selected is not None:
-            selected.devices.append(FakeDevice(item.name))
+            # Real devices expose continuous parameters, not only the on/off
+            # switch — give loaded ones a Dry/Wet so parameter-setting flows
+            # (clamping included) are exercisable against the fake.
+            selected.devices.append(FakeDevice(item.name, parameters=[
+                FakeParameter("Device On", 1.0, 0.0, 1.0, is_quantized=True),
+                FakeParameter("Dry/Wet", 0.5, 0.0, 1.0, unit="%"),
+            ]))
 
 
 class _FakeAppView(object):
