@@ -503,6 +503,42 @@ def test_create_locator_renames_an_existing_cue_at_the_same_time():
     assert harness.song.cue_points[0].name == "Chorus"
 
 
+def test_jump_to_locator_while_stopped_plants_the_start_marker():
+    harness = make_harness()
+    result = _ok(harness.process(_cmd("jump_to_locator", name="Verse")))
+    assert result == {"success": True, "name": "Verse", "time": 8.0,
+                      "was_playing": False, "start_marker_set": True}
+    assert harness.song.current_song_time == 8.0
+    # The whole point of jump over set_current_song_time: the start marker
+    # (where play/record launch from) moved too.
+    assert harness.song.start_marker_time == 8.0
+
+
+def test_jump_to_locator_matches_by_time_and_reports_playing_transport():
+    harness = make_harness()
+    harness.song.is_playing = True
+    result = _ok(harness.process(_cmd("jump_to_locator", time=8.0)))
+    assert result == {"success": True, "name": "Verse", "time": 8.0,
+                      "was_playing": True, "start_marker_set": False}
+    # Playing transport: playback relocated, start marker untouched.
+    assert harness.song.current_song_time == 8.0
+    assert harness.song.start_marker_time == 0.0
+
+
+def test_jump_to_locator_with_no_match_lists_the_available_locators():
+    harness = make_harness()
+    message = _err(harness.process(_cmd("jump_to_locator", name="Bridge")))
+    assert "No locator matches" in message
+    assert "'Verse' at 8.0" in message
+
+
+def test_jump_to_locator_with_no_criteria_asks_for_one():
+    harness = make_harness()
+    message = _err(harness.process(_cmd("jump_to_locator")))
+    assert "Give a locator name or a beat time" in message
+    assert "'Verse' at 8.0" in message
+
+
 def test_switch_to_arrangement_view():
     harness = make_harness()
     result = _ok(harness.process(_cmd("switch_to_arrangement_view")))

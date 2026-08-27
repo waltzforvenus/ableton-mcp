@@ -137,7 +137,7 @@ def make_standard_song(config=None):
         FakeClip("Vox Take", 8.0, midi=False, config=config, start_time=0.0))
 
     song.tracks = [lead, drums, audio]
-    song.cue_points.append(FakeCuePoint(8.0, "Verse"))
+    song.cue_points.append(FakeCuePoint(8.0, "Verse", song=song))
     return song
 
 

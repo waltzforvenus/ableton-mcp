@@ -20,7 +20,7 @@ from pathlib import Path
 logger = logging.getLogger("ableton-mcp-remote-script")
 
 # Must match SCRIPT_VERSION in remote_script/__init__.py
-EXPECTED_REMOTE_SCRIPT_VERSION = "1.9.1"
+EXPECTED_REMOTE_SCRIPT_VERSION = "1.10.0"
 REMOTE_SCRIPT_FOLDER_NAME = "AbletonMCP"
 
 

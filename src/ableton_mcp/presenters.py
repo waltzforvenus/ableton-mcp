@@ -308,6 +308,23 @@ def create_locator(result: Dict[str, Any], name: str, time: float) -> str:
     )
 
 
+def jump_to_locator(result: Dict[str, Any], name: str, time: Any) -> str:
+    cue_name = result.get("name", name)
+    cue_time = result.get("time", time)
+    if result.get("start_marker_set"):
+        return (
+            f"Jumped to locator '{cue_name}' at beat {cue_time} — the "
+            f"transport was stopped, so the start marker is planted there: "
+            f"play and record now launch from that beat"
+        )
+    return (
+        f"Sent the jump to locator '{cue_name}' at beat {cue_time} while the "
+        f"transport was playing — Live applies it at the song's quantization, "
+        f"and the start marker is not re-aimed; stop and jump again to make "
+        f"play/record launch from it"
+    )
+
+
 # ── Error translation ────────────────────────────────────────────────────────
 
 # Tool name → the phrase inside its "Error {phrase}: {e}" return string,
@@ -358,6 +375,7 @@ ERROR_PHRASES: Dict[str, str] = {
     "get_arrangement_clips": "getting arrangement clips",
     "duplicate_to_arrangement": "duplicating clip to arrangement",
     "create_locator": "creating locator",
+    "jump_to_locator": "jumping to locator",
 }
 
 

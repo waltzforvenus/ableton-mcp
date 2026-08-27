@@ -119,4 +119,5 @@ COMMANDS: dict[str, CommandSpec] = {
     "set_current_song_time": CommandSpec(modifying=True, gated=True),
     "duplicate_session_clip_to_arrangement": CommandSpec(modifying=True, gated=True),
     "create_locator": CommandSpec(modifying=True, gated=True),
+    "jump_to_locator": CommandSpec(modifying=True, gated=True),
 }

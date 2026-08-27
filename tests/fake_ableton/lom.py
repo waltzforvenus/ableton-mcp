@@ -129,9 +129,22 @@ class FakeRoutingOption(object):
 
 
 class FakeCuePoint(object):
-    def __init__(self, time, name=""):
+    def __init__(self, time, name="", song=None):
         self.time = float(time)
         self.name = name
+        self._song = song
+
+    def jump(self):
+        """Live's CuePoint.jump(): relocate the playhead — and, while the
+        transport is stopped, plant the start marker (the position play and
+        record launch from), exactly as clicking the locator does. The start
+        marker is not a LOM property; FakeSong.start_marker_time exists so
+        tests can observe the one effect jump() is for."""
+        if self._song is None:
+            raise RuntimeError("FakeCuePoint.jump() requires a song binding")
+        self._song.current_song_time = self.time
+        if not self._song.is_playing:
+            self._song.start_marker_time = self.time
 
 
 class FakeScene(object):
@@ -420,6 +433,9 @@ class FakeSong(object):
         self.master_track = FakeTrack("Master", config=self.config, kind="master")
         self.is_playing = False
         self.current_song_time = 0.0
+        # Not a LOM property: models the UI start marker CuePoint.jump()
+        # plants while stopped (see FakeCuePoint.jump).
+        self.start_marker_time = 0.0
         self.song_length = 32.0
         self.loop = False
         self.loop_start = 0.0
@@ -503,7 +519,8 @@ class FakeSong(object):
                 self.cue_points.remove(cue)
                 return
         self.cue_points.append(
-            FakeCuePoint(playhead, "Locator %d" % (len(self.cue_points) + 1)))
+            FakeCuePoint(playhead, "Locator %d" % (len(self.cue_points) + 1),
+                         song=self))
 
 
 # ── Application and browser ──────────────────────────────────────────────────

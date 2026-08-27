@@ -22,6 +22,7 @@ get_session_info
 get_session_snapshot
 get_track_info
 get_track_routing
+jump_to_locator
 load_drum_kit
 load_instrument_or_effect
 save_set

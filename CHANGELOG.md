@@ -11,6 +11,22 @@ separately, and a script change means **re-run
 
 Nothing yet.
 
+## [1.5.0] - 2026-08-27
+
+Ships Remote Script **1.10.0**. **Re-run `ableton-mcp-install-script` and
+restart Live after upgrading** — the new command lives in the script half.
+
+### Added (user-facing)
+
+- `jump_to_locator` †: jump the Arrangement to an existing locator by name
+  or beat time via `CuePoint.jump()`. While the transport is stopped this is
+  the API equivalent of clicking the locator in the scrub area — the only
+  way to move Live's **start marker**, so play/record launch from that spot.
+  `set_arrangement_time` cannot do this: verified on Live 12.4.3, it moves
+  only the visible playhead and record still launches from the old marker.
+  While playing, `jump_to_locator` relocates playback instead, and the
+  response says explicitly whether the start marker moved.
+
 ## [1.4.0] - 2026-08-19
 
 Ships Remote Script **1.8.0**. **Re-run `ableton-mcp-install-script` and

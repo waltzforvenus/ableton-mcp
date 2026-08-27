@@ -369,6 +369,7 @@ PR5_SCRIPT_CAPABILITIES = [
     "get_arrangement_clips",
     "duplicate_session_clip_to_arrangement",
     "create_locator",
+    "jump_to_locator",
     "delete_clip",
     "clear_notes_from_clip",
     "get_track_routing",
@@ -397,7 +398,7 @@ PR5_SCRIPT_CAPABILITIES = [
 def test_derived_capabilities_equal_the_pr5_snapshot():
     table = _commands_table()
     derived = sorted(name for name, row in table.items() if row[3])
-    assert len(PR5_SCRIPT_CAPABILITIES) == 39  # the PR5 count, pinned
+    assert len(PR5_SCRIPT_CAPABILITIES) == 40  # the pinned count (PR5 + jump_to_locator)
     assert derived == sorted(PR5_SCRIPT_CAPABILITIES), (
         f"advertised-command drift — "
         f"gained: {sorted(set(derived) - set(PR5_SCRIPT_CAPABILITIES))}, "

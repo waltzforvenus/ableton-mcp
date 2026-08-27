@@ -25,7 +25,7 @@ HOST = "127.0.0.1"
 
 # Bumped whenever the TCP command surface changes; the MCP server compares
 # this to EXPECTED_REMOTE_SCRIPT_VERSION.
-SCRIPT_VERSION = "1.9.1"
+SCRIPT_VERSION = "1.10.0"
 PROTOCOL_VERSION = 1
 
 # Wire-command dispatch table: every command _process_command accepts, in one
@@ -107,6 +107,7 @@ COMMANDS = {
     "map_rack_magnitude":         ("_map_rack_magnitude",         True,  None, False),
     "inspect_rack":               ("_inspect_rack",               True,  None, False),
     "create_locator":             ("_create_locator",             True,  None, True),
+    "jump_to_locator":            ("_jump_to_locator",            True,  None, True),
 }
 
 # Derived, never hand-edited: the advertised subset of COMMANDS, in sorted
@@ -1467,6 +1468,67 @@ class AbletonMCP(ControlSurface):
             }
         except Exception as e:
             self.log_message("Error creating locator: " + str(e))
+            raise
+
+    def _jump_to_locator(self, name="", time=None):
+        """Jump the arrangement to an existing locator (cue point).
+
+        CuePoint.jump() is the API twin of clicking the locator in the scrub
+        area, and that click is the only way to move Live's start marker —
+        the position play/record actually launch from. Writing
+        current_song_time moves the visible playhead but leaves the start
+        marker behind (verified on Live 12.4.3: record still launched from
+        the old marker). While the transport is playing, jump() relocates
+        playback instead (Live applies it at the song's quantization) and
+        does not re-aim the start marker; the result's start_marker_set
+        flag reports which of the two happened.
+
+        Matches by exact name first, then by beat time (~1e-3 tolerance).
+
+        The second parameter is named for the wire ("time"); it shadows the
+        time module inside this method only, and the body never uses the
+        module.
+        """
+        try:
+            song = self._song
+            available = ", ".join(
+                "'%s' at %s" % (cue.name, cue.time)
+                for cue in song.cue_points) or "none"
+            if not name and time is None:
+                raise Exception(
+                    "Give a locator name or a beat time to jump to "
+                    "(locators: %s)" % available)
+            target = None
+            if name:
+                # No str() coercion: the wire hands us text already, and on
+                # Live 10.1's Python 2 str() of a non-ASCII unicode name
+                # raises before the time fallback could run.
+                for cue in song.cue_points:
+                    if cue.name == name:
+                        target = cue
+                        break
+            if target is None and time is not None:
+                target_time = float(time)
+                for cue in song.cue_points:
+                    if abs(cue.time - target_time) < 1e-3:
+                        target = cue
+                        break
+            if target is None:
+                raise Exception(
+                    "No locator matches name=%r time=%r (locators: %s)"
+                    % (name, time, available))
+
+            was_playing = bool(song.is_playing)
+            target.jump()
+            return {
+                "success": True,
+                "name": target.name,
+                "time": target.time,
+                "was_playing": was_playing,
+                "start_marker_set": not was_playing,
+            }
+        except Exception as e:
+            self.log_message("Error jumping to locator: " + str(e))
             raise
 
     # ── Browser implementations ───────────────────────────────────────────────

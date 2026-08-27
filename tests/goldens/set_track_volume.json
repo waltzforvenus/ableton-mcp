@@ -28,7 +28,7 @@
         "track_index": 0,
         "value": 0.85
       },
-      "expect": "Ableton Remote Script missing capability 'set_track_volume' (loaded='legacy', expected=1.9.1). Run `ableton-mcp-install-script` to update the User Remote Script, then restart Ableton Live.",
+      "expect": "Ableton Remote Script missing capability 'set_track_volume' (loaded='legacy', expected=1.10.0). Run `ableton-mcp-install-script` to update the User Remote Script, then restart Ableton Live.",
       "name": "gated_legacy_script_blocked",
       "script_info": {
         "capabilities": [],

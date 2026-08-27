@@ -312,6 +312,12 @@ FLOOR_UNADVERTISED_IN_1_7_0 = sorted(
     LEGACY_CAPABILITIES - set(SCRIPT_CAPABILITIES_1_7_0)
 )
 
+# Gated commands that postdate 1.7.0 entirely — 1.7.0 neither advertised nor
+# dispatched them, so the gate refusing them there is correct behavior (the
+# installer message tells the user to upgrade), not a regression.
+GATED_POST_1_7_0 = sorted(set(GATED_NO_FLOOR) - set(SCRIPT_CAPABILITIES_1_7_0))
+GATED_NO_FLOOR_IN_1_7_0 = sorted(set(GATED_NO_FLOOR) - set(GATED_POST_1_7_0))
+
 
 def _seeded_1_7_0():
     return _seeded("1.7.0", list(SCRIPT_CAPABILITIES_1_7_0))
@@ -340,6 +346,9 @@ def test_the_matrix_is_not_vacuous():
     # commands, not the historical five.
     assert len(GATED_NO_FLOOR) >= 20
     assert GATED_WITH_FLOOR == ["get_device_parameters", "set_device_parameter"]
+    # Growing this list is a deliberate act: each entry is a command 1.7.0
+    # users lose until they re-run the installer.
+    assert GATED_POST_1_7_0 == ["jump_to_locator"]
     assert FLOOR_UNADVERTISED_IN_1_7_0 == [
         "fire_clip", "load_browser_item", "set_clip_name", "set_tempo",
         "set_track_name", "start_playback", "stop_clip", "stop_playback",
@@ -356,12 +365,23 @@ def test_1_7_0_passes_commands_it_dispatches_but_never_advertised(name):
     assert handshake.require(name) is None
 
 
-@pytest.mark.parametrize("name", GATED_NO_FLOOR)
+@pytest.mark.parametrize("name", GATED_NO_FLOOR_IN_1_7_0)
 def test_1_7_0_passes_every_gated_command_it_advertises(name):
     # Everything the flip newly gated (bar the repaired pair) is advertised
     # by 1.7.0, so a 1.7.0 user keeps every command that worked before.
     handshake = _seeded_1_7_0()
     assert handshake.require(name, min_version=None) is None
+
+
+@pytest.mark.parametrize("name", GATED_POST_1_7_0)
+def test_1_7_0_gets_the_installer_message_for_commands_newer_than_it(name):
+    # Commands born after 1.7.0 are the reason the gate exists: an old
+    # script cannot serve them, and the refusal must be the friendly
+    # installer message, never a raw socket error from inside Live.
+    handshake = _seeded_1_7_0()
+    with pytest.raises(CapabilityError) as excinfo:
+        handshake.require(name, min_version=None)
+    assert "ableton-mcp-install-script" in str(excinfo.value)
 
 
 @pytest.mark.parametrize("name", GATED_WITH_FLOOR)

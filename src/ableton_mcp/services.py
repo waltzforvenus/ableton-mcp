@@ -388,3 +388,14 @@ class AbletonService:
             "create_locator",
             {"name": name, "time": time}
         )
+
+    def jump_to_locator(self, name: str = "",
+                        time: Optional[float] = None) -> Dict[str, Any]:
+        # Only the criteria actually given go on the wire, so the script's
+        # name-first/time-second matching order is driven by presence.
+        params: Dict[str, Any] = {}
+        if name:
+            params["name"] = name
+        if time is not None:
+            params["time"] = time
+        return self._send("jump_to_locator", params)

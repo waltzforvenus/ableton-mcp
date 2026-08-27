@@ -1,4 +1,4 @@
-"""Golden-case definitions for all 46 MCP tools (docs/REFACTOR_PLAN.md
+"""Golden-case definitions for all 47 MCP tools (docs/REFACTOR_PLAN.md
 section 5 Level 1, section 6 PR3).
 
 Each case names a tool, the arguments to call it with, and the exact ordered
@@ -693,6 +693,15 @@ BASE_CASES = [
     _case("create_locator", "success", {"name": "Chorus", "time": 16.0}, [
         _ok("create_locator", {"name": "Chorus", "time": 16.0},
             {"name": "Chorus", "time": 16.0}),
+    ]),
+
+    # ── jump_to_locator (gated) ───────────────────────────────────────────
+    # The service omits absent criteria from the wire params, so a
+    # name-only call sends {"name": ...} with no "time" key.
+    _case("jump_to_locator", "success", {"name": "Chorus"}, [
+        _ok("jump_to_locator", {"name": "Chorus"},
+            {"name": "Chorus", "time": 16.0,
+             "was_playing": False, "start_marker_set": True}),
     ]),
 
     # ── Gated-path cases (plan PR10) ──────────────────────────────────────

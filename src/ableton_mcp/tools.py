@@ -16,7 +16,7 @@ service layer's job; a guardrail test asserts it).
 from mcp.server.fastmcp import Context
 import functools
 import logging
-from typing import TYPE_CHECKING, Dict, Any, List, Union
+from typing import TYPE_CHECKING, Dict, Any, List, Optional, Union
 
 from . import presenters
 from .handshake import CapabilityError
@@ -790,3 +790,31 @@ def create_locator(
     """
     result = _deps(ctx).service.create_locator(name, time)
     return presenters.create_locator(result, name, time)
+
+
+@tool
+def jump_to_locator(
+    ctx: Context,
+    name: str = "",
+    time: Optional[float] = None,
+) -> str:
+    """
+    Jump the Arrangement to an existing locator — and, while the transport
+    is stopped, plant Live's start marker there so play and record launch
+    from that spot.
+
+    This is the API equivalent of clicking the locator in the scrub area,
+    which is the only way to move the start marker: set_arrangement_time
+    moves just the visible playhead, so record still launches from the old
+    marker. Call this while STOPPED to re-aim recording; while playing it
+    relocates playback instead and the start marker stays put (the reply
+    says which happened). If no locator exists at the target yet, create
+    one first with create_locator.
+
+    Parameters:
+    - name: Locator label to match exactly (e.g. "Chorus", "REC start")
+    - time: Beat position to match (~1e-3 tolerance), used when no name
+      is given or the name finds nothing
+    """
+    result = _deps(ctx).service.jump_to_locator(name, time)
+    return presenters.jump_to_locator(result, name, time)

@@ -183,7 +183,7 @@ On top of that:
 
 ### Added tools
 
-Upstream exposes 37 MCP tools; this fork exposes 46. The mixer, device control
+Upstream exposes 37 MCP tools; this fork exposes 47. The mixer, device control
 and routing tools are new here:
 
 | Area | Tools |
@@ -372,7 +372,7 @@ A few notes that apply to every install method:
 
 ### Tool reference
 
-All 46 tools the server exposes. Tools marked **†** are added by this fork and
+All 47 tools the server exposes. Tools marked **†** are added by this fork and
 are not present upstream.
 
 #### Session & info
@@ -454,6 +454,7 @@ are not present upstream.
 | `set_arrangement_clip_name` | `track_index`, `clip_index`, `name` | Set the name of a clip placed in the Arrangement timeline |
 | `set_arrangement_time` | `time` | Move the arrangement playhead to a specific position |
 | `create_locator` | `name`, `time` | Create a named locator (cue point) in the Arrangement at a beat position |
+| `jump_to_locator` † | `name`?, `time`? | Jump to an existing locator by name or beat time; while stopped this plants the start marker, so play/record launch from it |
 | `back_to_arrangement` † | — | Return every track to Arrangement playback — Live's "Back to Arrangement" button |
 
 #### Transport

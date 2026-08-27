@@ -1,0 +1,41 @@
+{
+  "cases": [
+    {
+      "args": {
+        "name": "Chorus"
+      },
+      "expect": "Jumped to locator 'Chorus' at beat 16.0 \u2014 the transport was stopped, so the start marker is planted there: play and record now launch from that beat",
+      "name": "success",
+      "wire": [
+        {
+          "command": "jump_to_locator",
+          "params": {
+            "name": "Chorus"
+          },
+          "response": {
+            "name": "Chorus",
+            "start_marker_set": true,
+            "time": 16.0,
+            "was_playing": false
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "name": "Chorus"
+      },
+      "expect": "Error jumping to locator: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "jump_to_locator",
+          "params": {
+            "name": "Chorus"
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}
