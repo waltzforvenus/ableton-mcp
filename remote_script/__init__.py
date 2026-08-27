@@ -25,7 +25,7 @@ HOST = "127.0.0.1"
 
 # Bumped whenever the TCP command surface changes; the MCP server compares
 # this to EXPECTED_REMOTE_SCRIPT_VERSION.
-SCRIPT_VERSION = "1.10.0"
+SCRIPT_VERSION = "1.11.0"
 PROTOCOL_VERSION = 1
 
 # Wire-command dispatch table: every command _process_command accepts, in one
@@ -108,6 +108,10 @@ COMMANDS = {
     "inspect_rack":               ("_inspect_rack",               True,  None, False),
     "create_locator":             ("_create_locator",             True,  None, True),
     "jump_to_locator":            ("_jump_to_locator",            True,  None, True),
+    "trim_arrangement_clip":      ("_trim_arrangement_clip",      True,  None, True),
+    "delete_arrangement_clip":    ("_delete_arrangement_clip",    True,  None, True),
+    "move_arrangement_clip":      ("_move_arrangement_clip",      True,  None, True),
+    "duplicate_arrangement_clip": ("_duplicate_arrangement_clip", True,  None, True),
 }
 
 # Derived, never hand-edited: the advertised subset of COMMANDS, in sorted
@@ -1529,6 +1533,264 @@ class AbletonMCP(ControlSurface):
             }
         except Exception as e:
             self.log_message("Error jumping to locator: " + str(e))
+            raise
+
+    def _resolve_arrangement_clip(self, track_index, clip_index):
+        """Resolve (track, clip) for an Arrangement clip, or raise.
+
+        clip_index indexes track.arrangement_clips in the same start-time
+        order _get_arrangement_clips reports, so a caller can read the list
+        and address what it saw.
+        """
+        if track_index < 0 or track_index >= len(self._song.tracks):
+            raise IndexError("Track index out of range")
+        track = self._song.tracks[track_index]
+        clips = list(track.arrangement_clips)
+        if clip_index < 0 or clip_index >= len(clips):
+            raise IndexError(
+                "Arrangement clip index out of range (track has %d)"
+                % len(clips))
+        return track, clips[clip_index]
+
+    def _trim_arrangement_clip(self, track_index=0, clip_index=0,
+                               start_time=None, end_time=None):
+        """Trim an Arrangement clip's edges inward, in arrangement beats.
+
+        Live documents no resize for Arrangement clips, so this goes through
+        the content-window markers (start_marker/end_marker) and then
+        VERIFIES the footprint actually moved by reading start_time/end_time
+        back. A build where the markers behave differently gets its markers
+        restored and an honest refusal — never a silently mis-trimmed take.
+        Only shrinking is supported: growing would need content the window
+        may not hold.
+
+        Unwarped audio clips keep their markers in seconds, so marker deltas
+        are converted at the song's CURRENT tempo before the write — under
+        tempo automation that delta can be wrong for a clip elsewhere on
+        the timeline, and the guards below then refuse rather than
+        mis-trim. The readback check decides whether each edge stands.
+
+        The start_time/end_time parameters are named for the wire; the time
+        module is never used in this body.
+        """
+        try:
+            track, clip = self._resolve_arrangement_clip(track_index, clip_index)
+
+            if getattr(clip, "looping", False):
+                raise Exception(
+                    "Clip is looping; the trim maths assume an unlooped "
+                    "content window — unloop the clip first")
+            if not hasattr(clip, "end_marker") or not hasattr(clip, "start_marker"):
+                raise Exception(
+                    "This Live build does not expose clip start/end markers; "
+                    "trim the clip in the UI instead")
+
+            old_start = clip.start_time
+            old_end = clip.end_time
+            new_start = old_start if start_time is None else float(start_time)
+            new_end = old_end if end_time is None else float(end_time)
+
+            if new_start < old_start - 1e-3 or new_end > old_end + 1e-3:
+                raise Exception(
+                    "Can only trim inward: clip spans %s to %s, requested %s to %s"
+                    % (old_start, old_end, new_start, new_end))
+            if new_end - new_start < 1e-3:
+                raise Exception("Trim would leave nothing of the clip")
+
+            # Unwarped audio keeps markers in seconds; everything else beats.
+            units_per_beat = 1.0
+            if clip.is_audio_clip and not getattr(clip, "warping", True):
+                units_per_beat = 60.0 / self._song.tempo
+
+            refusals = []
+            trimmed_tail = False
+            if new_end < old_end - 1e-3:
+                delta = (old_end - new_end) * units_per_beat
+                original_marker = clip.end_marker
+                candidate = original_marker - delta
+                if candidate <= clip.start_marker + 1e-6:
+                    # Never write a crossed marker: if Live clamps it by
+                    # moving the OTHER marker, restoring only this one would
+                    # not return the clip to its prior state.
+                    refusals.append(
+                        "end: the computed marker would cross the start "
+                        "marker, so nothing was written (an unwarped clip "
+                        "under tempo automation can compute a wrong delta)")
+                else:
+                    clip.end_marker = candidate
+                    if abs(clip.end_time - new_end) <= 1e-3:
+                        trimmed_tail = True
+                    else:
+                        clip.end_marker = original_marker
+                        refusals.append(
+                            "end: moving end_marker did not land the clip "
+                            "edge where computed; marker restored (marker "
+                            "behavior differs on this build, or the clip is "
+                            "unwarped audio under tempo automation)")
+
+            trimmed_head = False
+            if new_start > old_start + 1e-3:
+                delta = (new_start - old_start) * units_per_beat
+                original_marker = clip.start_marker
+                candidate = original_marker + delta
+                if candidate >= clip.end_marker - 1e-6:
+                    refusals.append(
+                        "start: the computed marker would cross the end "
+                        "marker, so nothing was written (an unwarped clip "
+                        "under tempo automation can compute a wrong delta)")
+                else:
+                    clip.start_marker = candidate
+                    if abs(clip.start_time - new_start) <= 1e-3:
+                        trimmed_head = True
+                    else:
+                        clip.start_marker = original_marker
+                        refusals.append(
+                            "start: moving start_marker did not land the "
+                            "clip edge where computed; marker restored "
+                            "(marker behavior differs on this build, or the "
+                            "clip is unwarped audio under tempo automation)")
+
+            return {
+                "start_time": clip.start_time,
+                "end_time": clip.end_time,
+                "requested_start_time": new_start,
+                "requested_end_time": new_end,
+                "trimmed_head": trimmed_head,
+                "trimmed_tail": trimmed_tail,
+                "refusals": refusals,
+            }
+        except Exception as e:
+            self.log_message("Error trimming arrangement clip: " + str(e))
+            raise
+
+    def _delete_arrangement_clip(self, track_index=0, clip_index=0):
+        """Delete a clip from the Arrangement timeline.
+
+        Track.delete_clip has existed since Live 11; older builds get an
+        honest refusal instead of an AttributeError. Session clips keep
+        their own tool (delete_clip) — this one exists because take cleanup
+        (stray record fragments, replaced sections) happens in the
+        Arrangement.
+        """
+        try:
+            track, clip = self._resolve_arrangement_clip(track_index, clip_index)
+            if not hasattr(track, "delete_clip"):
+                raise Exception(
+                    "This Live build does not expose Track.delete_clip "
+                    "(Live 11+); delete the clip in the UI instead")
+            deleted_name = clip.name
+            deleted_start = clip.start_time
+            deleted_end = clip.end_time
+            track.delete_clip(clip)
+            return {
+                "deleted": True,
+                "deleted_clip_name": deleted_name,
+                "start_time": deleted_start,
+                "end_time": deleted_end,
+            }
+        except Exception as e:
+            self.log_message("Error deleting arrangement clip: " + str(e))
+            raise
+
+    def _move_arrangement_clip(self, track_index=0, clip_index=0,
+                               destination_time=0.0):
+        """Move an Arrangement clip so it starts at destination_time (beats).
+
+        Live's LOM has no true move: Clip.position is the clip's LOOP
+        position (== loop_start), so writing it slides the content window
+        rather than the clip — and on builds where marker writes move the
+        footprint it could even pass a footprint readback while silently
+        re-slicing the take. The honest recipe is the two documented
+        Live 11+ calls this script already uses: duplicate the clip to the
+        destination, verify the copy landed, then delete the original.
+        A destination overlapping the clip's own span is refused — Live's
+        overlap handling would eat into the source before it could be
+        deleted; make such a move in two hops via a clear stretch of the
+        timeline.
+        """
+        try:
+            track, clip = self._resolve_arrangement_clip(track_index, clip_index)
+            if (not hasattr(track, "duplicate_clip_to_arrangement")
+                    or not hasattr(track, "delete_clip")):
+                raise Exception(
+                    "This Live build does not expose the Live 11+ clip "
+                    "duplicate/delete APIs; move the clip in the UI instead")
+
+            clip_name = clip.name
+            old_start = clip.start_time
+            old_end = clip.end_time
+            length = old_end - old_start
+            target = float(destination_time)
+
+            if abs(target - old_start) <= 1e-3:
+                return {
+                    "clip_name": clip_name,
+                    "start_time": old_start,
+                    "end_time": old_end,
+                    "moved": False,
+                }
+            if target < old_end and target + length > old_start:
+                raise Exception(
+                    "Destination %s overlaps the clip's own span (%s to %s); "
+                    "Live's overlap handling would eat into the source before "
+                    "the move completes — move it in two hops via a clear "
+                    "stretch of the timeline" % (target, old_start, old_end))
+
+            track.duplicate_clip_to_arrangement(clip, target)
+            moved = None
+            for candidate in track.arrangement_clips:
+                if (candidate is not clip
+                        and abs(candidate.start_time - target) <= 1e-3):
+                    moved = candidate
+                    break
+            if moved is None:
+                raise Exception(
+                    "The duplicate did not appear at %s; the original clip "
+                    "was left untouched" % target)
+            track.delete_clip(clip)
+            return {
+                "clip_name": clip_name,
+                "start_time": moved.start_time,
+                "end_time": moved.end_time,
+                "moved": True,
+            }
+        except Exception as e:
+            self.log_message("Error moving arrangement clip: " + str(e))
+            raise
+
+    def _duplicate_arrangement_clip(self, track_index=0, clip_index=0,
+                                    destination_time=0.0):
+        """Copy an Arrangement clip to another position on the same track.
+
+        The same Live 11+ API the session duplicate uses —
+        track.duplicate_clip_to_arrangement — accepts an Arrangement clip
+        as its source, which is how an already-recorded take gets reused
+        at another section. An occupied destination is resolved by Live
+        itself (typically by replacing the overlapped region of the
+        existing clip — including the source's own span, which truncates
+        the source); the source echo below is captured BEFORE the call, so
+        the reply stays valid even when the copy lands on the source.
+        """
+        try:
+            track, clip = self._resolve_arrangement_clip(track_index, clip_index)
+            if not hasattr(track, "duplicate_clip_to_arrangement"):
+                raise Exception(
+                    "This Live build does not expose "
+                    "Track.duplicate_clip_to_arrangement (Live 11+)")
+            # Read the echo before mutating: an overlap with the source's
+            # own span can truncate or destroy the source clip object.
+            source_name = clip.name
+            source_start = clip.start_time
+            source_end = clip.end_time
+            track.duplicate_clip_to_arrangement(clip, float(destination_time))
+            return {
+                "clip_name": source_name,
+                "destination_time": float(destination_time),
+                "source_start_time": source_start,
+                "source_end_time": source_end,
+            }
+        except Exception as e:
+            self.log_message("Error duplicating arrangement clip: " + str(e))
             raise
 
     # ── Browser implementations ───────────────────────────────────────────────

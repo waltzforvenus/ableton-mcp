@@ -7,9 +7,11 @@ create_clip
 create_locator
 create_midi_track
 create_return_track
+delete_arrangement_clip
 delete_clip
 delete_device
 delete_track
+duplicate_arrangement_clip
 duplicate_to_arrangement
 fire_clip
 get_arrangement_clips
@@ -25,6 +27,7 @@ get_track_routing
 jump_to_locator
 load_drum_kit
 load_instrument_or_effect
+move_arrangement_clip
 save_set
 set_arrangement_clip_name
 set_arrangement_time
@@ -45,3 +48,4 @@ start_playback
 stop_clip
 stop_playback
 switch_to_arrangement_view
+trim_arrangement_clip

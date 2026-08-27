@@ -348,7 +348,13 @@ def test_the_matrix_is_not_vacuous():
     assert GATED_WITH_FLOOR == ["get_device_parameters", "set_device_parameter"]
     # Growing this list is a deliberate act: each entry is a command 1.7.0
     # users lose until they re-run the installer.
-    assert GATED_POST_1_7_0 == ["jump_to_locator"]
+    assert GATED_POST_1_7_0 == [
+        "delete_arrangement_clip",
+        "duplicate_arrangement_clip",
+        "jump_to_locator",
+        "move_arrangement_clip",
+        "trim_arrangement_clip",
+    ]
     assert FLOOR_UNADVERTISED_IN_1_7_0 == [
         "fire_clip", "load_browser_item", "set_clip_name", "set_tempo",
         "set_track_name", "start_playback", "stop_clip", "stop_playback",

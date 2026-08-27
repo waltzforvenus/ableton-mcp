@@ -120,4 +120,8 @@ COMMANDS: dict[str, CommandSpec] = {
     "duplicate_session_clip_to_arrangement": CommandSpec(modifying=True, gated=True),
     "create_locator": CommandSpec(modifying=True, gated=True),
     "jump_to_locator": CommandSpec(modifying=True, gated=True),
+    "trim_arrangement_clip": CommandSpec(modifying=True, gated=True),
+    "delete_arrangement_clip": CommandSpec(modifying=True, gated=True),
+    "move_arrangement_clip": CommandSpec(modifying=True, gated=True),
+    "duplicate_arrangement_clip": CommandSpec(modifying=True, gated=True),
 }

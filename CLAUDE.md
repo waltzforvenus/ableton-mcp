@@ -11,7 +11,7 @@ An MCP server that drives Ableton Live. Two halves that must stay in step:
   - `app.py` — composition root: `Settings`, `Deps`, `build_app()`, `main()`.
     The only module that reads the environment, configures logging, or wires
     objects together.
-  - `tools.py` — **controllers**: all 47 `@tool` functions, kept in upstream's
+  - `tools.py` — **controllers**: all 51 `@tool` functions, kept in upstream's
     order; coerce arguments, call the service, hand the result to a presenter.
   - `services.py` — **model** (domain): `AbletonService`, one method per wire
     command; its `_send` consults the registry, so gating happens in one place.
@@ -99,7 +99,7 @@ one silently wins. The same trap exists inside the Remote Script's class
 body: Python keeps the later `def`, which is how the 2026-08 merge shipped
 broken device-parameter handlers while its commit message said ours were
 kept. Both are now caught mechanically — `tests/test_tool_surface.py` pins
-`list_tools()` against the `tests/data/tool_names.txt` snapshot (47 unique
+`list_tools()` against the `tests/data/tool_names.txt` snapshot (51 unique
 names), and `tests/test_remote_script_ast.py` rejects any method defined
 twice in any class. If you deliberately add or rename a tool, update the
 snapshot (and the README) in the same commit.

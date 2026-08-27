@@ -1,12 +1,12 @@
 [project]
 name = "ableton-mcp"
-version = "1.5.0"
+version = "1.6.0"
 description = "Ableton Live integration through the Model Context Protocol — telemetry-free fork"
 readme = "README.md"
 requires-python = ">=3.10"
 keywords = ["ableton", "live", "mcp", "model-context-protocol", "music", "midi", "daw"]
 authors = [
-    {name = "waltzforvenus", email = "mert@charlieoscar.com"}
+    {name = "waltzforvenus", email = "mert@xn--rs-eka.net"}
 ]
 # Fork changes are dual-licensed GPLv3/AGPLv3 (recipient's choice); upstream
 # code stays MIT and its notice must be retained. See LICENSE.

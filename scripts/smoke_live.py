@@ -201,6 +201,63 @@ class Smoke:
         return (f"{len(clips['clips'])} arrangement clip(s); locator "
                 f"'smoke-test' set (no delete API — scratch set!)")
 
+    def step_arrangement_editing(self):
+        """The 1.11.0 arrangement-editing surface, on a clip this run made.
+
+        This is the designated real-Live evidence for what the fake cannot
+        prove: that marker writes move the Arrangement footprint (trim),
+        that duplicate+delete is a faithful move, and that
+        Track.delete_clip / duplicate_clip_to_arrangement accept
+        Arrangement clips. Everything happens on the scratch track
+        step_arrangement populated, far to the right of its clip.
+        """
+        t = self.created_tracks[0]
+        before = self.svc.get_arrangement_clips(t)["clips"]
+        if not before:
+            raise Skip("no arrangement clip to edit (step_arrangement failed?)")
+        src = len(before) - 1  # rightmost = highest start_time
+
+        # duplicate the arrangement clip to a clear spot
+        self.svc.duplicate_arrangement_clip(t, src, 64.0)
+        clips = self.svc.get_arrangement_clips(t)["clips"]
+        assert len(clips) == len(before) + 1, f"no copy appeared: {clips}"
+        copy_index = len(clips) - 1
+        copy = clips[copy_index]
+        assert abs(copy["start_time"] - 64.0) <= 1e-3, f"copy not at 64: {copy}"
+
+        # trim the copy's tail by one beat, then its head by one beat
+        length = copy["end_time"] - copy["start_time"]
+        if length < 2.5:
+            raise Skip(f"clip too short to trim safely ({length} beats)")
+        trim = self.svc.trim_arrangement_clip(t, copy_index,
+                                              None, copy["end_time"] - 1.0)
+        assert trim.get("refusals") == [], f"tail trim refused: {trim}"
+        trim = self.svc.trim_arrangement_clip(t, copy_index,
+                                              copy["start_time"] + 1.0, None)
+        assert trim.get("refusals") == [], f"head trim refused: {trim}"
+        assert abs(trim["start_time"] - (copy["start_time"] + 1.0)) <= 1e-3
+
+        # move the trimmed copy (duplicate+delete under the hood)
+        moved = self.svc.move_arrangement_clip(t, copy_index, 96.0)
+        assert moved.get("moved") is True, f"move did not report moved: {moved}"
+        assert abs(moved["start_time"] - 96.0) <= 1e-3, f"not at 96: {moved}"
+
+        # jump to the locator step_arrangement created (transport stopped:
+        # this also plants the start marker there)
+        jumped = self.svc.jump_to_locator("smoke-test", None)
+        assert jumped.get("start_marker_set") is True, f"no marker: {jumped}"
+
+        # delete the copy; the track is back to its pre-step clip count
+        clips = self.svc.get_arrangement_clips(t)["clips"]
+        target = next(i for i, c in enumerate(clips)
+                      if abs(c["start_time"] - 96.0) <= 1e-3)
+        gone = self.svc.delete_arrangement_clip(t, target)
+        assert gone.get("deleted") is True, f"delete failed: {gone}"
+        clips = self.svc.get_arrangement_clips(t)["clips"]
+        assert len(clips) == len(before), f"clip count off after delete: {clips}"
+        return ("duplicated, trimmed both edges, moved to 96, jumped to "
+                "locator (start marker planted), deleted the copy")
+
     def step_playback(self):
         self.svc.start_playback()
         time.sleep(0.3)
@@ -272,6 +329,8 @@ def main() -> int:
             smoke.run("device parameter by name, clamped (the 1.8.0 repair)",
                       smoke.step_device_parameter)
             smoke.run("arrangement: duplicate clip + locator", smoke.step_arrangement)
+            smoke.run("arrangement editing (the 1.11.0 surface)",
+                      smoke.step_arrangement_editing)
         smoke.run("playback start/stop", smoke.step_playback)
         smoke.run("save set", smoke.step_save_set)
     finally:

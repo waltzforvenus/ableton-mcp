@@ -818,3 +818,128 @@ def jump_to_locator(
     """
     result = _deps(ctx).service.jump_to_locator(name, time)
     return presenters.jump_to_locator(result, name, time)
+
+
+@tool
+def trim_arrangement_clip(
+    ctx: Context,
+    track_index: int,
+    clip_index: int,
+    start_time: Optional[float] = None,
+    end_time: Optional[float] = None,
+) -> str:
+    """
+    Trim an Arrangement clip's edges inward — the cleanup after recording,
+    when a take overhangs its section into the neighbouring one.
+
+    Give the new edge position(s) in arrangement beats; omit an edge to
+    leave it alone. Only shrinking is supported. The trim is non-destructive
+    (the audio stays in the take's file; the edge can be dragged back out in
+    the UI) and self-verifying PER EDGE: Live has no documented arrangement
+    resize, so the script works through the clip's content markers and
+    confirms each requested edge actually moved — an edge that doesn't move
+    on this build is restored and reported as refused, so a both-edge
+    request can land partially, and the reply says exactly which edges
+    changed. Looping clips are refused (unloop first); use
+    get_arrangement_clips to find clip_index, which counts clips on the
+    track in start-time order.
+
+    Parameters:
+    - track_index: The track holding the clip
+    - clip_index: Index into the track's Arrangement clips (start-time order)
+    - start_time: New left edge in beats (omit to keep)
+    - end_time: New right edge in beats (omit to keep)
+    """
+    result = _deps(ctx).service.trim_arrangement_clip(
+        track_index, clip_index, start_time, end_time)
+    return presenters.trim_arrangement_clip(
+        result, track_index, clip_index, start_time, end_time)
+
+
+@tool
+def delete_arrangement_clip(
+    ctx: Context,
+    track_index: int,
+    clip_index: int,
+) -> str:
+    """
+    Delete a clip from the Arrangement timeline — stray record fragments,
+    scrapped takes, replaced sections.
+
+    This is the Arrangement twin of delete_clip (which deletes Session-slot
+    clips). Deletion removes the clip from the timeline but never the audio
+    file on disk, so a deleted take is not lost audio. Use
+    get_arrangement_clips first: clip_index counts the track's Arrangement
+    clips in start-time order, and indices shift after every deletion, so
+    re-read between deletes.
+
+    Parameters:
+    - track_index: The track holding the clip
+    - clip_index: Index into the track's Arrangement clips (start-time order)
+    """
+    result = _deps(ctx).service.delete_arrangement_clip(track_index, clip_index)
+    return presenters.delete_arrangement_clip(result, track_index, clip_index)
+
+
+@tool
+def move_arrangement_clip(
+    ctx: Context,
+    track_index: int,
+    clip_index: int,
+    destination_time: float,
+) -> str:
+    """
+    Move an Arrangement clip so it starts at a new beat position — sliding
+    a take into place, or clearing room to comp another one in.
+
+    Live has no true move API, so under the hood this duplicates the clip
+    to the destination, verifies the copy landed, then deletes the
+    original — the audio and its timing inside the clip are preserved. A
+    destination overlapping the clip's own current span is refused (move
+    in two hops via a clear stretch). An occupied destination is resolved
+    by Live itself (typically the overlapped region of the existing clip
+    is replaced — unverified on every build), so read get_arrangement_clips
+    first when the target might be occupied, and re-read it AFTER the move:
+    clip indices are start-time ordered and will have shifted.
+
+    Parameters:
+    - track_index: The track holding the clip
+    - clip_index: Index into the track's Arrangement clips (start-time order)
+    - destination_time: New start position in beats
+    """
+    result = _deps(ctx).service.move_arrangement_clip(
+        track_index, clip_index, destination_time)
+    return presenters.move_arrangement_clip(
+        result, track_index, clip_index, destination_time)
+
+
+@tool
+def duplicate_arrangement_clip(
+    ctx: Context,
+    track_index: int,
+    clip_index: int,
+    destination_time: float,
+) -> str:
+    """
+    Copy an Arrangement clip to another beat position on the same track —
+    reusing an already-recorded take at another section (a verse take
+    repeated, a chorus doubled at the outro), then trim_arrangement_clip
+    the copy to fit.
+
+    The Arrangement twin of duplicate_to_arrangement (whose source is a
+    Session slot). An occupied destination is resolved by Live itself
+    (typically the overlapped region of the existing clip is replaced —
+    including the source's own span, which truncates the source), so check
+    get_arrangement_clips first when the target might be occupied, and
+    re-read it AFTER the copy to confirm the result and find the copy's
+    index: indices are start-time ordered and will have shifted.
+
+    Parameters:
+    - track_index: The track holding the clip
+    - clip_index: Index into the track's Arrangement clips (start-time order)
+    - destination_time: Where the copy should start, in beats
+    """
+    result = _deps(ctx).service.duplicate_arrangement_clip(
+        track_index, clip_index, destination_time)
+    return presenters.duplicate_arrangement_clip(
+        result, track_index, clip_index, destination_time)

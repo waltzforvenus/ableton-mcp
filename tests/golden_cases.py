@@ -1,4 +1,4 @@
-"""Golden-case definitions for all 47 MCP tools (docs/REFACTOR_PLAN.md
+"""Golden-case definitions for all 51 MCP tools (docs/REFACTOR_PLAN.md
 section 5 Level 1, section 6 PR3).
 
 Each case names a tool, the arguments to call it with, and the exact ordered
@@ -702,6 +702,37 @@ BASE_CASES = [
         _ok("jump_to_locator", {"name": "Chorus"},
             {"name": "Chorus", "time": 16.0,
              "was_playing": False, "start_marker_set": True}),
+    ]),
+
+    # ── arrangement clip editing (gated) ──────────────────────────────────
+    # trim omits absent edges from the wire, like jump_to_locator's criteria.
+    _case("trim_arrangement_clip", "success",
+          {"track_index": 0, "clip_index": 0, "end_time": 16.0}, [
+        _ok("trim_arrangement_clip",
+            {"track_index": 0, "clip_index": 0, "end_time": 16.0},
+            {"start_time": 0.0, "end_time": 16.0,
+             "requested_start_time": 0.0, "requested_end_time": 16.0,
+             "trimmed_head": False, "trimmed_tail": True, "refusals": []}),
+    ]),
+    _case("delete_arrangement_clip", "success",
+          {"track_index": 0, "clip_index": 0}, [
+        _ok("delete_arrangement_clip", {"track_index": 0, "clip_index": 0},
+            {"deleted": True, "deleted_clip_name": "Vox Take",
+             "start_time": 0.0, "end_time": 8.0}),
+    ]),
+    _case("move_arrangement_clip", "success",
+          {"track_index": 0, "clip_index": 0, "destination_time": 32.0}, [
+        _ok("move_arrangement_clip",
+            {"track_index": 0, "clip_index": 0, "destination_time": 32.0},
+            {"clip_name": "Vox Take", "start_time": 32.0, "end_time": 40.0,
+             "moved": True}),
+    ]),
+    _case("duplicate_arrangement_clip", "success",
+          {"track_index": 0, "clip_index": 0, "destination_time": 32.0}, [
+        _ok("duplicate_arrangement_clip",
+            {"track_index": 0, "clip_index": 0, "destination_time": 32.0},
+            {"clip_name": "Vox Take", "destination_time": 32.0,
+             "source_start_time": 0.0, "source_end_time": 8.0}),
     ]),
 
     # ── Gated-path cases (plan PR10) ──────────────────────────────────────

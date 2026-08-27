@@ -1,0 +1,45 @@
+{
+  "cases": [
+    {
+      "args": {
+        "clip_index": 0,
+        "track_index": 0
+      },
+      "expect": "Deleted arrangement clip 'Vox Take' (beats 0.0 to 8.0) from track 0 \u2014 the audio file on disk is untouched. Remaining arrangement clip indices on this track have shifted; re-read get_arrangement_clips before the next arrangement edit",
+      "name": "success",
+      "wire": [
+        {
+          "command": "delete_arrangement_clip",
+          "params": {
+            "clip_index": 0,
+            "track_index": 0
+          },
+          "response": {
+            "deleted": true,
+            "deleted_clip_name": "Vox Take",
+            "end_time": 8.0,
+            "start_time": 0.0
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "clip_index": 0,
+        "track_index": 0
+      },
+      "expect": "Error deleting arrangement clip: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "delete_arrangement_clip",
+          "params": {
+            "clip_index": 0,
+            "track_index": 0
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

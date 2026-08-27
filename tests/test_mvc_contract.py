@@ -32,7 +32,7 @@ TOOLS_SOURCE = REPO_ROOT / "src" / "ableton_mcp" / "tools.py"
 HANDSHAKE = REPO_ROOT / "src" / "ableton_mcp" / "handshake.py"
 REMOTE_SCRIPT = REPO_ROOT / "remote_script" / "__init__.py"
 
-EXPECTED_TOOL_COUNT = 47
+EXPECTED_TOOL_COUNT = 51
 
 # Dispatchable but deliberately tool-less (docs/REFACTOR_PLAN.md §9 defers
 # the expose-or-delete decision); mirrors test_cross_half_contract's pin.

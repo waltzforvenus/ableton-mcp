@@ -1,0 +1,52 @@
+{
+  "cases": [
+    {
+      "args": {
+        "clip_index": 0,
+        "end_time": 16.0,
+        "track_index": 0
+      },
+      "expect": "Trimmed arrangement clip 0: the clip spans beats 0.0 to 16.0",
+      "name": "success",
+      "wire": [
+        {
+          "command": "trim_arrangement_clip",
+          "params": {
+            "clip_index": 0,
+            "end_time": 16.0,
+            "track_index": 0
+          },
+          "response": {
+            "end_time": 16.0,
+            "refusals": [],
+            "requested_end_time": 16.0,
+            "requested_start_time": 0.0,
+            "start_time": 0.0,
+            "trimmed_head": false,
+            "trimmed_tail": true
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "clip_index": 0,
+        "end_time": 16.0,
+        "track_index": 0
+      },
+      "expect": "Error trimming arrangement clip: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "trim_arrangement_clip",
+          "params": {
+            "clip_index": 0,
+            "end_time": 16.0,
+            "track_index": 0
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

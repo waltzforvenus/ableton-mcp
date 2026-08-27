@@ -325,6 +325,68 @@ def jump_to_locator(result: Dict[str, Any], name: str, time: Any) -> str:
     )
 
 
+def trim_arrangement_clip(result: Dict[str, Any], track_index: int,
+                          clip_index: int, start_time: Any,
+                          end_time: Any) -> str:
+    spans = (f"clip spans beats {result.get('start_time')} to "
+             f"{result.get('end_time')}")
+    refusals = result.get("refusals") or []
+    trimmed = result.get("trimmed_head") or result.get("trimmed_tail")
+    if refusals:
+        prefix = "Partial trim" if trimmed else "Trim refused"
+        return (
+            f"{prefix}: {'; '.join(refusals)} — the {spans}; the refused "
+            f"edge(s) are untouched (trim them by hand in the UI)"
+        )
+    if not trimmed:
+        return f"Nothing to trim — the {spans} already"
+    return f"Trimmed arrangement clip {clip_index}: the {spans}"
+
+
+def delete_arrangement_clip(result: Dict[str, Any], track_index: int,
+                            clip_index: int) -> str:
+    name = result.get("deleted_clip_name") or f"clip {clip_index}"
+    return (
+        f"Deleted arrangement clip '{name}' (beats "
+        f"{result.get('start_time')} to {result.get('end_time')}) from "
+        f"track {track_index} — the audio file on disk is untouched. "
+        f"Remaining arrangement clip indices on this track have shifted; "
+        f"re-read get_arrangement_clips before the next arrangement edit"
+    )
+
+
+def move_arrangement_clip(result: Dict[str, Any], track_index: int,
+                          clip_index: int, destination_time: float) -> str:
+    name = result.get("clip_name") or f"clip {clip_index}"
+    if result.get("moved") is False:
+        return (
+            f"Arrangement clip '{name}' already starts at beat "
+            f"{result.get('start_time')} — nothing moved"
+        )
+    return (
+        f"Moved arrangement clip '{name}' — it now spans beats "
+        f"{result.get('start_time')} to {result.get('end_time')} on track "
+        f"{track_index}. Clip indices on this track have shifted "
+        f"(start-time order); re-read get_arrangement_clips before the "
+        f"next arrangement edit"
+    )
+
+
+def duplicate_arrangement_clip(result: Dict[str, Any], track_index: int,
+                               clip_index: int,
+                               destination_time: float) -> str:
+    name = result.get("clip_name") or f"clip {clip_index}"
+    return (
+        f"Duplicated arrangement clip '{name}' (source beats "
+        f"{result.get('source_start_time')} to "
+        f"{result.get('source_end_time')}) to beat "
+        f"{result.get('destination_time', destination_time)} on track "
+        f"{track_index}. Clip indices on this track have shifted "
+        f"(start-time order); re-read get_arrangement_clips to confirm the "
+        f"copy and find its index"
+    )
+
+
 # ── Error translation ────────────────────────────────────────────────────────
 
 # Tool name → the phrase inside its "Error {phrase}: {e}" return string,
@@ -376,6 +438,10 @@ ERROR_PHRASES: Dict[str, str] = {
     "duplicate_to_arrangement": "duplicating clip to arrangement",
     "create_locator": "creating locator",
     "jump_to_locator": "jumping to locator",
+    "trim_arrangement_clip": "trimming arrangement clip",
+    "delete_arrangement_clip": "deleting arrangement clip",
+    "move_arrangement_clip": "moving arrangement clip",
+    "duplicate_arrangement_clip": "duplicating arrangement clip",
 }
 
 

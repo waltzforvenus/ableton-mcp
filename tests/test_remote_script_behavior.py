@@ -539,6 +539,137 @@ def test_jump_to_locator_with_no_criteria_asks_for_one():
     assert "'Verse' at 8.0" in message
 
 
+def test_trim_arrangement_clip_tail():
+    harness = make_harness()
+    result = _ok(harness.process(_cmd("trim_arrangement_clip", track_index=2,
+                                      clip_index=0, end_time=6.0)))
+    assert result == {"start_time": 0.0, "end_time": 6.0,
+                      "requested_start_time": 0.0, "requested_end_time": 6.0,
+                      "trimmed_head": False, "trimmed_tail": True,
+                      "refusals": []}
+    clip = harness.song.tracks[2].arrangement_clips[0]
+    assert clip.end_time == 6.0
+    assert clip.end_marker == 6.0
+
+
+def test_trim_arrangement_clip_head():
+    harness = make_harness()
+    result = _ok(harness.process(_cmd("trim_arrangement_clip", track_index=2,
+                                      clip_index=0, start_time=2.0)))
+    assert result["trimmed_head"] is True
+    assert result["trimmed_tail"] is False
+    assert result["refusals"] == []
+    clip = harness.song.tracks[2].arrangement_clips[0]
+    assert clip.start_time == 2.0
+    assert clip.start_marker == 2.0
+    assert clip.end_time == 8.0
+
+
+def test_trim_arrangement_clip_converts_seconds_for_unwarped_audio():
+    harness = make_harness()
+    # A non-default tempo, so the test can tell "uses 60/song.tempo" apart
+    # from a hard-coded 0.5 s per beat: 100 BPM = 0.6 s per beat.
+    harness.song.tempo = 100.0
+    clip = harness.song.tracks[2].arrangement_clips[0]
+    clip.warping = False
+    clip.unwarped_seconds_per_beat = 0.6
+    # Content is 4.8 s long at 100 BPM for the 8-beat footprint.
+    clip._end_marker = 4.8
+    result = _ok(harness.process(_cmd("trim_arrangement_clip", track_index=2,
+                                      clip_index=0, end_time=6.0)))
+    assert result["trimmed_tail"] is True
+    assert abs(clip.end_time - 6.0) < 1e-6
+    # 2 trimmed beats = 1.2 s of marker movement at 100 BPM.
+    assert abs(clip.end_marker - 3.6) < 1e-6
+
+
+def test_trim_arrangement_clip_refuses_and_restores_when_markers_slide():
+    harness = make_harness(config=FakeLiveConfig(marker_trim="slides"))
+    clip = harness.song.tracks[2].arrangement_clips[0]
+    result = _ok(harness.process(_cmd("trim_arrangement_clip", track_index=2,
+                                      clip_index=0, start_time=2.0,
+                                      end_time=6.0)))
+    assert result["trimmed_head"] is False
+    assert result["trimmed_tail"] is False
+    assert len(result["refusals"]) == 2
+    # Markers restored, footprint untouched: the take is exactly as it was.
+    assert clip.start_marker == 0.0 and clip.end_marker == 8.0
+    assert clip.start_time == 0.0 and clip.end_time == 8.0
+
+
+def test_trim_arrangement_clip_refuses_looping_and_outward_trims():
+    harness = make_harness()
+    clip = harness.song.tracks[2].arrangement_clips[0]
+    clip.looping = True
+    message = _err(harness.process(_cmd("trim_arrangement_clip", track_index=2,
+                                        clip_index=0, end_time=6.0)))
+    assert "unloop" in message
+    clip.looping = False
+    message = _err(harness.process(_cmd("trim_arrangement_clip", track_index=2,
+                                        clip_index=0, end_time=10.0)))
+    assert "inward" in message
+
+
+def test_delete_arrangement_clip():
+    harness = make_harness()
+    result = _ok(harness.process(_cmd("delete_arrangement_clip",
+                                      track_index=2, clip_index=0)))
+    assert result == {"deleted": True, "deleted_clip_name": "Vox Take",
+                      "start_time": 0.0, "end_time": 8.0}
+    assert harness.song.tracks[2].arrangement_clips == []
+
+
+def test_delete_arrangement_clip_refuses_without_the_live_11_api():
+    harness = make_harness(config=FakeLiveConfig(track_delete_clip_api=False))
+    message = _err(harness.process(_cmd("delete_arrangement_clip",
+                                        track_index=2, clip_index=0)))
+    assert "Live 11" in message
+    assert len(harness.song.tracks[2].arrangement_clips) == 1
+
+
+def test_move_arrangement_clip_duplicates_then_deletes():
+    harness = make_harness()
+    result = _ok(harness.process(_cmd("move_arrangement_clip", track_index=2,
+                                      clip_index=0, destination_time=16.0)))
+    assert result == {"clip_name": "Vox Take", "start_time": 16.0,
+                      "end_time": 24.0, "moved": True}
+    clips = harness.song.tracks[2].arrangement_clips
+    # One clip: the copy at the destination; the original is gone.
+    assert len(clips) == 1
+    assert clips[0].start_time == 16.0 and clips[0].end_time == 24.0
+    assert clips[0].name == "Vox Take"
+
+
+def test_move_arrangement_clip_to_its_own_position_is_a_noop():
+    harness = make_harness()
+    result = _ok(harness.process(_cmd("move_arrangement_clip", track_index=2,
+                                      clip_index=0, destination_time=0.0)))
+    assert result["moved"] is False
+    assert len(harness.song.tracks[2].arrangement_clips) == 1
+
+
+def test_move_arrangement_clip_refuses_a_self_overlapping_destination():
+    harness = make_harness()
+    message = _err(harness.process(_cmd("move_arrangement_clip", track_index=2,
+                                        clip_index=0, destination_time=4.0)))
+    assert "overlaps the clip's own span" in message
+    clip = harness.song.tracks[2].arrangement_clips[0]
+    assert clip.start_time == 0.0 and clip.end_time == 8.0
+
+
+def test_duplicate_arrangement_clip_reuses_a_take_elsewhere():
+    harness = make_harness()
+    result = _ok(harness.process(_cmd("duplicate_arrangement_clip",
+                                      track_index=2, clip_index=0,
+                                      destination_time=16.0)))
+    assert result == {"clip_name": "Vox Take", "destination_time": 16.0,
+                      "source_start_time": 0.0, "source_end_time": 8.0}
+    clips = harness.song.tracks[2].arrangement_clips
+    assert len(clips) == 2
+    assert clips[0].start_time == 0.0
+    assert clips[1].start_time == 16.0 and clips[1].end_time == 24.0
+
+
 def test_switch_to_arrangement_view():
     harness = make_harness()
     result = _ok(harness.process(_cmd("switch_to_arrangement_view")))

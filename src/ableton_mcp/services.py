@@ -399,3 +399,47 @@ class AbletonService:
         if time is not None:
             params["time"] = time
         return self._send("jump_to_locator", params)
+
+    def trim_arrangement_clip(self, track_index: int, clip_index: int,
+                              start_time: Optional[float] = None,
+                              end_time: Optional[float] = None) -> Dict[str, Any]:
+        # An omitted edge stays where it is; only requested edges go on the
+        # wire so the script can tell "leave alone" from "trim to".
+        params: Dict[str, Any] = {
+            "track_index": track_index,
+            "clip_index": clip_index,
+        }
+        if start_time is not None:
+            params["start_time"] = start_time
+        if end_time is not None:
+            params["end_time"] = end_time
+        return self._send("trim_arrangement_clip", params)
+
+    def delete_arrangement_clip(self, track_index: int,
+                                clip_index: int) -> Dict[str, Any]:
+        return self._send(
+            "delete_arrangement_clip",
+            {"track_index": track_index, "clip_index": clip_index}
+        )
+
+    def move_arrangement_clip(self, track_index: int, clip_index: int,
+                              destination_time: float) -> Dict[str, Any]:
+        return self._send(
+            "move_arrangement_clip",
+            {
+                "track_index": track_index,
+                "clip_index": clip_index,
+                "destination_time": destination_time,
+            }
+        )
+
+    def duplicate_arrangement_clip(self, track_index: int, clip_index: int,
+                                   destination_time: float) -> Dict[str, Any]:
+        return self._send(
+            "duplicate_arrangement_clip",
+            {
+                "track_index": track_index,
+                "clip_index": clip_index,
+                "destination_time": destination_time,
+            }
+        )

@@ -11,6 +11,42 @@ separately, and a script change means **re-run
 
 Nothing yet.
 
+## [1.6.0] - 2026-08-27
+
+Ships Remote Script **1.11.0**. **Re-run `ableton-mcp-install-script` and
+restart Live after upgrading** — all four new commands live in the script
+half.
+
+### Added (user-facing)
+
+Arrangement take editing — the cleanup and comping pass after recording:
+
+- `trim_arrangement_clip` †: pull an Arrangement clip's edges inward, in
+  beats — the fix for a take that overhangs its section. Live documents no
+  arrangement resize, so the script works through the clip's content
+  markers and then **verifies the edge actually moved by readback**; on a
+  build where markers behave differently it restores them and refuses that
+  edge honestly instead of mis-trimming a take. Unwarped audio (markers in
+  seconds) is converted at the current tempo; looping clips are refused.
+- `delete_arrangement_clip` †: delete a clip from the Arrangement timeline
+  (Live 11+ `Track.delete_clip`) — stray record fragments, scrapped takes.
+  The audio file on disk is never touched.
+- `move_arrangement_clip` †: move a clip to a new start position. Live has
+  no true move — `Clip.position` is the clip's LOOP position, not its
+  Arrangement placement — so this duplicates the clip to the destination,
+  verifies the copy landed, then deletes the original. A destination
+  overlapping the clip's own span is refused.
+- `duplicate_arrangement_clip` †: copy an Arrangement clip elsewhere on its
+  track — reuse an already-recorded take at another section, then trim the
+  copy to fit. Same Live 11+ API the session duplicate uses.
+
+Clip *fades* are not exposed by Live's API at all; Live's own "Create Fades
+on Clip Edges" preference supplies the anti-click edges on trimmed takes.
+
+### Changed (internal)
+
+- Package author contact switched to the maintainer's personal address.
+
 ## [1.5.0] - 2026-08-27
 
 Ships Remote Script **1.10.0**. **Re-run `ableton-mcp-install-script` and

@@ -29,6 +29,7 @@ import os
 
 _NOTE_API_GENERATIONS = ("legacy", "both", "extended_only")
 _SAVE_OWNERS = ("song", "application", None)
+_MARKER_TRIM_MODES = ("anchored", "slides")
 
 
 class FakeLiveConfig(object):
@@ -37,11 +38,14 @@ class FakeLiveConfig(object):
     def __init__(self, note_api="both", extended_read_raises=False,
                  create_audio_clip_api=True, count_in_read_only=False,
                  save_owner="song", warp_markers=False,
-                 extended_note_fields=False):
+                 extended_note_fields=False, marker_trim="anchored",
+                 track_delete_clip_api=True):
         if note_api not in _NOTE_API_GENERATIONS:
             raise ValueError("note_api must be one of %r" % (_NOTE_API_GENERATIONS,))
         if save_owner not in _SAVE_OWNERS:
             raise ValueError("save_owner must be one of %r" % (_SAVE_OWNERS,))
+        if marker_trim not in _MARKER_TRIM_MODES:
+            raise ValueError("marker_trim must be one of %r" % (_MARKER_TRIM_MODES,))
         self.note_api = note_api
         self.extended_read_raises = extended_read_raises
         self.create_audio_clip_api = create_audio_clip_api
@@ -49,6 +53,12 @@ class FakeLiveConfig(object):
         self.save_owner = save_owner
         self.warp_markers = warp_markers
         self.extended_note_fields = extended_note_fields
+        # "anchored": marker writes move the Arrangement footprint with the
+        # content staying put in time (what the trim handler needs);
+        # "slides": the footprint stays and only the content window moves —
+        # the branch the handler must detect via readback and refuse.
+        self.marker_trim = marker_trim
+        self.track_delete_clip_api = track_delete_clip_api
 
 
 # ── Parameters, devices, mixer ───────────────────────────────────────────────
@@ -217,6 +227,11 @@ class FakeClip(object):
         self.loop_start = 0.0
         self.loop_end = self.length
         self.launch_mode = 0
+        # Content-window markers (see FakeLiveConfig.marker_trim). Set the
+        # backing fields directly: the property setters translate marker
+        # deltas into footprint moves, which must not fire during init.
+        self._start_marker = 0.0
+        self._end_marker = self.length
         self._notes = []
         self._next_note_id = 1
 
@@ -224,6 +239,10 @@ class FakeClip(object):
             self.gain = 0.5
             self.gain_display_string = "0.0 dB"
             self.warping = True
+            # Unwarped audio keeps markers in seconds; this fixed
+            # seconds-per-beat matches the FakeSong's 120 BPM default —
+            # override in tests that change the song tempo.
+            self.unwarped_seconds_per_beat = 0.5
             self.warp_mode = 0
             self.pitch_coarse = 0
             self.pitch_fine = 0
@@ -304,6 +323,44 @@ class FakeClip(object):
             if not self._in_range(record, from_pitch, pitch_span, from_time, time_span)
         ]
 
+    # -- arrangement geometry (markers, position) ---------------------------
+
+    def _marker_units_per_beat(self):
+        if self.is_midi_clip or getattr(self, "warping", True):
+            return 1.0
+        return self.unwarped_seconds_per_beat
+
+    @property
+    def start_marker(self):
+        return self._start_marker
+
+    @start_marker.setter
+    def start_marker(self, value):
+        value = float(value)
+        delta = value - self._start_marker
+        self._start_marker = value
+        if self._config.marker_trim == "anchored":
+            self.start_time += delta / self._marker_units_per_beat()
+            self.length = self.end_time - self.start_time
+
+    @property
+    def end_marker(self):
+        return self._end_marker
+
+    @end_marker.setter
+    def end_marker(self, value):
+        value = float(value)
+        delta = value - self._end_marker
+        self._end_marker = value
+        if self._config.marker_trim == "anchored":
+            self.end_time += delta / self._marker_units_per_beat()
+            self.length = self.end_time - self.start_time
+
+    # NOTE: no `position` property, deliberately. In the LOM, Clip.position
+    # is the clip's LOOP position (== loop_start), not its Arrangement
+    # placement; modeling it as start_time here once let a wrong handler
+    # pass its tests. The move command works via duplicate+delete instead.
+
     # -- duplication (for duplicate_clip_to_arrangement) --------------------
 
     def copy(self):
@@ -312,9 +369,13 @@ class FakeClip(object):
                              color=self.color)
         duplicate._notes = [dict(record) for record in self._notes]
         duplicate._next_note_id = self._next_note_id
+        # Real Live preserves a duplicated clip's content-window markers.
+        duplicate._start_marker = self._start_marker
+        duplicate._end_marker = self._end_marker
         if self.is_audio_clip:
             for attr in ("gain", "gain_display_string", "warping", "warp_mode",
-                         "pitch_coarse", "pitch_fine", "file_path"):
+                         "pitch_coarse", "pitch_fine", "file_path",
+                         "unwarped_seconds_per_beat"):
                 setattr(duplicate, attr, getattr(self, attr))
             if hasattr(self, "warp_markers"):
                 duplicate.warp_markers = list(self.warp_markers)
@@ -385,6 +446,10 @@ class FakeTrack(object):
         self.clip_slots = [FakeClipSlot(self._config) for _ in range(num_slots)]
         self.devices = []
         self.arrangement_clips = []
+        # Live 11+ Track.delete_clip — bound only when the config says the
+        # build has it, so the script's hasattr probe behaves as in Live.
+        if self._config.track_delete_clip_api:
+            self.delete_clip = self._delete_clip_api
         self.mixer_device = FakeMixerDevice(num_sends=num_sends)
 
         # Routing: current values are option objects; available_* lists hold
@@ -413,6 +478,17 @@ class FakeTrack(object):
         duplicate.end_time = duplicate.start_time + duplicate.length
         self.arrangement_clips.append(duplicate)
         return duplicate
+
+    def _delete_clip_api(self, clip):
+        """Live 11+ Track.delete_clip: removes a Session or Arrangement clip."""
+        if clip in self.arrangement_clips:
+            self.arrangement_clips.remove(clip)
+            return
+        for slot in self.clip_slots:
+            if slot.has_clip and slot.clip is clip:
+                slot.clip = None
+                return
+        raise RuntimeError("delete_clip: clip is not on this track")
 
 
 # ── Song ─────────────────────────────────────────────────────────────────────
