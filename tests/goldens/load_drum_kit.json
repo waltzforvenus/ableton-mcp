@@ -58,6 +58,49 @@
     },
     {
       "args": {
+        "kit_path": "drums/808 Core Kit.adg",
+        "rack_uri": "Drums/Drum Rack",
+        "track_index": 0
+      },
+      "expect": "Loaded drum rack and kit '808 Core Kit.adg' on track 0",
+      "name": "success_direct_kit_file",
+      "wire": [
+        {
+          "command": "load_browser_item",
+          "params": {
+            "item_uri": "Drums/Drum Rack",
+            "track_index": 0
+          },
+          "response": {
+            "loaded": true
+          }
+        },
+        {
+          "command": "get_browser_items_at_path",
+          "params": {
+            "path": "drums/808 Core Kit.adg"
+          },
+          "response": {
+            "is_loadable": true,
+            "items": [],
+            "name": "808 Core Kit.adg",
+            "uri": "query:Drums#FileId_5483"
+          }
+        },
+        {
+          "command": "load_browser_item",
+          "params": {
+            "item_uri": "query:Drums#FileId_5483",
+            "track_index": 0
+          },
+          "response": {
+            "loaded": true
+          }
+        }
+      ]
+    },
+    {
+      "args": {
         "kit_path": "drums/acoustic",
         "rack_uri": "Drums/Drum Rack",
         "track_index": 0

@@ -339,10 +339,15 @@ class AbletonService:
             return {"stage": "kit_lookup_failed",
                     "error": kit_result.get("error")}
 
-        # Step 3: Find a loadable drum kit
+        # Step 3: Find a loadable drum kit. kit_path may name a folder (load
+        # its first loadable kit) or point directly at a kit file such as
+        # "drums/808 Core Kit.adg" — then the node itself is the loadable item.
         kit_items = kit_result.get("items", [])
         loadable_kits = [item for item in kit_items
                          if item.get("is_loadable", False)]
+        if not loadable_kits and kit_result.get("is_loadable") \
+                and kit_result.get("uri"):
+            loadable_kits = [kit_result]
         if not loadable_kits:
             return {"stage": "no_loadable", "kit_path": kit_path}
 

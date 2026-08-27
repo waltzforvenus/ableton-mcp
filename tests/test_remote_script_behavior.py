@@ -407,19 +407,25 @@ def test_set_track_routing_matches_display_name_case_insensitively():
 def test_set_count_in_with_metronome():
     harness = make_harness()
     result = _ok(harness.process(_cmd("set_count_in", bars=2, metronome=True)))
-    assert result == {"count_in_duration": 2, "count_in": "2 Bars",
+    assert result == {"count_in_writable": True, "requested": "2 Bars",
+                      "count_in_duration": 2, "count_in": "2 Bars",
                       "metronome": True}
     assert harness.song.count_in_duration == 2
     assert harness.song.metronome is True
 
 
 def test_set_count_in_when_the_property_is_read_only():
-    # Live 12.3.2 exposes Song.count_in_duration read-only; the failure must
-    # be reported, not swallowed.
+    # Live 12.3+ exposes Song.count_in_duration read-only. The metronome half
+    # is still writable and must be applied; the result reports the honest
+    # partial outcome instead of failing outright.
     harness = make_harness(config=FakeLiveConfig(count_in_read_only=True))
-    message = _err(harness.process(_cmd("set_count_in", bars=2)))
-    assert "no setter" in message
+    result = _ok(harness.process(_cmd("set_count_in", bars=2,
+                                      metronome=True)))
+    assert result == {"count_in_writable": False, "requested": "2 Bars",
+                      "count_in_duration": 1, "count_in": "1 Bar",
+                      "metronome": True}
     assert harness.song.count_in_duration == 1  # untouched
+    assert harness.song.metronome is True       # still applied
 
 
 @pytest.mark.parametrize("owner", ["song", "application"])
@@ -509,6 +515,32 @@ def test_set_current_song_time():
     result = _ok(harness.process(_cmd("set_current_song_time", time=32.0)))
     assert result == {"current_song_time": 32.0}
     assert harness.song.current_song_time == 32.0
+
+
+def test_set_current_song_time_retries_when_the_transport_swallows_a_write():
+    # Right after stop_playback, Live is still resetting the transport and
+    # can overwrite the first playhead write. The handler must notice the
+    # mismatch on read-back and write once more.
+    harness = make_harness()
+    song = harness.song
+
+    class _Settling(type(song)):
+        @property
+        def current_song_time(self):
+            return self._t
+        @current_song_time.setter
+        def current_song_time(self, value):
+            if getattr(self, "_swallow_once", False):
+                self._swallow_once = False  # the stop-reset wins this write
+                return
+            self._t = value
+
+    song.__class__ = _Settling
+    song._t = 20.8
+    song._swallow_once = True
+    result = _ok(harness.process(_cmd("set_current_song_time", time=0.0)))
+    assert result == {"current_song_time": 0.0}
+    assert song.current_song_time == 0.0
 
 
 # --------------------------------------------------------------------------
@@ -609,7 +641,9 @@ def test_load_browser_item_loads_onto_the_selected_track():
                                       item_uri="query:Synths#Operator",
                                       track_type="regular")))
     assert result == {"loaded": True, "item_name": "Operator",
-                      "track_name": "Drums", "uri": "query:Synths#Operator"}
+                      "track_name": "Drums", "uri": "query:Synths#Operator",
+                      "new_devices": ["Operator"],
+                      "devices_after": ["Impulse", "Operator"]}
     drums = harness.song.tracks[1]
     assert harness.song.view.selected_track is drums
     assert [d.name for d in drums.devices] == ["Impulse", "Operator"]

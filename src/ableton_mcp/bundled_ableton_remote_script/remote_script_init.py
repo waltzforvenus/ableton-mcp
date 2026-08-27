@@ -25,7 +25,7 @@ HOST = "127.0.0.1"
 
 # Bumped whenever the TCP command surface changes; the MCP server compares
 # this to EXPECTED_REMOTE_SCRIPT_VERSION.
-SCRIPT_VERSION = "1.8.0"
+SCRIPT_VERSION = "1.9.0"
 PROTOCOL_VERSION = 1
 
 # Wire-command dispatch table: every command _process_command accepts, in one
@@ -742,7 +742,7 @@ class AbletonMCP(ControlSurface):
         alone, where lowering the track would bury every other section and
         compressing harder squashes the whole performance.
 
-        gain is Live's normalized 0.0-1.0, where 0.5 is roughly unity.
+        gain is Live's normalized 0.0-1.0, where 0.4 is unity (0.0 dB).
         """
         try:
             track = self._resolve_track(track_index)
@@ -855,11 +855,12 @@ class AbletonMCP(ControlSurface):
 
         bars: 0 = None, 1 = 1 Bar, 2 = 2 Bars, 3 = 4 Bars (Live's own indices).
 
-        NOTE: verified against Live 12.3.2 — `Song.count_in_duration` is exposed
-        but READ-ONLY ("property of 'Song' object has no setter"). The same is
-        true of any save. Both are reported as failures rather than silently
-        swallowed, so a caller learns the API route is closed and reaches for
-        the UI instead of assuming it worked.
+        NOTE: verified against Live 12.3.2 and 12.4.3 — `Song.count_in_duration`
+        is exposed but READ-ONLY ("property of 'Song' object has no setter").
+        When that happens the metronome half (which IS writable) is still
+        applied, and the result reports count_in_writable=False with the
+        unchanged current value, so a caller gets the honest partial outcome
+        instead of an all-or-nothing failure.
         """
         try:
             mapping = {0: "None", 1: "1 Bar", 2: "2 Bars", 3: "4 Bars"}
@@ -875,14 +876,23 @@ class AbletonMCP(ControlSurface):
             if value not in mapping:
                 raise ValueError("count-in index must be 0 (None), 1, 2 or 3 (4 Bars)")
 
-            self._song.count_in_duration = value
+            count_in_writable = True
+            try:
+                self._song.count_in_duration = value
+            except Exception as e:
+                count_in_writable = False
+                self.log_message("count_in_duration is read-only on this "
+                                 "Live build: " + str(e))
 
             # A count-in you cannot hear is useless, so allow turning the
-            # metronome on in the same call.
+            # metronome on in the same call — even when the count-in itself
+            # could not be written.
             if metronome is not None:
                 self._song.metronome = bool(metronome)
 
             return {
+                "count_in_writable": count_in_writable,
+                "requested": mapping[value],
                 "count_in_duration": int(self._song.count_in_duration),
                 "count_in": mapping.get(int(self._song.count_in_duration), "?"),
                 "metronome": bool(self._song.metronome),
@@ -1237,8 +1247,16 @@ class AbletonMCP(ControlSurface):
         module inside this method only, and the body never uses the module.
         """
         try:
-            self._song.current_song_time = float(time)
-            return {"current_song_time": self._song.current_song_time}
+            requested = float(time)
+            self._song.current_song_time = requested
+            actual = self._song.current_song_time
+            if abs(actual - requested) > 1e-3:
+                # Right after stop_playback Live is still resetting the
+                # transport, and the first write can be overwritten before it
+                # lands. A second write settles it.
+                self._song.current_song_time = requested
+                actual = self._song.current_song_time
+            return {"current_song_time": actual}
         except Exception as e:
             self.log_message("Error setting current song time: " + str(e))
             raise
@@ -1667,15 +1685,32 @@ class AbletonMCP(ControlSurface):
             
             # Select the track
             self._song.view.selected_track = track
-            
+
+            devices_before = [d.name for d in track.devices]
+
             # Load the item
             app.browser.load_item(item)
-            
+
+            devices_after = [d.name for d in track.devices]
+            # Multiset diff, so a second copy of an already-present device
+            # still counts as new.
+            remaining = {}
+            for name in devices_before:
+                remaining[name] = remaining.get(name, 0) + 1
+            new_devices = []
+            for name in devices_after:
+                if remaining.get(name, 0) > 0:
+                    remaining[name] -= 1
+                else:
+                    new_devices.append(name)
+
             result = {
                 "loaded": True,
                 "item_name": item.name,
                 "track_name": track.name,
-                "uri": item_uri
+                "uri": item_uri,
+                "new_devices": new_devices,
+                "devices_after": devices_after,
             }
             return result
         except Exception as e:

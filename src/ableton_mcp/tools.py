@@ -206,7 +206,7 @@ def set_clip_gain(ctx: Context, track_index: int, clip_index: int, gain: float,
     Lowering the track fader would bury the whole performance, and compressing
     harder squashes the dynamics everywhere; clip gain changes only that take.
 
-    gain is Live's normalized 0.0-1.0 scale where 0.5 is roughly unity, NOT
+    gain is Live's normalized 0.0-1.0 scale where 0.4 is unity (0.0 dB), NOT
     decibels. Call get_arrangement_clips first — it reports each clip's current
     gain and the dB Live displays for it.
 
@@ -214,7 +214,7 @@ def set_clip_gain(ctx: Context, track_index: int, clip_index: int, gain: float,
     - track_index: The index of the track containing the clip
     - clip_index: Index of the clip, ordered by start time as get_arrangement_clips
       returns them (or the clip slot index when arrangement is False)
-    - gain: 0.0 to 1.0, where 0.5 is approximately unity
+    - gain: 0.0 to 1.0, where 0.4 is unity (0.0 dB)
     - arrangement: True for a clip on the timeline (default), False for a Session slot
     """
     result = _deps(ctx).service.set_clip_gain(track_index, clip_index, gain, arrangement)
@@ -278,6 +278,10 @@ def set_count_in(ctx: Context, bars: int = 1, metronome: bool = True) -> str:
 
     This is the right way to get a count-in: it applies only when recording, so
     it needs no empty bar inserted at the front of the arrangement.
+
+    NOTE: Live 12.3+ exposes count-in as read-only to the API. On those builds
+    the metronome half is still applied and the result says the count-in must
+    be set in Live's UI.
 
     Parameters:
     - bars: 0 = none, 1 = 1 bar, 2 = 2 bars, 3 = 4 bars (Live's own indices)
@@ -693,7 +697,8 @@ def load_drum_kit(ctx: Context, track_index: int, rack_uri: str, kit_path: str) 
     Parameters:
     - track_index: The index of the track to load on
     - rack_uri: The URI of the drum rack to load (e.g., 'Drums/Drum Rack')
-    - kit_path: Path to the drum kit inside the browser (e.g., 'drums/acoustic/kit1')
+    - kit_path: Browser path to the kit — either a folder (its first loadable
+      kit is used) or a kit file itself (e.g. 'drums/808 Core Kit.adg')
     """
     result = _deps(ctx).service.load_drum_kit(track_index, rack_uri, kit_path)
     return presenters.load_drum_kit(result)

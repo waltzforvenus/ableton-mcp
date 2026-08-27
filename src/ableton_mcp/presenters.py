@@ -69,8 +69,12 @@ def set_track_routing(result: Dict[str, Any]) -> str:
 
 
 def set_count_in(result: Dict[str, Any]) -> str:
-    return (f"Count-in set to {result.get('count_in')}; "
-            f"metronome {'on' if result.get('metronome') else 'off'}")
+    metronome = f"metronome {'on' if result.get('metronome') else 'off'}"
+    if result.get("count_in_writable") is False:
+        return (f"Live's API exposes count-in as read-only on this build, so "
+                f"it is still {result.get('count_in')} — set it in Live's UI "
+                f"(Record button context menu). Applied the rest: {metronome}")
+    return f"Count-in set to {result.get('count_in')}; {metronome}"
 
 
 def set_track_send(result: Dict[str, Any], send_index: int) -> str:
@@ -177,7 +181,10 @@ def load_instrument_or_effect(result: Dict[str, Any], track_index: int,
             return f"Loaded instrument with URI '{uri}' on track {track_index}. New devices: {', '.join(new_devices)}"
         else:
             devices = result.get("devices_after", [])
-            return f"Loaded instrument with URI '{uri}' on track {track_index}. Devices on track: {', '.join(devices)}"
+            if devices:
+                return f"Loaded instrument with URI '{uri}' on track {track_index}. Devices on track: {', '.join(devices)}"
+            item = result.get("item_name") or uri
+            return f"Loaded '{item}' on track {track_index}"
     else:
         return f"Failed to load instrument with URI '{uri}'"
 

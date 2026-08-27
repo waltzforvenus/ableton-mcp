@@ -53,6 +53,29 @@
     {
       "args": {
         "track_index": 0,
+        "uri": "query:Drums#FileId_5483"
+      },
+      "expect": "Loaded '808 Core Kit.adg' on track 0",
+      "name": "loaded_no_device_report",
+      "wire": [
+        {
+          "command": "load_browser_item",
+          "params": {
+            "item_uri": "query:Drums#FileId_5483",
+            "track_index": 0,
+            "track_type": "regular"
+          },
+          "response": {
+            "item_name": "808 Core Kit.adg",
+            "loaded": true,
+            "track_name": "Kick"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "track_index": 0,
         "uri": "query:Synths#Operator"
       },
       "expect": "Failed to load instrument with URI 'query:Synths#Operator'",

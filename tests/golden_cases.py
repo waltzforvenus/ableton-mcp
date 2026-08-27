@@ -233,6 +233,15 @@ BASE_CASES = [
         _ok("set_count_in", {"bars": 0, "metronome": False},
             {"count_in": "None", "metronome": False}),
     ]),
+    # Live 12.3+: the script reports the count-in property as read-only and
+    # the honest partial outcome (metronome still applied) must surface.
+    _case("set_count_in", "read_only_partial",
+          {"bars": 2, "metronome": True}, [
+        _ok("set_count_in", {"bars": 2, "metronome": True},
+            {"count_in_writable": False, "requested": "2 Bars",
+             "count_in_duration": 1, "count_in": "1 Bar",
+             "metronome": True}),
+    ]),
 
     # ── set_track_send ────────────────────────────────────────────────────
     # display_value present vs absent (falls back to the raw value).
@@ -434,6 +443,16 @@ BASE_CASES = [
             {"loaded": True, "new_devices": [],
              "devices_after": ["Operator", "Reverb"]}),
     ]),
+    # A 1.8.0-or-older script sends neither new_devices nor devices_after;
+    # the presenter must fall back to the item name, not print an empty list.
+    _case("load_instrument_or_effect", "loaded_no_device_report",
+          {"track_index": 0, "uri": "query:Drums#FileId_5483"}, [
+        _ok("load_browser_item",
+            {"track_index": 0, "item_uri": "query:Drums#FileId_5483",
+             "track_type": "regular"},
+            {"loaded": True, "item_name": "808 Core Kit.adg",
+             "track_name": "Kick"}),
+    ]),
     _case("load_instrument_or_effect", "not_loaded",
           {"track_index": 0, "uri": "query:Synths#Operator"}, [
         _ok("load_browser_item",
@@ -582,6 +601,22 @@ BASE_CASES = [
         }),
         _ok("load_browser_item",
             {"track_index": 0, "item_uri": "query:Drums#Kit%20One"},
+            {"loaded": True}),
+    ]),
+    # kit_path pointing directly at a kit FILE: the node itself is loadable
+    # and has no children; it must be loaded rather than bailing no_loadable.
+    _case("load_drum_kit", "success_direct_kit_file",
+          {"track_index": 0, "rack_uri": "Drums/Drum Rack",
+           "kit_path": "drums/808 Core Kit.adg"}, [
+        _ok("load_browser_item",
+            {"track_index": 0, "item_uri": "Drums/Drum Rack"},
+            {"loaded": True}),
+        _ok("get_browser_items_at_path", {"path": "drums/808 Core Kit.adg"}, {
+            "name": "808 Core Kit.adg", "uri": "query:Drums#FileId_5483",
+            "is_loadable": True, "items": [],
+        }),
+        _ok("load_browser_item",
+            {"track_index": 0, "item_uri": "query:Drums#FileId_5483"},
             {"loaded": True}),
     ]),
     # Early bail #1: the rack itself fails to load — one wire call only.
