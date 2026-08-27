@@ -326,8 +326,10 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     print(
-        "\nIf Ableton was already open: restart Live, or re-select AbletonMCP "
-        "under Preferences → Link/Tempo/MIDI → Control Surface."
+        "\nIf Ableton was already open: RESTART Live to load the new script. "
+        "Re-selecting AbletonMCP under Preferences → Link/Tempo/MIDI only "
+        "detects a newly installed script — Live keeps an already-imported "
+        "script module cached, so updates need a full restart."
     )
     return 0
 

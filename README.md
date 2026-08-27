@@ -277,8 +277,10 @@ uvx --from ableton-mcp ableton-mcp-install-script --target "/path/to/User Librar
 
 > The legacy `Preferences/User Remote Scripts` folder (used for instant-mapping configs, not Python control surfaces) is no longer targeted by default; pass `--legacy` if you need it for an old Live version.
 
-Then **restart Ableton** (or re-select the AbletonMCP control surface) so Live
-loads it. Re-run the command after upgrading — the server logs a warning when
+Then **restart Ableton** so Live loads it. (Re-selecting the AbletonMCP
+control surface is only enough the *first* time, when the script is newly
+detected — Live caches an already-imported script module, so an updated
+script needs a full restart.) Re-run the command after upgrading — the server logs a warning when
 the loaded script version doesn't match what it expects.
 
 > **Note:** The server does **not** install the script on startup. Writing into
