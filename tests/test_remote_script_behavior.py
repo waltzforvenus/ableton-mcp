@@ -513,7 +513,8 @@ def test_switch_to_arrangement_view():
 def test_set_current_song_time():
     harness = make_harness()
     result = _ok(harness.process(_cmd("set_current_song_time", time=32.0)))
-    assert result == {"current_song_time": 32.0}
+    assert result == {"current_song_time": 32.0, "requested": 32.0,
+                      "settled": True}
     assert harness.song.current_song_time == 32.0
 
 
@@ -539,8 +540,32 @@ def test_set_current_song_time_retries_when_the_transport_swallows_a_write():
     song._t = 20.8
     song._swallow_once = True
     result = _ok(harness.process(_cmd("set_current_song_time", time=0.0)))
-    assert result == {"current_song_time": 0.0}
+    assert result == {"current_song_time": 0.0, "requested": 0.0,
+                      "settled": True}
     assert song.current_song_time == 0.0
+
+
+def test_set_current_song_time_reports_a_stale_read_back_honestly():
+    # Verified on Live 12.4.3: during the tick after stop_playback the write
+    # lands, but read-backs keep returning the stopping position until the
+    # next tick. The handler must report settled=False rather than echoing
+    # the stale value as if it were the outcome.
+    harness = make_harness()
+    song = harness.song
+
+    class _StaleReads(type(song)):
+        @property
+        def current_song_time(self):
+            return 5.2  # the stopping position, for the whole tick
+        @current_song_time.setter
+        def current_song_time(self, value):
+            self._written = value  # lands, but is not visible this tick
+
+    song.__class__ = _StaleReads
+    result = _ok(harness.process(_cmd("set_current_song_time", time=0.0)))
+    assert result == {"current_song_time": 5.2, "requested": 0.0,
+                      "settled": False}
+    assert song._written == 0.0  # the write itself did land
 
 
 # --------------------------------------------------------------------------

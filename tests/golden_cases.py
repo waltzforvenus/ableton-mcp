@@ -660,6 +660,13 @@ BASE_CASES = [
             {"current_song_time": 8.0}),
     ]),
 
+    # Transport still settling after a stop: the stale read-back must be
+    # flagged, not stated as the outcome.
+    _case("set_arrangement_time", "unsettled_after_stop", {"time": 0.0}, [
+        _ok("set_current_song_time", {"time": 0.0},
+            {"current_song_time": 5.2, "requested": 0.0, "settled": False}),
+    ]),
+
     # ── get_arrangement_clips ─────────────────────────────────────────────
     _case("get_arrangement_clips", "success", {"track_index": 0}, [
         _ok("get_arrangement_clips", {"track_index": 0}, {

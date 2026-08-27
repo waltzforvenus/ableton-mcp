@@ -20,6 +20,26 @@
     },
     {
       "args": {
+        "time": 0.0
+      },
+      "expect": "Playhead set to beat 0.0 \u2014 Live still reported 5.2 while the transport was settling; the write lands on the next tick (re-read transport state to confirm)",
+      "name": "unsettled_after_stop",
+      "wire": [
+        {
+          "command": "set_current_song_time",
+          "params": {
+            "time": 0.0
+          },
+          "response": {
+            "current_song_time": 5.2,
+            "requested": 0.0,
+            "settled": false
+          }
+        }
+      ]
+    },
+    {
+      "args": {
         "time": 8.0
       },
       "expect": "Error setting arrangement time: boom",

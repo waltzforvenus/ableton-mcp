@@ -25,7 +25,7 @@ HOST = "127.0.0.1"
 
 # Bumped whenever the TCP command surface changes; the MCP server compares
 # this to EXPECTED_REMOTE_SCRIPT_VERSION.
-SCRIPT_VERSION = "1.9.0"
+SCRIPT_VERSION = "1.9.1"
 PROTOCOL_VERSION = 1
 
 # Wire-command dispatch table: every command _process_command accepts, in one
@@ -1251,12 +1251,17 @@ class AbletonMCP(ControlSurface):
             self._song.current_song_time = requested
             actual = self._song.current_song_time
             if abs(actual - requested) > 1e-3:
-                # Right after stop_playback Live is still resetting the
-                # transport, and the first write can be overwritten before it
-                # lands. A second write settles it.
+                # Right after stop_playback the transport is still settling:
+                # a write can be swallowed (the retry covers that), and —
+                # verified against Live 12.4.3 — read-backs can stay stale
+                # for the rest of the tick even though the write landed.
                 self._song.current_song_time = requested
                 actual = self._song.current_song_time
-            return {"current_song_time": actual}
+            return {
+                "current_song_time": actual,
+                "requested": requested,
+                "settled": abs(actual - requested) <= 1e-3,
+            }
         except Exception as e:
             self.log_message("Error setting current song time: " + str(e))
             raise

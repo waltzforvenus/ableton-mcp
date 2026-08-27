@@ -280,6 +280,11 @@ def switch_to_arrangement_view() -> str:
 
 
 def set_arrangement_time(result: Dict[str, Any], time: float) -> str:
+    if result.get("settled") is False:
+        return (f"Playhead set to beat {result.get('requested', time)} — Live "
+                f"still reported {result.get('current_song_time')} while the "
+                f"transport was settling; the write lands on the next tick "
+                f"(re-read transport state to confirm)")
     return f"Playhead moved to beat {result.get('current_song_time', time)}"
 
 
