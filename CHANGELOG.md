@@ -9,7 +9,54 @@ separately, and a script change means **re-run
 
 ## [Unreleased]
 
-Nothing yet.
+Ships Remote Script **1.12.0**. **Re-run `ableton-mcp-install-script` and
+restart Live after upgrading** — the trim rework lives in the script half,
+and the server refuses `trim_arrangement_clip` against older scripts
+(their implementation could never trim on the Live builds we can verify).
+
+### Changed (user-facing)
+
+- `trim_arrangement_clip` † actually trims now. The 1.9.0–1.11.0
+  marker-write approach was verified inert on real Live 12.4.3: writing
+  `Clip.start_marker`/`end_marker` never moves an Arrangement clip's
+  footprint, so the readback guard refused every trim — safely, but
+  uselessly. The rework trims the way the UI does, verified end to end on
+  12.4.3: stamp a temporary silent clip over the region to remove (Live
+  permanently crops whatever a stamp covers), delete the stamp, verify the
+  take's new edge by readback. What follows from the mechanism:
+  - The eraser's stamped footprint is measured in empty timeline space
+    before the take is touched, so a build where the stamp machinery
+    misbehaves gets an honest refusal with the take untouched — and an
+    edge whose stamp cannot be placed safely (a micro-trim right against a
+    neighbouring clip) is refused the same way.
+  - Needs one empty Session slot on the track (the eraser is a temporary
+    Session clip on the same track, since stamps only crop their own
+    track) and Live 11+; trimming audio takes needs Live 12.0.5+
+    (`ClipSlot.create_audio_clip`) and writes a tiny generated silent WAV
+    to the system temp directory.
+  - Looping clips are no longer refused — the crop is Live's own overlap
+    handling, which treats them exactly as the UI does.
+  - The trim is real editing, not a marker move: the audio file on disk is
+    still never touched, but un-trimming is Edit > Undo in Live rather
+    than dragging the edge back out.
+
+### Internal
+
+- `trim_arrangement_clip`'s registry row carries
+  `min_script_version="1.12.0"`, so a 1.9.0–1.11.0 script (which
+  advertises the command but serves the inert implementation) gets the
+  friendly re-run-the-installer message instead of an endless refusal
+  loop.
+- `tests/fake_ableton` now models Live's arrangement overlap physics —
+  `Track.duplicate_clip_to_arrangement` crops or splits whatever the copy
+  lands on and keeps the clip list in start-time order — and derives an
+  imported audio clip's length from the real WAV on disk. The
+  `marker_trim` config toggle is gone: marker writes never move
+  footprints, matching verified Live behavior.
+- `scripts/smoke_live.py`'s arrangement-editing step now proves the
+  overlap-stamp crop on real Live: trimmed edges are verified by
+  `get_arrangement_clips` readback and the temporary eraser Session clip
+  must be gone afterwards.
 
 ## [1.6.0] - 2026-08-27
 

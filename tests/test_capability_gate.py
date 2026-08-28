@@ -345,7 +345,14 @@ def test_the_matrix_is_not_vacuous():
     # floor and the probe, so the parametrized suites below cover dozens of
     # commands, not the historical five.
     assert len(GATED_NO_FLOOR) >= 20
-    assert GATED_WITH_FLOOR == ["get_device_parameters", "set_device_parameter"]
+    # The device pair's floor catches 1.7.0's broken duplicate-definition
+    # handlers; trim's catches 1.9.0–1.11.0's marker-write implementation,
+    # which is verifiably inert on real Live (12.4.3).
+    assert GATED_WITH_FLOOR == [
+        "get_device_parameters",
+        "set_device_parameter",
+        "trim_arrangement_clip",
+    ]
     # Growing this list is a deliberate act: each entry is a command 1.7.0
     # users lose until they re-run the installer.
     assert GATED_POST_1_7_0 == [
@@ -353,7 +360,6 @@ def test_the_matrix_is_not_vacuous():
         "duplicate_arrangement_clip",
         "jump_to_locator",
         "move_arrangement_clip",
-        "trim_arrangement_clip",
     ]
     assert FLOOR_UNADVERTISED_IN_1_7_0 == [
         "fire_clip", "load_browser_item", "set_clip_name", "set_tempo",
@@ -391,14 +397,34 @@ def test_1_7_0_gets_the_installer_message_for_commands_newer_than_it(name):
 
 
 @pytest.mark.parametrize("name", GATED_WITH_FLOOR)
-def test_1_7_0_is_blocked_only_from_the_repaired_pair(name):
+def test_1_7_0_is_blocked_from_every_version_floored_command(name):
     # 1.7.0 advertises both device-parameter commands but serves the broken
-    # duplicate-definition handlers; the version floor is what catches them.
+    # duplicate-definition handlers — the version floor is what catches
+    # those, naming both versions. It never heard of trim_arrangement_clip
+    # at all, so the plain missing-capability message catches that one.
+    # Either way: blocked, with installer advice.
     handshake = _seeded_1_7_0()
     with pytest.raises(CapabilityError) as excinfo:
         handshake.require(name, min_version=GATED[name].min_script_version)
     message = str(excinfo.value)
-    assert "1.7.0" in message and "1.8.0" in message
+    assert "ableton-mcp-install-script" in message
+    if name in SCRIPT_CAPABILITIES_1_7_0:
+        assert "1.7.0" in message
+        assert GATED[name].min_script_version in message
+
+
+def test_a_1_11_0_script_is_blocked_from_the_reworked_trim():
+    # The scenario trim's floor exists for: an up-to-1.11.0 script
+    # ADVERTISES trim_arrangement_clip but serves the marker-write
+    # implementation, which self-refuses every trim on real Live (12.4.3).
+    # The floor turns that endless refusal loop into installer advice.
+    handshake = _seeded("1.11.0", _current_advertised_capabilities())
+    with pytest.raises(CapabilityError) as excinfo:
+        handshake.require(
+            "trim_arrangement_clip",
+            min_version=GATED["trim_arrangement_clip"].min_script_version)
+    message = str(excinfo.value)
+    assert "1.11.0" in message and "1.12.0" in message
     assert "ableton-mcp-install-script" in message
 
 

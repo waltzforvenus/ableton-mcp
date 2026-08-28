@@ -17,7 +17,7 @@ Runs anywhere: no Ableton, no network.
 
 import pytest
 
-from fake_ableton import FakeLiveConfig, make_harness
+from fake_ableton import FakeClip, FakeLiveConfig, make_harness
 
 
 # --------------------------------------------------------------------------
@@ -547,9 +547,15 @@ def test_trim_arrangement_clip_tail():
                       "requested_start_time": 0.0, "requested_end_time": 6.0,
                       "trimmed_head": False, "trimmed_tail": True,
                       "refusals": []}
-    clip = harness.song.tracks[2].arrangement_clips[0]
-    assert clip.end_time == 6.0
-    assert clip.end_marker == 6.0
+    track = harness.song.tracks[2]
+    # No eraser stamp, no split-off shard left on the timeline.
+    assert len(track.arrangement_clips) == 1
+    clip = track.arrangement_clips[0]
+    assert clip.start_time == 0.0 and clip.end_time == 6.0
+    # The crop narrowed the content window — real editing, not bookkeeping.
+    assert abs(clip.end_marker - 6.0) < 1e-6
+    # The temporary eraser Session clip is gone again.
+    assert all(not slot.has_clip for slot in track.clip_slots)
 
 
 def test_trim_arrangement_clip_head():
@@ -559,55 +565,143 @@ def test_trim_arrangement_clip_head():
     assert result["trimmed_head"] is True
     assert result["trimmed_tail"] is False
     assert result["refusals"] == []
-    clip = harness.song.tracks[2].arrangement_clips[0]
-    assert clip.start_time == 2.0
-    assert clip.start_marker == 2.0
+    track = harness.song.tracks[2]
+    assert len(track.arrangement_clips) == 1
+    clip = track.arrangement_clips[0]
+    assert abs(clip.start_time - 2.0) < 1e-6
     assert clip.end_time == 8.0
+    assert abs(clip.start_marker - 2.0) < 1e-6
+    assert all(not slot.has_clip for slot in track.clip_slots)
 
 
-def test_trim_arrangement_clip_converts_seconds_for_unwarped_audio():
+def test_trim_arrangement_clip_both_edges_on_a_midi_track():
+    # MIDI tracks build their eraser with ClipSlot.create_clip — no audio
+    # file involved — and must leave the occupied Session slots alone.
     harness = make_harness()
-    # A non-default tempo, so the test can tell "uses 60/song.tempo" apart
-    # from a hard-coded 0.5 s per beat: 100 BPM = 0.6 s per beat.
-    harness.song.tempo = 100.0
+    track = harness.song.tracks[0]
+    track.arrangement_clips.append(
+        FakeClip("Lead Take", 8.0, midi=True, config=harness.config,
+                 start_time=0.0))
+    result = _ok(harness.process(_cmd("trim_arrangement_clip", track_index=0,
+                                      clip_index=0, start_time=1.0,
+                                      end_time=5.0)))
+    assert result["trimmed_head"] is True and result["trimmed_tail"] is True
+    assert result["refusals"] == []
+    assert result["start_time"] == 1.0 and result["end_time"] == 5.0
+    assert len(track.arrangement_clips) == 1
+    clip = track.arrangement_clips[0]
+    assert clip.start_time == 1.0 and clip.end_time == 5.0
+    # Slot 0 still holds Lead Riff; the eraser borrowed a free slot only.
+    assert track.clip_slots[0].clip.name == "Lead Riff"
+    assert all(not slot.has_clip for slot in track.clip_slots[1:])
+
+
+def test_trim_arrangement_clip_unwarped_audio_keeps_second_markers():
+    # Unwarped audio keeps its content markers in seconds; the overlap crop
+    # must narrow them in seconds too (0.5 s per beat at the fake's 120 BPM).
+    harness = make_harness()
     clip = harness.song.tracks[2].arrangement_clips[0]
     clip.warping = False
-    clip.unwarped_seconds_per_beat = 0.6
-    # Content is 4.8 s long at 100 BPM for the 8-beat footprint.
-    clip._end_marker = 4.8
+    clip.end_marker = 4.0  # 8 beats * 0.5 s
     result = _ok(harness.process(_cmd("trim_arrangement_clip", track_index=2,
                                       clip_index=0, end_time=6.0)))
     assert result["trimmed_tail"] is True
     assert abs(clip.end_time - 6.0) < 1e-6
-    # 2 trimmed beats = 1.2 s of marker movement at 100 BPM.
-    assert abs(clip.end_marker - 3.6) < 1e-6
+    # 2 trimmed beats = 1.0 s of content window.
+    assert abs(clip.end_marker - 3.0) < 1e-6
 
 
-def test_trim_arrangement_clip_refuses_and_restores_when_markers_slide():
-    harness = make_harness(config=FakeLiveConfig(marker_trim="slides"))
-    clip = harness.song.tracks[2].arrangement_clips[0]
-    result = _ok(harness.process(_cmd("trim_arrangement_clip", track_index=2,
-                                      clip_index=0, start_time=2.0,
-                                      end_time=6.0)))
-    assert result["trimmed_head"] is False
-    assert result["trimmed_tail"] is False
-    assert len(result["refusals"]) == 2
-    # Markers restored, footprint untouched: the take is exactly as it was.
-    assert clip.start_marker == 0.0 and clip.end_marker == 8.0
-    assert clip.start_time == 0.0 and clip.end_time == 8.0
-
-
-def test_trim_arrangement_clip_refuses_looping_and_outward_trims():
+def test_trim_arrangement_clip_trims_looping_clips():
+    # The crop is Live's own overlap handling, which treats looping clips
+    # exactly as the UI does — no unloop-first refusal any more.
     harness = make_harness()
     clip = harness.song.tracks[2].arrangement_clips[0]
     clip.looping = True
-    message = _err(harness.process(_cmd("trim_arrangement_clip", track_index=2,
-                                        clip_index=0, end_time=6.0)))
-    assert "unloop" in message
-    clip.looping = False
+    result = _ok(harness.process(_cmd("trim_arrangement_clip", track_index=2,
+                                      clip_index=0, end_time=6.0)))
+    assert result["trimmed_tail"] is True
+    assert clip.end_time == 6.0
+
+
+def test_trim_arrangement_clip_micro_trim_overhangs_into_clear_timeline():
+    # A region narrower than the eraser's footprint is fine as long as the
+    # timeline past the take is empty: the stamp may overhang into it.
+    harness = make_harness()
+    result = _ok(harness.process(_cmd("trim_arrangement_clip", track_index=2,
+                                      clip_index=0, end_time=7.95)))
+    assert result["trimmed_tail"] is True
+    track = harness.song.tracks[2]
+    assert len(track.arrangement_clips) == 1
+    assert abs(track.arrangement_clips[0].end_time - 7.95) <= 1e-3
+
+
+def test_trim_arrangement_clip_refuses_an_unsafe_micro_trim():
+    # The same micro-trim with a neighbouring take butted against the clip:
+    # the stamp could overrun into the neighbour, so the edge is refused
+    # BEFORE anything is modified.
+    harness = make_harness()
+    track = harness.song.tracks[2]
+    track.arrangement_clips.append(
+        FakeClip("Next Take", 8.0, midi=False, config=harness.config,
+                 start_time=8.0))
+    result = _ok(harness.process(_cmd("trim_arrangement_clip", track_index=2,
+                                      clip_index=0, end_time=7.95)))
+    assert result["trimmed_tail"] is False
+    assert len(result["refusals"]) == 1
+    assert "safety zone" in result["refusals"][0]
+    # Neither clip changed, and nothing was left behind.
+    assert [(c.start_time, c.end_time) for c in track.arrangement_clips] \
+        == [(0.0, 8.0), (8.0, 16.0)]
+    assert all(not slot.has_clip for slot in track.clip_slots)
+
+
+def test_trim_arrangement_clip_with_nothing_to_trim():
+    harness = make_harness()
+    result = _ok(harness.process(_cmd("trim_arrangement_clip", track_index=2,
+                                      clip_index=0, start_time=0.0,
+                                      end_time=8.0)))
+    assert result == {"start_time": 0.0, "end_time": 8.0,
+                      "requested_start_time": 0.0, "requested_end_time": 8.0,
+                      "trimmed_head": False, "trimmed_tail": False,
+                      "refusals": []}
+    assert len(harness.song.tracks[2].arrangement_clips) == 1
+
+
+def test_trim_arrangement_clip_refuses_outward_trims():
+    harness = make_harness()
     message = _err(harness.process(_cmd("trim_arrangement_clip", track_index=2,
                                         clip_index=0, end_time=10.0)))
     assert "inward" in message
+
+
+def test_trim_arrangement_clip_needs_an_empty_session_slot():
+    harness = make_harness()
+    track = harness.song.tracks[2]
+    for slot in track.clip_slots:
+        slot.clip = FakeClip("filler", 4.0, midi=False, config=harness.config)
+    message = _err(harness.process(_cmd("trim_arrangement_clip", track_index=2,
+                                        clip_index=0, end_time=6.0)))
+    assert "Session slot" in message
+    clip = harness.song.tracks[2].arrangement_clips[0]
+    assert clip.start_time == 0.0 and clip.end_time == 8.0
+
+
+def test_trim_arrangement_clip_audio_needs_the_live_12_0_5_api():
+    harness = make_harness(config=FakeLiveConfig(create_audio_clip_api=False))
+    message = _err(harness.process(_cmd("trim_arrangement_clip", track_index=2,
+                                        clip_index=0, end_time=6.0)))
+    assert "12.0.5" in message
+    clip = harness.song.tracks[2].arrangement_clips[0]
+    assert clip.start_time == 0.0 and clip.end_time == 8.0
+
+
+def test_trim_arrangement_clip_refuses_without_the_live_11_api():
+    harness = make_harness(config=FakeLiveConfig(track_delete_clip_api=False))
+    message = _err(harness.process(_cmd("trim_arrangement_clip", track_index=2,
+                                        clip_index=0, end_time=6.0)))
+    assert "Live 11" in message
+    clip = harness.song.tracks[2].arrangement_clips[0]
+    assert clip.start_time == 0.0 and clip.end_time == 8.0
 
 
 def test_delete_arrangement_clip():

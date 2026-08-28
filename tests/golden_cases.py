@@ -714,6 +714,31 @@ BASE_CASES = [
              "requested_start_time": 0.0, "requested_end_time": 16.0,
              "trimmed_head": False, "trimmed_tail": True, "refusals": []}),
     ]),
+    # A refused edge: the script's refusal strings are self-describing, and
+    # the presenter joins them without adding claims of its own.
+    _case("trim_arrangement_clip", "edge_refused",
+          {"track_index": 0, "clip_index": 0, "end_time": 7.95}, [
+        _ok("trim_arrangement_clip",
+            {"track_index": 0, "clip_index": 0, "end_time": 7.95},
+            {"start_time": 0.0, "end_time": 8.0,
+             "requested_start_time": 0.0, "requested_end_time": 7.95,
+             "trimmed_head": False, "trimmed_tail": False,
+             "refusals": ["end: a clip sits within the stamp's safety zone "
+                          "right of the take (2x the eraser's 0.1000-beat "
+                          "footprint past the cut), so stamping risks "
+                          "cropping it; this edge is untouched — trim it in "
+                          "the UI"]}),
+    ]),
+    _case("trim_arrangement_clip", "nothing_to_trim",
+          {"track_index": 0, "clip_index": 0, "start_time": 0.0,
+           "end_time": 8.0}, [
+        _ok("trim_arrangement_clip",
+            {"track_index": 0, "clip_index": 0, "start_time": 0.0,
+             "end_time": 8.0},
+            {"start_time": 0.0, "end_time": 8.0,
+             "requested_start_time": 0.0, "requested_end_time": 8.0,
+             "trimmed_head": False, "trimmed_tail": False, "refusals": []}),
+    ]),
     _case("delete_arrangement_clip", "success",
           {"track_index": 0, "clip_index": 0}, [
         _ok("delete_arrangement_clip", {"track_index": 0, "clip_index": 0},

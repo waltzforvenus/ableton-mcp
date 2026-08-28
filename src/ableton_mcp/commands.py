@@ -120,7 +120,13 @@ COMMANDS: dict[str, CommandSpec] = {
     "duplicate_session_clip_to_arrangement": CommandSpec(modifying=True, gated=True),
     "create_locator": CommandSpec(modifying=True, gated=True),
     "jump_to_locator": CommandSpec(modifying=True, gated=True),
-    "trim_arrangement_clip": CommandSpec(modifying=True, gated=True),
+    # Scripts up to 1.11.0 advertise trim_arrangement_clip but serve the
+    # marker-write implementation, which is verifiably inert on real Live
+    # (12.4.3: every trim self-refuses); the floor turns that endless
+    # refusal loop into installer advice. 1.12.0 trims via overlap-stamping.
+    "trim_arrangement_clip": CommandSpec(
+        modifying=True, gated=True, min_script_version="1.12.0"
+    ),
     "delete_arrangement_clip": CommandSpec(modifying=True, gated=True),
     "move_arrangement_clip": CommandSpec(modifying=True, gated=True),
     "duplicate_arrangement_clip": CommandSpec(modifying=True, gated=True),

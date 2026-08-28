@@ -5,6 +5,8 @@ from _Framework.ControlSurface import ControlSurface
 import os
 import socket
 import json
+import struct
+import tempfile
 import threading
 import time
 import traceback
@@ -25,8 +27,18 @@ HOST = "127.0.0.1"
 
 # Bumped whenever the TCP command surface changes; the MCP server compares
 # this to EXPECTED_REMOTE_SCRIPT_VERSION.
-SCRIPT_VERSION = "1.11.0"
+SCRIPT_VERSION = "1.12.0"
 PROTOCOL_VERSION = 1
+
+# The trim eraser (see _trim_arrangement_clip): a temporary Session clip
+# stamped over an Arrangement region so Live's own overlap handling crops
+# what it covers. Audio tracks need a real audio file behind such a clip;
+# the script generates this much 16-bit mono silence on demand. Short on
+# purpose — the stamp's footprint only ever has to fit INSIDE the region
+# being removed (or overhang into timeline verified empty first), never to
+# match its length.
+TRIM_ERASER_NAME = "MCP trim eraser"
+TRIM_ERASER_WAV_SECONDS = 0.05
 
 # Wire-command dispatch table: every command _process_command accepts, in one
 # place. Each row is
@@ -1552,107 +1564,309 @@ class AbletonMCP(ControlSurface):
                 % len(clips))
         return track, clips[clip_index]
 
+    def _trim_silence_wav_path(self):
+        """Path to a tiny generated silent WAV, written on first use.
+
+        The trim eraser must be a real Session clip, and on an audio track
+        that takes a real audio file (ClipSlot.create_audio_clip). Built
+        by hand from struct — Live's Python is assumed minimal — and left
+        in the system temp directory between calls; Live's .asd sidecar
+        lands next to it there too.
+        """
+        path = os.path.join(tempfile.gettempdir(),
+                            "ableton_mcp_trim_silence.wav")
+        if not os.path.exists(path):
+            rate = 44100
+            data = b"\x00\x00" * int(rate * TRIM_ERASER_WAV_SECONDS)
+            header = (b"RIFF" + struct.pack("<I", 36 + len(data)) + b"WAVE"
+                      + b"fmt " + struct.pack("<IHHIIHH", 16, 1, 1, rate,
+                                              rate * 2, 2, 16)
+                      + b"data" + struct.pack("<I", len(data)))
+            handle = open(path, "wb")
+            try:
+                handle.write(header + data)
+            finally:
+                handle.close()
+        return path
+
+    def _find_trim_stamp(self, track, position):
+        """The Arrangement copy of the trim eraser starting at position."""
+        for candidate in track.arrangement_clips:
+            if (candidate.name == TRIM_ERASER_NAME
+                    and abs(candidate.start_time - position) <= 1e-3):
+                return candidate
+        return None
+
+    def _region_occupied(self, track, region_start, region_end):
+        """True if any Arrangement clip on the track overlaps the region.
+
+        An inverted or empty region (start >= end) is trivially free.
+        """
+        for candidate in track.arrangement_clips:
+            if (candidate.start_time < region_end - 1e-3
+                    and candidate.end_time > region_start + 1e-3):
+                return True
+        return False
+
     def _trim_arrangement_clip(self, track_index=0, clip_index=0,
                                start_time=None, end_time=None):
         """Trim an Arrangement clip's edges inward, in arrangement beats.
 
-        Live documents no resize for Arrangement clips, so this goes through
-        the content-window markers (start_marker/end_marker) and then
-        VERIFIES the footprint actually moved by reading start_time/end_time
-        back. A build where the markers behave differently gets its markers
-        restored and an honest refusal — never a silently mis-trimmed take.
-        Only shrinking is supported: growing would need content the window
-        may not hold.
+        Writing the clip's content markers verifiably does NOT move an
+        Arrangement clip's footprint (Live 12.4.3: the write lands, the
+        footprint stays — the approach this handler shipped with refused
+        every trim there). What Live DOES do, same as in the UI, is
+        permanently crop an existing Arrangement clip when another clip is
+        stamped over it via Track.duplicate_clip_to_arrangement, and
+        Track.delete_clip removes the stamp cleanly afterwards. Verified
+        end to end on 12.4.3; this handler trims through that mechanism.
 
-        Unwarped audio clips keep their markers in seconds, so marker deltas
-        are converted at the song's CURRENT tempo before the write — under
-        tempo automation that delta can be wrong for a clip elsewhere on
-        the timeline, and the guards below then refuse rather than
-        mis-trim. The readback check decides whether each edge stands.
+        The recipe, per requested edge:
 
-        The start_time/end_time parameters are named for the wire; the time
-        module is never used in this body.
+        1. create a temporary "eraser" Session clip on the same track (a
+           stamp only crops clips on its own track): a short MIDI clip, or
+           on audio tracks a clip from a generated silent WAV;
+        2. stamp it once in empty timeline space beyond every clip on the
+           track and read the footprint back — the stamped length is
+           MEASURED, not inferred from tempo/warp assumptions, and the
+           probe proves the crop machinery exists before the take is at
+           risk;
+        3. stamp it with its cut-side edge exactly at the requested edge —
+           the far side stays inside the region being removed, or overhangs
+           only into timeline verified empty first (else the edge is
+           refused with the take untouched);
+        4. delete the stamp and any shard the stamp split off inside the
+           removed region, then VERIFY the take's new edge by readback.
+
+        Only shrinking is supported. The crop is real editing: the audio
+        file on disk is never touched, but the way back is Edit > Undo in
+        Live, not dragging the edge out. The start_time/end_time parameters
+        are named for the wire; the time module is never used in this body.
         """
         try:
             track, clip = self._resolve_arrangement_clip(track_index, clip_index)
-
-            if getattr(clip, "looping", False):
+            if (not hasattr(track, "duplicate_clip_to_arrangement")
+                    or not hasattr(track, "delete_clip")):
                 raise Exception(
-                    "Clip is looping; the trim maths assume an unlooped "
-                    "content window — unloop the clip first")
-            if not hasattr(clip, "end_marker") or not hasattr(clip, "start_marker"):
-                raise Exception(
-                    "This Live build does not expose clip start/end markers; "
-                    "trim the clip in the UI instead")
+                    "This Live build does not expose the Live 11+ clip "
+                    "duplicate/delete APIs the trim is built on; trim the "
+                    "clip in the UI instead")
 
+            take_name = clip.name
             old_start = clip.start_time
             old_end = clip.end_time
             new_start = old_start if start_time is None else float(start_time)
             new_end = old_end if end_time is None else float(end_time)
+            tol = 1e-3
 
-            if new_start < old_start - 1e-3 or new_end > old_end + 1e-3:
+            if new_start < old_start - tol or new_end > old_end + tol:
                 raise Exception(
                     "Can only trim inward: clip spans %s to %s, requested %s to %s"
                     % (old_start, old_end, new_start, new_end))
-            if new_end - new_start < 1e-3:
+            # 2x tolerance, so the readback cleanup below can always tell
+            # the surviving remainder from the stamp and shards beside it.
+            if new_end - new_start < 2e-3:
                 raise Exception("Trim would leave nothing of the clip")
 
-            # Unwarped audio keeps markers in seconds; everything else beats.
-            units_per_beat = 1.0
-            if clip.is_audio_clip and not getattr(clip, "warping", True):
-                units_per_beat = 60.0 / self._song.tempo
+            want_tail = new_end < old_end - tol
+            want_head = new_start > old_start + tol
+            if not want_tail and not want_head:
+                return {
+                    "start_time": old_start,
+                    "end_time": old_end,
+                    "requested_start_time": new_start,
+                    "requested_end_time": new_end,
+                    "trimmed_head": False,
+                    "trimmed_tail": False,
+                    "refusals": [],
+                }
+
+            # The eraser Session clip, in the track's first empty slot.
+            slot = None
+            for candidate in track.clip_slots:
+                if not candidate.has_clip:
+                    slot = candidate
+                    break
+            if slot is None:
+                raise Exception(
+                    "Every Session slot on this track holds a clip; the trim "
+                    "needs one empty slot for its temporary eraser clip — "
+                    "clear a slot (or add a scene) and retry")
+            if getattr(track, "has_midi_input", False):
+                # A fresh MIDI clip is a content-free container: the ideal
+                # eraser. Sized to sit inside the smaller requested region
+                # where the regions allow it.
+                regions = []
+                if want_tail:
+                    regions.append(old_end - new_end)
+                if want_head:
+                    regions.append(new_start - old_start)
+                slot.create_clip(max(0.0625, min([1.0] + regions)))
+            else:
+                if not hasattr(slot, "create_audio_clip"):
+                    raise Exception(
+                        "Trimming an audio take needs "
+                        "ClipSlot.create_audio_clip (Live 12.0.5+) for the "
+                        "temporary eraser clip; trim the clip in the UI "
+                        "instead")
+                slot.create_audio_clip(self._trim_silence_wav_path())
+            eraser = slot.clip
+            eraser.name = TRIM_ERASER_NAME
 
             refusals = []
-            trimmed_tail = False
-            if new_end < old_end - 1e-3:
-                delta = (old_end - new_end) * units_per_beat
-                original_marker = clip.end_marker
-                candidate = original_marker - delta
-                if candidate <= clip.start_marker + 1e-6:
-                    # Never write a crossed marker: if Live clamps it by
-                    # moving the OTHER marker, restoring only this one would
-                    # not return the clip to its prior state.
-                    refusals.append(
-                        "end: the computed marker would cross the start "
-                        "marker, so nothing was written (an unwarped clip "
-                        "under tempo automation can compute a wrong delta)")
-                else:
-                    clip.end_marker = candidate
-                    if abs(clip.end_time - new_end) <= 1e-3:
-                        trimmed_tail = True
-                    else:
-                        clip.end_marker = original_marker
-                        refusals.append(
-                            "end: moving end_marker did not land the clip "
-                            "edge where computed; marker restored (marker "
-                            "behavior differs on this build, or the clip is "
-                            "unwarped audio under tempo automation)")
-
             trimmed_head = False
-            if new_start > old_start + 1e-3:
-                delta = (new_start - old_start) * units_per_beat
-                original_marker = clip.start_marker
-                candidate = original_marker + delta
-                if candidate >= clip.end_marker - 1e-6:
-                    refusals.append(
-                        "start: the computed marker would cross the end "
-                        "marker, so nothing was written (an unwarped clip "
-                        "under tempo automation can compute a wrong delta)")
-                else:
-                    clip.start_marker = candidate
-                    if abs(clip.start_time - new_start) <= 1e-3:
-                        trimmed_head = True
-                    else:
-                        clip.start_marker = original_marker
+            trimmed_tail = False
+            cur_start = old_start
+            cur_end = old_end
+            aborted = False
+            try:
+                # Measure the eraser's true stamped footprint in empty
+                # timeline space right of everything on the track.
+                clear_pos = max([c.end_time
+                                 for c in track.arrangement_clips]) + 8.0
+                track.duplicate_clip_to_arrangement(eraser, clear_pos)
+                probe = self._find_trim_stamp(track, clear_pos)
+                if probe is None:
+                    raise Exception(
+                        "the measuring stamp of the eraser clip never "
+                        "appeared on the timeline, so no trim was attempted "
+                        "(the take is untouched)")
+                eraser_len = probe.end_time - probe.start_time
+                track.delete_clip(probe)
+                if eraser_len <= tol:
+                    raise Exception(
+                        "the eraser clip stamped to a zero-length footprint, "
+                        "so no trim was attempted (the take is untouched)")
+
+                if want_tail:
+                    cut = new_end
+                    # A stamp's START is exact (it is the destination
+                    # argument), but its length can exceed the measured one
+                    # (an unwarped audio eraser under tempo automation), so
+                    # everything up to twice the measured footprint past the
+                    # cut — where the stamp's far edge could land beyond the
+                    # take — must be empty. For any region wider than that,
+                    # this check is inert.
+                    if self._region_occupied(track, cur_end,
+                                             cut + 2.0 * eraser_len):
                         refusals.append(
-                            "start: moving start_marker did not land the "
-                            "clip edge where computed; marker restored "
-                            "(marker behavior differs on this build, or the "
-                            "clip is unwarped audio under tempo automation)")
+                            "end: a clip sits within the stamp's safety "
+                            "zone right of the take (2x the eraser's %.4f-"
+                            "beat footprint past the cut), so stamping "
+                            "risks cropping it; this edge is untouched — "
+                            "trim it in the UI" % eraser_len)
+                    else:
+                        track.duplicate_clip_to_arrangement(eraser, cut)
+                        # Everything now inside [cut, safety zone] is ours:
+                        # the stamp, plus the shard the stamp split off the
+                        # take when it was shorter than the region. The
+                        # remainder starts at cur_start, left of the scan.
+                        shard_hi = max(cur_end, cut + 2.0 * eraser_len)
+                        for shard in [c for c in list(track.arrangement_clips)
+                                      if c.start_time >= cut - tol
+                                      and c.end_time <= shard_hi + tol]:
+                            track.delete_clip(shard)
+                        remainder = None
+                        for c in track.arrangement_clips:
+                            if (c.name == take_name
+                                    and abs(c.start_time - cur_start) <= tol):
+                                remainder = c
+                                break
+                        if remainder is not None and abs(
+                                remainder.end_time - cut) <= tol:
+                            trimmed_tail = True
+                            cur_end = remainder.end_time
+                        elif remainder is not None and abs(
+                                remainder.end_time - cur_end) <= tol:
+                            refusals.append(
+                                "end: stamping over the region did not crop "
+                                "the take (this Live build's overlap "
+                                "behavior differs); the clip is unchanged")
+                        else:
+                            aborted = True
+
+                if want_head and not aborted:
+                    cut = new_start
+                    dest = cut - eraser_len
+                    if dest < -tol:
+                        refusals.append(
+                            "start: the eraser's %.4f-beat footprint is "
+                            "longer than the %.4f-beat region to remove and "
+                            "its stamp would start before beat 0; this edge "
+                            "is untouched — trim it in the UI"
+                            % (eraser_len, cut - cur_start))
+                    elif self._region_occupied(track, dest, cur_start):
+                        # Overhang left of the take. Unlike the tail, no 2x
+                        # margin: the stamp's start is exactly dest, so only
+                        # [dest, take start] can be hit.
+                        refusals.append(
+                            "start: the eraser's %.4f-beat footprint is "
+                            "longer than the %.4f-beat region to remove and "
+                            "a clip sits in the overhang left of the take, "
+                            "so stamping risks cropping it; this edge is "
+                            "untouched — trim it in the UI"
+                            % (eraser_len, cut - cur_start))
+                    else:
+                        track.duplicate_clip_to_arrangement(
+                            eraser, max(dest, 0.0))
+                        shard_lo = min(dest, cur_start)
+                        for shard in [c for c in list(track.arrangement_clips)
+                                      if c.start_time >= shard_lo - tol
+                                      and c.end_time <= cut + tol]:
+                            track.delete_clip(shard)
+                        remainder = None
+                        for c in track.arrangement_clips:
+                            if (c.name == take_name
+                                    and abs(c.end_time - cur_end) <= tol):
+                                remainder = c
+                                break
+                        if remainder is not None and abs(
+                                remainder.start_time - cut) <= tol:
+                            trimmed_head = True
+                            cur_start = remainder.start_time
+                        elif remainder is not None and abs(
+                                remainder.start_time - cur_start) <= tol:
+                            refusals.append(
+                                "start: stamping over the region did not "
+                                "crop the take (this Live build's overlap "
+                                "behavior differs); the clip is unchanged")
+                        else:
+                            aborted = True
+
+                if aborted:
+                    # A stamp landed but the readback found no take where
+                    # one was expected. Report whatever overlaps the take's
+                    # old span, honestly — Edit > Undo in Live is the way
+                    # back from a crop that went somewhere wrong.
+                    actual = None
+                    for c in track.arrangement_clips:
+                        if (c.name == take_name
+                                and c.end_time > old_start + tol
+                                and c.start_time < old_end - tol):
+                            actual = c
+                            break
+                    if actual is not None:
+                        cur_start = actual.start_time
+                        cur_end = actual.end_time
+                    refusals.append(
+                        "after a stamp the take was not at the span the "
+                        "readback expected; reporting what was found "
+                        "instead, and no further edge was touched — "
+                        "Edit > Undo in Live rewinds the edit if it is "
+                        "wrong")
+            finally:
+                # The eraser Session clip never outlives the call, whatever
+                # happened above.
+                try:
+                    slot.delete_clip()
+                except Exception as cleanup_error:
+                    self.log_message(
+                        "Trim cleanup: could not delete the temporary "
+                        "eraser Session clip: " + str(cleanup_error))
 
             return {
-                "start_time": clip.start_time,
-                "end_time": clip.end_time,
+                "start_time": cur_start,
+                "end_time": cur_end,
                 "requested_start_time": new_start,
                 "requested_end_time": new_end,
                 "trimmed_head": trimmed_head,

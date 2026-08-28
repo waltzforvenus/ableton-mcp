@@ -202,10 +202,12 @@ class Smoke:
                 f"'smoke-test' set (no delete API — scratch set!)")
 
     def step_arrangement_editing(self):
-        """The 1.11.0 arrangement-editing surface, on a clip this run made.
+        """The 1.12.0 arrangement-editing surface, on a clip this run made.
 
         This is the designated real-Live evidence for what the fake cannot
-        prove: that marker writes move the Arrangement footprint (trim),
+        prove: that stamping a clip over an Arrangement region permanently
+        crops what it covers (the overlap physics trim_arrangement_clip is
+        built on — eraser measuring stamp, crop, and cleanup included),
         that duplicate+delete is a faithful move, and that
         Track.delete_clip / duplicate_clip_to_arrangement accept
         Arrangement clips. Everything happens on the scratch track
@@ -216,6 +218,8 @@ class Smoke:
         if not before:
             raise Skip("no arrangement clip to edit (step_arrangement failed?)")
         src = len(before) - 1  # rightmost = highest start_time
+        slots_before = [s["has_clip"] for s in
+                        self.svc.get_track_info(t)["clip_slots"]]
 
         # duplicate the arrangement clip to a clear spot
         self.svc.duplicate_arrangement_clip(t, src, 64.0)
@@ -225,17 +229,35 @@ class Smoke:
         copy = clips[copy_index]
         assert abs(copy["start_time"] - 64.0) <= 1e-3, f"copy not at 64: {copy}"
 
-        # trim the copy's tail by one beat, then its head by one beat
+        # trim the copy's tail by one beat, then its head by one beat; each
+        # edge must land where requested, per the tool's own readback AND an
+        # independent get_arrangement_clips readback afterwards
         length = copy["end_time"] - copy["start_time"]
         if length < 2.5:
             raise Skip(f"clip too short to trim safely ({length} beats)")
         trim = self.svc.trim_arrangement_clip(t, copy_index,
                                               None, copy["end_time"] - 1.0)
         assert trim.get("refusals") == [], f"tail trim refused: {trim}"
+        assert trim.get("trimmed_tail") is True, f"tail not trimmed: {trim}"
+        assert abs(trim["end_time"] - (copy["end_time"] - 1.0)) <= 1e-3
         trim = self.svc.trim_arrangement_clip(t, copy_index,
                                               copy["start_time"] + 1.0, None)
         assert trim.get("refusals") == [], f"head trim refused: {trim}"
+        assert trim.get("trimmed_head") is True, f"head not trimmed: {trim}"
         assert abs(trim["start_time"] - (copy["start_time"] + 1.0)) <= 1e-3
+
+        clips = self.svc.get_arrangement_clips(t)["clips"]
+        assert len(clips) == len(before) + 1, \
+            f"stray clip left behind by trim (eraser stamp or shard?): {clips}"
+        edited = clips[copy_index]
+        assert abs(edited["start_time"] - (copy["start_time"] + 1.0)) <= 1e-3, \
+            f"trimmed head not at {copy['start_time'] + 1.0}: {edited}"
+        assert abs(edited["end_time"] - (copy["end_time"] - 1.0)) <= 1e-3, \
+            f"trimmed tail not at {copy['end_time'] - 1.0}: {edited}"
+        slots_after = [s["has_clip"] for s in
+                       self.svc.get_track_info(t)["clip_slots"]]
+        assert slots_after == slots_before, \
+            "trim leaked its temporary eraser Session clip"
 
         # move the trimmed copy (duplicate+delete under the hood)
         moved = self.svc.move_arrangement_clip(t, copy_index, 96.0)
@@ -255,8 +277,9 @@ class Smoke:
         assert gone.get("deleted") is True, f"delete failed: {gone}"
         clips = self.svc.get_arrangement_clips(t)["clips"]
         assert len(clips) == len(before), f"clip count off after delete: {clips}"
-        return ("duplicated, trimmed both edges, moved to 96, jumped to "
-                "locator (start marker planted), deleted the copy")
+        return ("duplicated, trimmed both edges (verified by readback, "
+                "eraser cleaned up), moved to 96, jumped to locator "
+                "(start marker planted), deleted the copy")
 
     def step_playback(self):
         self.svc.start_playback()

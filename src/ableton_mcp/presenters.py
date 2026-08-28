@@ -333,11 +333,10 @@ def trim_arrangement_clip(result: Dict[str, Any], track_index: int,
     refusals = result.get("refusals") or []
     trimmed = result.get("trimmed_head") or result.get("trimmed_tail")
     if refusals:
+        # Each refusal string from the script says what happened to its
+        # edge, so no blanket "untouched" claim is added here.
         prefix = "Partial trim" if trimmed else "Trim refused"
-        return (
-            f"{prefix}: {'; '.join(refusals)} — the {spans}; the refused "
-            f"edge(s) are untouched (trim them by hand in the UI)"
-        )
+        return f"{prefix}: {'; '.join(refusals)} — the {spans}"
     if not trimmed:
         return f"Nothing to trim — the {spans} already"
     return f"Trimmed arrangement clip {clip_index}: the {spans}"

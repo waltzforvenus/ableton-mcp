@@ -455,7 +455,7 @@ are not present upstream.
 | `set_arrangement_time` | `time` | Move the arrangement playhead to a specific position |
 | `create_locator` | `name`, `time` | Create a named locator (cue point) in the Arrangement at a beat position |
 | `jump_to_locator` † | `name`?, `time`? | Jump to an existing locator by name or beat time; while stopped this plants the start marker, so play/record launch from it |
-| `trim_arrangement_clip` † | `track_index`, `clip_index`, `start_time`?, `end_time`? | Trim an Arrangement clip's edges inward (take cleanup); self-verifying, refuses rather than mis-trims |
+| `trim_arrangement_clip` † | `track_index`, `clip_index`, `start_time`?, `end_time`? | Trim an Arrangement clip's edges inward (take cleanup) — crops UI-style via a temporary silent stamp, each edge verified by readback |
 | `delete_arrangement_clip` † | `track_index`, `clip_index` | Delete a clip from the Arrangement timeline (stray record fragments, scrapped takes) |
 | `move_arrangement_clip` † | `track_index`, `clip_index`, `destination_time` | Move an Arrangement clip to a new start position (duplicate + delete under the hood; refuses a self-overlapping destination) |
 | `duplicate_arrangement_clip` † | `track_index`, `clip_index`, `destination_time` | Copy an Arrangement clip elsewhere on its track — reuse a recorded take at another section |

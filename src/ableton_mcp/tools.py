@@ -833,16 +833,21 @@ def trim_arrangement_clip(
     when a take overhangs its section into the neighbouring one.
 
     Give the new edge position(s) in arrangement beats; omit an edge to
-    leave it alone. Only shrinking is supported. The trim is non-destructive
-    (the audio stays in the take's file; the edge can be dragged back out in
-    the UI) and self-verifying PER EDGE: Live has no documented arrangement
-    resize, so the script works through the clip's content markers and
-    confirms each requested edge actually moved — an edge that doesn't move
-    on this build is restored and reported as refused, so a both-edge
-    request can land partially, and the reply says exactly which edges
-    changed. Looping clips are refused (unloop first); use
-    get_arrangement_clips to find clip_index, which counts clips on the
-    track in start-time order.
+    leave it alone. Only shrinking is supported. Live has no arrangement
+    resize API (marker writes verifiably don't move the footprint), so the
+    script trims the way the UI does: it stamps a temporary silent clip
+    over the region to remove — Live permanently crops whatever a stamp
+    covers — then deletes the stamp and VERIFIES the take's new edge by
+    readback. Each edge is checked independently: an edge whose stamp
+    cannot be placed safely (e.g. a micro-trim right against a neighbouring
+    clip) is refused with the take untouched, so a both-edge request can
+    land partially, and the reply says exactly which edges changed. The
+    audio file on disk is never touched, but the crop is real editing —
+    restoring a trimmed edge is Edit > Undo in Live, not a drag. Needs one
+    empty Session slot on the track for the temporary eraser clip, and
+    Live 11+ (audio takes: Live 12.0.5+). Looping clips trim like any
+    other. Use get_arrangement_clips to find clip_index, which counts
+    clips on the track in start-time order.
 
     Parameters:
     - track_index: The track holding the clip

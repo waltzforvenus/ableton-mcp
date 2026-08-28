@@ -20,16 +20,35 @@ that have only ever executed inside Live can be tested on both sides:
 - ``extended_note_fields`` — extended-read note objects carry the optional
   per-field-hasattr attributes (probability, note_id, ...).
 
+Arrangement physics follow what was verified on real Live 12.4.3: writing a
+clip's content markers never moves its Arrangement footprint, while
+``Track.duplicate_clip_to_arrangement`` permanently crops (or splits)
+whatever the incoming copy lands on — the mechanism the trim command is
+built on.
+
 All state mutations are observable through public attributes so tests can
 assert on the fake's state after driving the real handlers.
 """
 
+import contextlib
 import os
+import wave
 
 
 _NOTE_API_GENERATIONS = ("legacy", "both", "extended_only")
 _SAVE_OWNERS = ("song", "application", None)
-_MARKER_TRIM_MODES = ("anchored", "slides")
+
+
+def _wav_duration_seconds(path):
+    """Duration of a WAV file on disk, or None when unreadable."""
+    try:
+        with contextlib.closing(wave.open(path, "rb")) as reader:
+            rate = reader.getframerate()
+            if rate:
+                return reader.getnframes() / float(rate)
+    except Exception:
+        pass
+    return None
 
 
 class FakeLiveConfig(object):
@@ -38,14 +57,11 @@ class FakeLiveConfig(object):
     def __init__(self, note_api="both", extended_read_raises=False,
                  create_audio_clip_api=True, count_in_read_only=False,
                  save_owner="song", warp_markers=False,
-                 extended_note_fields=False, marker_trim="anchored",
-                 track_delete_clip_api=True):
+                 extended_note_fields=False, track_delete_clip_api=True):
         if note_api not in _NOTE_API_GENERATIONS:
             raise ValueError("note_api must be one of %r" % (_NOTE_API_GENERATIONS,))
         if save_owner not in _SAVE_OWNERS:
             raise ValueError("save_owner must be one of %r" % (_SAVE_OWNERS,))
-        if marker_trim not in _MARKER_TRIM_MODES:
-            raise ValueError("marker_trim must be one of %r" % (_MARKER_TRIM_MODES,))
         self.note_api = note_api
         self.extended_read_raises = extended_read_raises
         self.create_audio_clip_api = create_audio_clip_api
@@ -53,11 +69,6 @@ class FakeLiveConfig(object):
         self.save_owner = save_owner
         self.warp_markers = warp_markers
         self.extended_note_fields = extended_note_fields
-        # "anchored": marker writes move the Arrangement footprint with the
-        # content staying put in time (what the trim handler needs);
-        # "slides": the footprint stays and only the content window moves —
-        # the branch the handler must detect via readback and refuse.
-        self.marker_trim = marker_trim
         self.track_delete_clip_api = track_delete_clip_api
 
 
@@ -227,11 +238,14 @@ class FakeClip(object):
         self.loop_start = 0.0
         self.loop_end = self.length
         self.launch_mode = 0
-        # Content-window markers (see FakeLiveConfig.marker_trim). Set the
-        # backing fields directly: the property setters translate marker
-        # deltas into footprint moves, which must not fire during init.
-        self._start_marker = 0.0
-        self._end_marker = self.length
+        # Content-window markers. Plain attributes on purpose: writing them
+        # never moves the Arrangement footprint (verified on Live 12.4.3 —
+        # the write lands, start_time/end_time stay put). The footprint
+        # narrows only through overlap crops, which adjust these to keep
+        # the surviving content anchored in time
+        # (FakeTrack.duplicate_clip_to_arrangement).
+        self.start_marker = 0.0
+        self.end_marker = self.length
         self._notes = []
         self._next_note_id = 1
 
@@ -326,35 +340,10 @@ class FakeClip(object):
     # -- arrangement geometry (markers, position) ---------------------------
 
     def _marker_units_per_beat(self):
+        """Markers are in beats, except for unwarped audio (seconds)."""
         if self.is_midi_clip or getattr(self, "warping", True):
             return 1.0
         return self.unwarped_seconds_per_beat
-
-    @property
-    def start_marker(self):
-        return self._start_marker
-
-    @start_marker.setter
-    def start_marker(self, value):
-        value = float(value)
-        delta = value - self._start_marker
-        self._start_marker = value
-        if self._config.marker_trim == "anchored":
-            self.start_time += delta / self._marker_units_per_beat()
-            self.length = self.end_time - self.start_time
-
-    @property
-    def end_marker(self):
-        return self._end_marker
-
-    @end_marker.setter
-    def end_marker(self, value):
-        value = float(value)
-        delta = value - self._end_marker
-        self._end_marker = value
-        if self._config.marker_trim == "anchored":
-            self.end_time += delta / self._marker_units_per_beat()
-            self.length = self.end_time - self.start_time
 
     # NOTE: no `position` property, deliberately. In the LOM, Clip.position
     # is the clip's LOOP position (== loop_start), not its Arrangement
@@ -370,8 +359,8 @@ class FakeClip(object):
         duplicate._notes = [dict(record) for record in self._notes]
         duplicate._next_note_id = self._next_note_id
         # Real Live preserves a duplicated clip's content-window markers.
-        duplicate._start_marker = self._start_marker
-        duplicate._end_marker = self._end_marker
+        duplicate.start_marker = self.start_marker
+        duplicate.end_marker = self.end_marker
         if self.is_audio_clip:
             for attr in ("gain", "gain_display_string", "warping", "warp_mode",
                          "pitch_coarse", "pitch_fine", "file_path",
@@ -405,7 +394,13 @@ class FakeClipSlot(object):
         if self.clip is not None:
             raise RuntimeError("Clip slot already has a clip")
         name = os.path.splitext(os.path.basename(path))[0]
-        clip = FakeClip(name, 4.0, midi=False, config=self._config)
+        # A real WAV on disk (the trim eraser's generated file, in tests)
+        # imports at its faithful length under the fake's fixed 120 BPM
+        # (0.5 s per beat); the legacy 4-beat default stands in for the
+        # fictional sample paths older tests import.
+        seconds = _wav_duration_seconds(path)
+        length = 4.0 if seconds is None else seconds * 2.0
+        clip = FakeClip(name, length, midi=False, config=self._config)
         clip.file_path = path
         self.clip = clip
 
@@ -473,10 +468,61 @@ class FakeTrack(object):
         del self.devices[device_index]
 
     def duplicate_clip_to_arrangement(self, clip, destination_time):
+        """Live 11+ Track.duplicate_clip_to_arrangement, with Live's real
+        overlap physics (verified on Live 12.4.3): the Arrangement holds no
+        overlaps, so the incoming copy permanently crops whatever it lands
+        on. A fully covered clip is deleted; a covered edge is cropped away
+        with the content window (markers) narrowed so the surviving content
+        stays anchored in time; a stamp strictly inside a clip SPLITS it
+        around the stamp (note content is not redistributed between the
+        pieces — geometry is what the handlers under test read). The list
+        stays in start-time order, as Live reports it."""
         duplicate = clip.copy()
         duplicate.start_time = float(destination_time)
         duplicate.end_time = duplicate.start_time + duplicate.length
-        self.arrangement_clips.append(duplicate)
+        new_start, new_end = duplicate.start_time, duplicate.end_time
+        eps = 1e-9
+        survivors = []
+        for existing in self.arrangement_clips:
+            if (existing.end_time <= new_start + eps
+                    or existing.start_time >= new_end - eps):
+                survivors.append(existing)  # no overlap
+                continue
+            units = existing._marker_units_per_beat()
+            covers_head = existing.start_time >= new_start - eps
+            covers_tail = existing.end_time <= new_end + eps
+            if covers_head and covers_tail:
+                continue  # fully covered: gone
+            if not covers_head and not covers_tail:
+                # Stamp strictly inside: split into left + right pieces.
+                right = existing.copy()
+                right.start_time = new_end
+                right.end_time = existing.end_time
+                right.length = right.end_time - right.start_time
+                right.start_marker = (existing.start_marker
+                                      + (new_end - existing.start_time) * units)
+                cropped = existing.end_time - new_start
+                existing.end_time = new_start
+                existing.length = existing.end_time - existing.start_time
+                existing.end_marker -= cropped * units
+                survivors.extend([existing, right])
+            elif covers_tail:
+                # The stamp covers the existing clip's tail: crop it away.
+                cropped = existing.end_time - new_start
+                existing.end_time = new_start
+                existing.length = existing.end_time - existing.start_time
+                existing.end_marker -= cropped * units
+                survivors.append(existing)
+            else:
+                # The stamp covers the existing clip's head: crop it away.
+                cropped = new_end - existing.start_time
+                existing.start_time = new_end
+                existing.length = existing.end_time - existing.start_time
+                existing.start_marker += cropped * units
+                survivors.append(existing)
+        survivors.append(duplicate)
+        survivors.sort(key=lambda c: c.start_time)
+        self.arrangement_clips = survivors
         return duplicate
 
     def _delete_clip_api(self, clip):

@@ -31,6 +31,66 @@
     {
       "args": {
         "clip_index": 0,
+        "end_time": 7.95,
+        "track_index": 0
+      },
+      "expect": "Trim refused: end: a clip sits within the stamp's safety zone right of the take (2x the eraser's 0.1000-beat footprint past the cut), so stamping risks cropping it; this edge is untouched \u2014 trim it in the UI \u2014 the clip spans beats 0.0 to 8.0",
+      "name": "edge_refused",
+      "wire": [
+        {
+          "command": "trim_arrangement_clip",
+          "params": {
+            "clip_index": 0,
+            "end_time": 7.95,
+            "track_index": 0
+          },
+          "response": {
+            "end_time": 8.0,
+            "refusals": [
+              "end: a clip sits within the stamp's safety zone right of the take (2x the eraser's 0.1000-beat footprint past the cut), so stamping risks cropping it; this edge is untouched \u2014 trim it in the UI"
+            ],
+            "requested_end_time": 7.95,
+            "requested_start_time": 0.0,
+            "start_time": 0.0,
+            "trimmed_head": false,
+            "trimmed_tail": false
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "clip_index": 0,
+        "end_time": 8.0,
+        "start_time": 0.0,
+        "track_index": 0
+      },
+      "expect": "Nothing to trim \u2014 the clip spans beats 0.0 to 8.0 already",
+      "name": "nothing_to_trim",
+      "wire": [
+        {
+          "command": "trim_arrangement_clip",
+          "params": {
+            "clip_index": 0,
+            "end_time": 8.0,
+            "start_time": 0.0,
+            "track_index": 0
+          },
+          "response": {
+            "end_time": 8.0,
+            "refusals": [],
+            "requested_end_time": 8.0,
+            "requested_start_time": 0.0,
+            "start_time": 0.0,
+            "trimmed_head": false,
+            "trimmed_tail": false
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "clip_index": 0,
         "end_time": 16.0,
         "track_index": 0
       },

@@ -215,15 +215,19 @@ def test_every_registry_row_is_gated_unless_floor_or_probe():
     )
 
 
-def test_min_version_floors_are_exactly_the_repaired_pair():
-    # The 1.8.0 min-version floor exists for the two commands whose 1.7.0
-    # handlers were broken-but-advertised (plan §4); nothing else needs one.
+def test_min_version_floors_are_exactly_the_broken_but_advertised():
+    # A min-version floor exists only for commands an older script
+    # advertises but serves wrongly (plan §4): the device-parameter pair's
+    # 1.7.0 handlers were duplicate-definition-broken, and the 1.9.0–1.11.0
+    # trim's marker writes are verifiably inert on real Live (12.4.3).
+    # Nothing else needs one.
     floored = {name: spec.min_script_version
                for name, spec in COMMANDS.items()
                if spec.min_script_version is not None}
     assert floored == {
         "get_device_parameters": "1.8.0",
         "set_device_parameter": "1.8.0",
+        "trim_arrangement_clip": "1.12.0",
     }
 
 
