@@ -56,6 +56,14 @@ def set_clip_gain(result: Dict[str, Any]) -> str:
             f"to {result.get('gain_display') or result.get('gain')}")
 
 
+def set_clip_warp(result: Dict[str, Any]) -> str:
+    state = "on" if result.get("warping") else "off"
+    span = result.get("length")
+    span_text = f"; clip is now {span:.3f} beats long" if isinstance(span, (int, float)) else ""
+    return (f"Warp {state} for '{result.get('clip_name')}' on "
+            f"'{result.get('track_name')}'{span_text}")
+
+
 def back_to_arrangement() -> str:
     return "All tracks returned to Arrangement playback"
 
@@ -402,6 +410,7 @@ ERROR_PHRASES: Dict[str, str] = {
     "set_track_name": "setting track name",
     "create_clip": "creating clip",
     "set_clip_gain": "setting clip gain",
+    "set_clip_warp": "setting clip warp",
     "back_to_arrangement": "returning to arrangement",
     "get_track_routing": "getting track routing",
     "set_track_routing": "setting track routing",

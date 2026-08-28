@@ -192,7 +192,7 @@ and routing tools are new here:
 | **Devices** | `delete_device` — plus `get_device_parameters` / `set_device_parameter` extended to address parameters *by name* and to reach return tracks via `track_type` |
 | **Sends & buses** | `create_return_track`, `set_track_send` — one shared reverb instead of a copy per track |
 | **Routing** | `set_track_routing`, `get_track_routing` |
-| **Clips & tracks** | `set_clip_gain`, `delete_track` |
+| **Clips & tracks** | `set_clip_gain`, `set_clip_warp`, `delete_track` |
 | **Transport & session** | `back_to_arrangement`, `set_count_in`, `save_set` |
 
 ### Security fix
@@ -440,6 +440,7 @@ are not present upstream.
 | `delete_clip` | `track_index`, `clip_index` | Delete the clip in the given clip slot, freeing it for reuse |
 | `set_clip_name` | `track_index`, `clip_index`, `name` | Set the name of a clip |
 | `set_clip_gain` † | `track_index`, `clip_index`, `gain`, `arrangement`? | Set one audio clip's gain, leaving every other clip on the track untouched |
+| `set_clip_warp` † | `track_index`, `clip_index`, `warping`, `warp_mode`?, `arrangement`? | Turn a clip's warping on or off — the fix for stems Live auto-warped to different tempos |
 | `get_clip_notes` | `track_index`, `clip_index` | Read all MIDI notes from a Session-view clip |
 | `add_notes_to_clip` | `track_index`, `clip_index`, `notes` | Add MIDI notes to a clip |
 | `clear_notes_from_clip` | `track_index`, `clip_index` | Remove all MIDI notes from a Session clip |

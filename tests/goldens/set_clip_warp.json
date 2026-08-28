@@ -1,0 +1,83 @@
+{
+  "cases": [
+    {
+      "args": {
+        "clip_index": 0,
+        "track_index": 2,
+        "warping": false
+      },
+      "expect": "Warp off for 'session_Drums' on 'Drums'; clip is now 520.834 beats long",
+      "name": "warp_off_restores_native_length",
+      "wire": [
+        {
+          "command": "set_clip_warp",
+          "params": {
+            "arrangement": true,
+            "clip_index": 0,
+            "track_index": 2,
+            "warp_mode": null,
+            "warping": false
+          },
+          "response": {
+            "clip_name": "session_Drums",
+            "length": 520.834,
+            "track_name": "Drums",
+            "warp_mode": 0,
+            "warping": false
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "clip_index": 0,
+        "track_index": 2,
+        "warp_mode": 4,
+        "warping": true
+      },
+      "expect": "Warp on for 'session_Drums' on 'Drums'; clip is now 530.160 beats long",
+      "name": "warp_on_with_mode",
+      "wire": [
+        {
+          "command": "set_clip_warp",
+          "params": {
+            "arrangement": true,
+            "clip_index": 0,
+            "track_index": 2,
+            "warp_mode": 4,
+            "warping": true
+          },
+          "response": {
+            "clip_name": "session_Drums",
+            "length": 530.16,
+            "track_name": "Drums",
+            "warp_mode": 4,
+            "warping": true
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "clip_index": 0,
+        "track_index": 2,
+        "warping": false
+      },
+      "expect": "Error setting clip warp: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "set_clip_warp",
+          "params": {
+            "arrangement": true,
+            "clip_index": 0,
+            "track_index": 2,
+            "warp_mode": null,
+            "warping": false
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

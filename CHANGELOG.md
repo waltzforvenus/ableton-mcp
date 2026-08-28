@@ -9,7 +9,25 @@ separately, and a script change means **re-run
 
 ## [Unreleased]
 
-Nothing yet.
+Ships Remote Script **1.14.0**. **Re-run `ableton-mcp-install-script` and
+restart Live after upgrading** — the new command lives in the script half,
+and Live caches an already-imported script module, so re-selecting the
+control surface is not enough.
+
+### Added (user-facing)
+
+- `set_clip_warp` †: turn an audio clip's warping on or off (and optionally
+  set its warp mode). This is the fix for a problem that has no workaround
+  from the API otherwise: Live's "Auto-Warp Long Samples" guesses a source
+  tempo for every imported file, and on material without clear transients it
+  guesses wrong — verified on 12.4.3, six byte-identical-length stems from
+  one session each landed on a *different* guess (117.9, ~240 ×4, and 151
+  BPM), so a multitrack that was perfectly aligned on disk played badly out
+  of sync, with the ~240 BPM guesses running at double speed. Switching
+  warping off plays each clip at its recorded rate, which is what keeps
+  aligned stems aligned. The response reports the clip's resulting length,
+  so a caller can confirm a set of stems now agree with each other rather
+  than trusting the write.
 
 ## [1.7.0] - 2026-08-28
 

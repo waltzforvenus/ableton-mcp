@@ -222,6 +222,38 @@ def set_clip_gain(ctx: Context, track_index: int, clip_index: int, gain: float,
 
 
 @tool
+def set_clip_warp(ctx: Context, track_index: int, clip_index: int, warping: bool,
+                  warp_mode: Optional[int] = None, arrangement: bool = True) -> str:
+    """
+    Turn an audio clip's warping on or off — the fix for stems that drift apart.
+
+    Live's "Auto-Warp Long Samples" guesses a source tempo for every imported
+    file, and on material without clear transients it guesses wrong. Stems
+    captured together in one session can each land on a different guess, so a
+    multitrack that was perfectly aligned on disk plays out of sync. Switching
+    warping off makes a clip play at its recorded rate, which is what keeps
+    aligned stems aligned; the response reports the clip's resulting length so
+    you can confirm a set of them now agree.
+
+    Leave warping on for material you actually want to follow the project
+    tempo. warp_mode is only applied while warping is on.
+
+    Parameters:
+    - track_index: The index of the track containing the clip
+    - clip_index: Index of the clip, ordered by start time as get_arrangement_clips
+      returns them (or the clip slot index when arrangement is False)
+    - warping: True to warp to project tempo, False to play at the native rate
+    - warp_mode: Optional Live warp-mode index (0 Beats, 1 Tones, 2 Texture,
+      3 Re-Pitch, 4 Complex, 5+ Complex Pro/REX); ignored when warping is False
+    - arrangement: True for a clip on the timeline (default), False for a Session slot
+    """
+    result = _deps(ctx).service.set_clip_warp(
+        track_index, clip_index, bool(warping),
+        None if warp_mode is None else int(warp_mode), arrangement)
+    return presenters.set_clip_warp(result)
+
+
+@tool
 def back_to_arrangement(ctx: Context) -> str:
     """
     Return every track to Arrangement playback — Live's "Back to Arrangement" button.

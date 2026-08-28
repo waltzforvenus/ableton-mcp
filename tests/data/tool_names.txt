@@ -33,6 +33,7 @@ set_arrangement_clip_name
 set_arrangement_time
 set_clip_gain
 set_clip_name
+set_clip_warp
 set_count_in
 set_device_parameter
 set_tempo

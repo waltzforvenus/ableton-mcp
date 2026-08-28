@@ -27,7 +27,7 @@ HOST = "127.0.0.1"
 
 # Bumped whenever the TCP command surface changes; the MCP server compares
 # this to EXPECTED_REMOTE_SCRIPT_VERSION.
-SCRIPT_VERSION = "1.13.0"
+SCRIPT_VERSION = "1.14.0"
 PROTOCOL_VERSION = 1
 
 # The trim eraser (see _trim_arrangement_clip): a temporary Session clip
@@ -108,6 +108,7 @@ COMMANDS = {
     "back_to_arrangement":        ("_back_to_arrangement",        True,  None, True),
     "set_track_routing":          ("_set_track_routing",          True,  None, True),
     "set_clip_gain":              ("_set_clip_gain",              True,  None, True),
+    "set_clip_warp":              ("_set_clip_warp",              True,  None, True),
     "start_playback":             ("_start_playback",             True,  None, False),
     "stop_playback":              ("_stop_playback",              True,  None, False),
     "load_browser_item":          ("_load_browser_item",          True,  None, True),
@@ -796,6 +797,74 @@ class AbletonMCP(ControlSurface):
             }
         except Exception as e:
             self.log_message("Error setting clip gain: " + str(e))
+            raise
+
+    def _set_clip_warp(self, track_index=0, clip_index=0, warping=False,
+                       warp_mode=None, arrangement=True):
+        """Turn an audio clip's warping on or off, and optionally set its mode.
+
+        Live's "Auto-Warp Long Samples" guesses a source tempo per imported
+        file. On material without clear transients it guesses wrong, and stems
+        captured in one session can each land on a *different* guess — which
+        silently pulls an aligned multitrack apart. Switching warping off plays
+        the file at its recorded rate, which is what keeps stems together.
+
+        warp_mode is Live's own index (0 Beats, 1 Tones, 2 Texture,
+        3 Re-Pitch, 4 Complex, 5+ Complex Pro/REX depending on build) and is
+        only applied while warping is on; it is ignored otherwise.
+        """
+        try:
+            if arrangement:
+                track, clip = self._resolve_arrangement_clip(track_index, clip_index)
+            else:
+                track = self._resolve_track(track_index)
+                if clip_index < 0 or clip_index >= len(track.clip_slots):
+                    raise IndexError("Clip slot index out of range")
+                slot = track.clip_slots[clip_index]
+                if not slot.has_clip:
+                    raise Exception("No clip in that slot")
+                clip = slot.clip
+
+            if clip.is_midi_clip:
+                raise ValueError(
+                    "Warping applies to audio clips only; this is a MIDI clip")
+
+            want = bool(warping)
+            clip.warping = want
+
+            applied_mode = None
+            if want and warp_mode is not None:
+                try:
+                    clip.warp_mode = int(warp_mode)
+                    applied_mode = int(clip.warp_mode)
+                except Exception as e:
+                    # An unsupported mode index should not lose the warp toggle
+                    # the caller actually asked for.
+                    self.log_message("Could not set warp mode: " + str(e))
+
+            if applied_mode is None:
+                try:
+                    applied_mode = int(clip.warp_mode)
+                except Exception:
+                    applied_mode = -1
+
+            # Turning warping off restores the file's native length, so report
+            # the resulting span: that readback is how a caller confirms a set
+            # of stems now agree with each other.
+            return {
+                "track_index": track_index,
+                "track_name": track.name,
+                "clip_index": clip_index,
+                "clip_name": clip.name,
+                "arrangement": bool(arrangement),
+                "warping": bool(clip.warping),
+                "warp_mode": applied_mode,
+                "start_time": float(getattr(clip, "start_time", 0.0)),
+                "end_time": float(getattr(clip, "end_time", 0.0)),
+                "length": float(getattr(clip, "length", 0.0)),
+            }
+        except Exception as e:
+            self.log_message("Error setting clip warp: " + str(e))
             raise
 
     def _back_to_arrangement(self):

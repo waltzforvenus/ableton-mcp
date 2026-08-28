@@ -196,6 +196,27 @@ BASE_CASES = [
             {"clip_name": "Take 2", "track_name": "Vocals", "gain": 0.42}),
     ]),
 
+    # ── set_clip_warp ─────────────────────────────────────────────────────
+    # Warp off is the stems fix: the response reports the clip's restored
+    # native length, which is how a caller confirms stems now agree.
+    _case("set_clip_warp", "warp_off_restores_native_length",
+          {"track_index": 2, "clip_index": 0, "warping": False}, [
+        _ok("set_clip_warp",
+            {"track_index": 2, "clip_index": 0, "warping": False,
+             "warp_mode": None, "arrangement": True},
+            {"clip_name": "session_Drums", "track_name": "Drums",
+             "warping": False, "warp_mode": 0, "length": 520.834}),
+    ]),
+    _case("set_clip_warp", "warp_on_with_mode",
+          {"track_index": 2, "clip_index": 0, "warping": True,
+           "warp_mode": 4}, [
+        _ok("set_clip_warp",
+            {"track_index": 2, "clip_index": 0, "warping": True,
+             "warp_mode": 4, "arrangement": True},
+            {"clip_name": "session_Drums", "track_name": "Drums",
+             "warping": True, "warp_mode": 4, "length": 530.16}),
+    ]),
+
     # ── back_to_arrangement ───────────────────────────────────────────────
     _case("back_to_arrangement", "success", {}, [
         _ok("back_to_arrangement", {}, {"ok": True}),

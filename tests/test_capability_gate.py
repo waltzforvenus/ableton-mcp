@@ -360,6 +360,7 @@ def test_the_matrix_is_not_vacuous():
         "duplicate_arrangement_clip",
         "jump_to_locator",
         "move_arrangement_clip",
+        "set_clip_warp",
     ]
     assert FLOOR_UNADVERTISED_IN_1_7_0 == [
         "fire_clip", "load_browser_item", "set_clip_name", "set_tempo",

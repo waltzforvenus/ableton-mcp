@@ -118,6 +118,16 @@ class AbletonService:
             "arrangement": arrangement
         })
 
+    def set_clip_warp(self, track_index: int, clip_index: int, warping: bool,
+                      warp_mode: Optional[int], arrangement: bool) -> Dict[str, Any]:
+        return self._send("set_clip_warp", {
+            "track_index": track_index,
+            "clip_index": clip_index,
+            "warping": warping,
+            "warp_mode": warp_mode,
+            "arrangement": arrangement
+        })
+
     def back_to_arrangement(self) -> Dict[str, Any]:
         return self._send("back_to_arrangement", {})
 

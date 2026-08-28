@@ -102,6 +102,7 @@ COMMANDS: dict[str, CommandSpec] = {
     "back_to_arrangement": CommandSpec(modifying=True, gated=True),
     "set_track_routing": CommandSpec(modifying=True, gated=True),
     "set_clip_gain": CommandSpec(modifying=True, gated=True),
+    "set_clip_warp": CommandSpec(modifying=True, gated=True),
     "start_playback": CommandSpec(modifying=True),  # LEGACY floor — gate is a no-op
     "stop_playback": CommandSpec(modifying=True),  # LEGACY floor — gate is a no-op
     # The load_* tools actually send load_browser_item; without a modifying
