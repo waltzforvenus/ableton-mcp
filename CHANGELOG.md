@@ -9,10 +9,26 @@ separately, and a script change means **re-run
 
 ## [Unreleased]
 
-Ships Remote Script **1.12.0**. **Re-run `ableton-mcp-install-script` and
-restart Live after upgrading** — the trim rework lives in the script half,
-and the server refuses `trim_arrangement_clip` against older scripts
-(their implementation could never trim on the Live builds we can verify).
+Nothing yet.
+
+## [1.7.0] - 2026-08-28
+
+Ships Remote Script **1.13.0**. **Re-run `ableton-mcp-install-script` and
+restart Live after upgrading** — the trim rework and the locator race fix
+live in the script half, and the server refuses `trim_arrangement_clip`
+against older scripts (their implementation could never trim on the Live
+builds we can verify).
+
+### Fixed (user-facing)
+
+- `create_locator` no longer misfires after a transport stop. It toggles
+  Live's cue at the playhead, but a `current_song_time` write can be
+  swallowed while the transport settles (verified on 12.4.3) — the toggle
+  then fired at the OLD playhead position, leaving a stray auto-named
+  locator there and reporting failure. The script now verifies the
+  playhead landed (with one retry) before toggling, and refuses without
+  toggling when it never settles — a wrong-position toggle is the
+  corruption, so the refusal is the safety.
 
 ### Changed (user-facing)
 
@@ -47,6 +63,16 @@ and the server refuses `trim_arrangement_clip` against older scripts
   advertises the command but serves the inert implementation) gets the
   friendly re-run-the-installer message instead of an endless refusal
   loop.
+- A `fade_arrangement_clip` command (clip fades as clip-scoped volume
+  automation) was built and then killed in review before release: the LOM
+  documents `Clip.automation_envelope` as returning None for Arrangement
+  clips on every Live generation, and arrangement automation lanes are not
+  writable from the Python API — so programmatic clip fades are not
+  possible, and shipping a command that can never succeed helps nobody.
+  Recorded here so the next attempt starts from that fact.
+- The fake Song's `current_song_time` is now a property with a
+  `transport_write_lag` toggle, so the post-stop settle race has test
+  coverage on both branches.
 - `tests/fake_ableton` now models Live's arrangement overlap physics —
   `Track.duplicate_clip_to_arrangement` crops or splits whatever the copy
   lands on and keeps the clip list in start-time order — and derives an

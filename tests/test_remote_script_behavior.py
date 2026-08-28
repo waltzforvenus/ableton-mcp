@@ -764,6 +764,26 @@ def test_duplicate_arrangement_clip_reuses_a_take_elsewhere():
     assert clips[1].start_time == 16.0 and clips[1].end_time == 24.0
 
 
+def test_create_locator_retries_a_swallowed_transport_write():
+    harness = make_harness(config=FakeLiveConfig(transport_write_lag="once"))
+    result = _ok(harness.process(_cmd("create_locator", name="Drop",
+                                      time=16.0)))
+    assert result["time"] == 16.0 and result["name"] == "Drop"
+    # No stray cue was toggled at the stale playhead position.
+    assert {(c.name, c.time) for c in harness.song.cue_points} == {
+        ("Verse", 8.0), ("Drop", 16.0)}
+
+
+def test_create_locator_refuses_without_toggling_when_transport_never_settles():
+    harness = make_harness(config=FakeLiveConfig(transport_write_lag="always"))
+    message = _err(harness.process(_cmd("create_locator", name="Drop",
+                                        time=16.0)))
+    assert "did not settle" in message
+    # The refusal IS the safety: a wrong-position toggle would corrupt.
+    assert {(c.name, c.time) for c in harness.song.cue_points} == {
+        ("Verse", 8.0)}
+
+
 def test_switch_to_arrangement_view():
     harness = make_harness()
     result = _ok(harness.process(_cmd("switch_to_arrangement_view")))

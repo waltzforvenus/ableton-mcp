@@ -27,7 +27,7 @@ HOST = "127.0.0.1"
 
 # Bumped whenever the TCP command surface changes; the MCP server compares
 # this to EXPECTED_REMOTE_SCRIPT_VERSION.
-SCRIPT_VERSION = "1.12.0"
+SCRIPT_VERSION = "1.13.0"
 PROTOCOL_VERSION = 1
 
 # The trim eraser (see _trim_arrangement_clip): a temporary Session clip
@@ -1455,8 +1455,29 @@ class AbletonMCP(ControlSurface):
             original_time = song.current_song_time
 
             if existing is None:
-                # Move playhead, toggle to create, then locate the new cue
+                # Move playhead, VERIFY it settled, then toggle. Right after
+                # a stop the transport can swallow the first write and keep
+                # reading stale for the rest of the tick (the same race
+                # _set_current_song_time guards against, verified on Live
+                # 12.4.3): toggling then fires set_or_delete_cue at the OLD
+                # position — creating or deleting a stray cue there. A
+                # wrong-position toggle is the corruption, so if the
+                # playhead never verifiably lands, refuse without toggling.
                 song.current_song_time = target_time
+                if abs(song.current_song_time - target_time) > tolerance:
+                    song.current_song_time = target_time
+                if abs(song.current_song_time - target_time) > tolerance:
+                    stale_read = song.current_song_time
+                    # Undo the (possibly landed) move before refusing, so a
+                    # refusal has no side effect either.
+                    try:
+                        song.current_song_time = original_time
+                    except Exception:
+                        pass
+                    raise Exception(
+                        "Transport did not settle on beat %s (still reads "
+                        "%s); no cue was toggled — retry in a moment"
+                        % (target_time, stale_read))
                 song.set_or_delete_cue()
                 for cue in song.cue_points:
                     if abs(cue.time - target_time) < tolerance:

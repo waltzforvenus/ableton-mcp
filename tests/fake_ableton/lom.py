@@ -37,6 +37,7 @@ import wave
 
 _NOTE_API_GENERATIONS = ("legacy", "both", "extended_only")
 _SAVE_OWNERS = ("song", "application", None)
+_TRANSPORT_LAG_MODES = (False, "once", "always")
 
 
 def _wav_duration_seconds(path):
@@ -57,11 +58,15 @@ class FakeLiveConfig(object):
     def __init__(self, note_api="both", extended_read_raises=False,
                  create_audio_clip_api=True, count_in_read_only=False,
                  save_owner="song", warp_markers=False,
-                 extended_note_fields=False, track_delete_clip_api=True):
+                 extended_note_fields=False, track_delete_clip_api=True,
+                 transport_write_lag=False):
         if note_api not in _NOTE_API_GENERATIONS:
             raise ValueError("note_api must be one of %r" % (_NOTE_API_GENERATIONS,))
         if save_owner not in _SAVE_OWNERS:
             raise ValueError("save_owner must be one of %r" % (_SAVE_OWNERS,))
+        if transport_write_lag not in _TRANSPORT_LAG_MODES:
+            raise ValueError("transport_write_lag must be one of %r"
+                             % (_TRANSPORT_LAG_MODES,))
         self.note_api = note_api
         self.extended_read_raises = extended_read_raises
         self.create_audio_clip_api = create_audio_clip_api
@@ -70,6 +75,11 @@ class FakeLiveConfig(object):
         self.warp_markers = warp_markers
         self.extended_note_fields = extended_note_fields
         self.track_delete_clip_api = track_delete_clip_api
+        # Models the post-stop transport race verified on Live 12.4.3: a
+        # current_song_time write can be swallowed while the transport
+        # settles. False = writes land; "once" = the first write is
+        # swallowed, a retry lands; "always" = writes never land.
+        self.transport_write_lag = transport_write_lag
 
 
 # ── Parameters, devices, mixer ───────────────────────────────────────────────
@@ -554,7 +564,8 @@ class FakeSong(object):
         self.return_tracks = []
         self.master_track = FakeTrack("Master", config=self.config, kind="master")
         self.is_playing = False
-        self.current_song_time = 0.0
+        self._current_song_time = 0.0
+        self._lag_swallowed_once = False
         # Not a LOM property: models the UI start marker CuePoint.jump()
         # plants while stopped (see FakeCuePoint.jump).
         self.start_marker_time = 0.0
@@ -584,6 +595,23 @@ class FakeSong(object):
             raise AttributeError("property 'count_in_duration' of 'Song' object "
                                  "has no setter")
         self._count_in_duration = int(value)
+
+    # current_song_time is a property so the post-stop transport race can be
+    # emulated (transport_write_lag toggle): a swallowed write keeps reading
+    # the old value, exactly as Live 12.4.3 does for the rest of a tick.
+    @property
+    def current_song_time(self):
+        return self._current_song_time
+
+    @current_song_time.setter
+    def current_song_time(self, value):
+        lag = self.config.transport_write_lag
+        if lag == "always":
+            return
+        if lag == "once" and not self._lag_swallowed_once:
+            self._lag_swallowed_once = True
+            return
+        self._current_song_time = float(value)
 
     # -- track management ---------------------------------------------------
 
