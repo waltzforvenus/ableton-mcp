@@ -215,10 +215,16 @@ def create_audio_clip(result: Dict[str, Any], track_index: int,
         text += "; imported unwarped, so it plays at its recorded rate"
     matches = result.get("length_matches_expected")
     if matches is False:
+        # Hedged deliberately: the length was read in the same tick that
+        # cleared warping, and unwarping is what changes a clip's beat
+        # length, so a stale read can report a mismatch for a fine import.
+        # Telling the user to delete and re-import on that evidence would
+        # destroy good work.
         text += (f". That does NOT match the {result.get('expected_beats')} "
-                 f"beats you expected — the file is fine, Live's import "
-                 f"guessed a wrong source tempo; set_clip_warp it off or "
-                 f"delete and re-import")
+                 f"beats you expected. Most likely Live's import guessed a "
+                 f"wrong source tempo — but this length was read in the same "
+                 f"tick the warp was cleared, so re-read the clip before "
+                 f"acting; if it really is wrong, set_clip_warp it off")
     elif matches is True:
         text += f", matching the expected {result.get('expected_beats')} beats"
     return text
@@ -529,6 +535,17 @@ def delete_arrangement_clip(result: Dict[str, Any], track_index: int,
     deletions = result.get("deletions")
     if deletions is None:
         name = result.get("deleted_clip_name") or f"clip {clip_index}"
+        # The handler verifies with a before/after count. Saying "Deleted" when
+        # it reports otherwise is the same lie the plural branch and
+        # delete_device already refuse to tell — and a highest-index-first
+        # sweep built on that lie removes the wrong clips next.
+        if result.get("deleted") is False:
+            return (
+                f"Did NOT delete arrangement clip '{name}' on track "
+                f"{track_index} — the clip count did not change, so nothing "
+                f"was removed and no indices shifted. Re-read "
+                f"get_arrangement_clips and retry; do not assume a shift"
+            )
         return (
             f"Deleted arrangement clip '{name}' (beats "
             f"{result.get('start_time')} to {result.get('end_time')}) from "

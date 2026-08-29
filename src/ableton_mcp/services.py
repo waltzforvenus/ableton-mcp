@@ -32,8 +32,16 @@ def _guarded(params: Dict[str, Any],
     ``**params``, so a script older than the guard raises a bare TypeError
     on a keyword it has never heard of. Omitting it keeps every ordinary
     call working against those scripts, and leaves the guard as something
-    a caller opts into (and gets the friendly version message for, since
-    the commands that gained it in 1.15.0 for other reasons are floored).
+    a caller opts into.
+
+    Be precise about what that opt-in costs on an old script: only the
+    commands independently floored at 1.15.0 turn it into the friendly
+    re-run-the-installer message. The rest — set_track_volume, set_clip_gain,
+    move_arrangement_clip and the other long-standing rows — carry no floor,
+    because flooring them would refuse every ORDINARY call on a 1.14.0 script
+    to protect an optional argument. On those, passing expect_track_name to a
+    pre-1.15.0 script surfaces as a TypeError from the script's ``**params``
+    dispatch. Omitting it, which is the default, is always safe.
 
     Same shape as the optional criteria in ``jump_to_locator`` and
     ``trim_arrangement_clip``: presence, not value, is what the script

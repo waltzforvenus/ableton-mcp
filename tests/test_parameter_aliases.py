@@ -173,12 +173,29 @@ def test_parameter_name_is_accepted_for_parameter(fake_conn):
     assert _params(conn, "set_device_parameter")["parameter"] == "Dry/Wet"
 
 
-def test_parameter_index_as_a_string_still_becomes_an_int(fake_conn):
-    """The pre-existing boundary coercion survives the alias fold."""
+def test_a_digit_string_is_passed_through_not_coerced(fake_conn):
+    """Both device-parameter tools must resolve a key the SAME way.
+
+    This layer used to coerce "3" to the int 3, which sent the singular tool
+    down the script's INDEX path while set_device_parameters sent the same key
+    down its NAME path — the script tries the name first precisely so that a
+    parameter genuinely named "3" stays reachable. On a device with such a
+    parameter the two tools wrote to different targets. The string is now
+    passed through so the script's one resolver decides for both.
+    """
+    conn = fake_conn(response={"device_name": "Reverb",
+                               "parameter_name": "3", "value": 0.25})
+    tools.set_device_parameter(conn.ctx, track_index=0, device_index=0,
+                               value=0.25, parameter_name="3")
+    assert _params(conn, "set_device_parameter")["parameter"] == "3"
+
+
+def test_an_int_index_is_still_sent_as_an_int(fake_conn):
+    """Passing a real int is unchanged — only the string coercion is gone."""
     conn = fake_conn(response={"device_name": "Reverb",
                                "parameter_name": "Dry/Wet", "value": 0.25})
     tools.set_device_parameter(conn.ctx, track_index=0, device_index=0,
-                               value=0.25, parameter_name="3")
+                               value=0.25, parameter=3)
     assert _params(conn, "set_device_parameter")["parameter"] == 3
 
 

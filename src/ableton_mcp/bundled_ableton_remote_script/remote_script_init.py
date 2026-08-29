@@ -1456,14 +1456,48 @@ class AbletonMCP(ControlSurface):
             if expected_beats is not None:
                 expected = float(expected_beats)
                 result["expected_beats"] = expected
-                # A 1/256-note tolerance: an honest import lands exactly, and
-                # a wrong tempo guess is off by whole beats, never by a
-                # rounding hair.
+                # 1e-3 beats — a rounding hair, not a musical value (1/256
+                # note is 0.0156 beats, ~16x wider). An honest import lands
+                # exactly; a wrong tempo guess is off by whole beats.
+                #
+                # Caveat the caller needs: `length` was read in the SAME tick
+                # that cleared warping, and unwarping is precisely what
+                # changes a clip's beat length. This file's own doctrine is
+                # that a read can stay stale for the rest of a tick even
+                # though the write landed. So False here means "check this",
+                # not "this import is broken" — re-read the clip before
+                # acting on it. Only a deferred-verify pass can make this
+                # claim unconditional.
                 result["length_matches_expected"] = abs(length - expected) <= 1e-3
+                result["length_read_same_tick_as_unwarp"] = True
             return result
         except Exception as e:
             self.log_message("Error creating audio clip: " + str(e))
             raise
+
+    def _note_extent_window(self, clip):
+        """A window wide enough to cover every note the clip actually holds.
+
+        Live stores notes PAST a clip's marker window, and
+        _add_notes_to_clip deliberately writes them there. Any window derived
+        from clip.length alone therefore under-reads: a clear over it leaves
+        ghosts behind and then reports the clip empty, so the documented
+        clear-then-add loop silently accumulates notes.
+
+        Doubles until the count stops growing, so the cost is logarithmic in
+        how far past the end the furthest note sits, and bounded either way.
+        """
+        window = max(float(getattr(clip, "length", 0.0)), 1.0) + 1.0
+        seen = self._count_clip_notes(clip, window)
+        if seen is None:
+            return window
+        for _ in range(12):
+            wider = window * 2.0
+            found = self._count_clip_notes(clip, wider)
+            if found is None or found <= seen:
+                break
+            window, seen = wider, found
+        return window
 
     def _count_clip_notes(self, clip, time_span=None):
         """How many notes a clip holds over a window, or None if unreadable.
@@ -1895,7 +1929,10 @@ class AbletonMCP(ControlSurface):
             if not clip.is_midi_clip:
                 raise Exception("Clip is not a MIDI clip; no notes to clear")
 
-            length = clip.length
+            # Not clip.length: see _note_extent_window. Clearing over the
+            # clip's own length leaves notes written past it behind, and the
+            # count below would then call the clip empty.
+            length = self._note_extent_window(clip)
 
             # Count existing notes for the report (best-effort; never fatal).
             cleared = 0
@@ -3164,7 +3201,8 @@ class AbletonMCP(ControlSurface):
         }
 
     def _move_arrangement_clip(self, track_index=0, clip_index=0,
-                               destination_time=0.0, expect_track_name=None):
+                               destination_time=0.0, expect_track_name=None,
+                               allow_loop_phase_reset=False):
         """Move an Arrangement clip so it starts at destination_time (beats).
 
         Live's LOM has no true move: Clip.position is the clip's LOOP
@@ -3178,6 +3216,12 @@ class AbletonMCP(ControlSurface):
         overlap handling would eat into the source before it could be
         deleted; make such a move in two hops via a clear stretch of the
         timeline.
+
+        A move is a stamp: the copy lands with the same
+        Track.duplicate_clip_to_arrangement the other stamp paths use, so it
+        carries the same hazard and consults the same _loop_phase_victims
+        check. Guarding one stamp site and not the other is exactly the drift
+        that check exists to prevent.
         """
         try:
             track, clip = self._resolve_arrangement_clip(
@@ -3209,6 +3253,11 @@ class AbletonMCP(ControlSurface):
                     "Live's overlap handling would eat into the source before "
                     "the move completes — move it in two hops via a clear "
                     "stretch of the timeline" % (target, old_start, old_end))
+
+            victims = self._loop_phase_victims(track, target, target + length)
+            if victims and not allow_loop_phase_reset:
+                raise Exception(self._loop_phase_refusal(
+                    track, victims, target, target + length))
 
             track.duplicate_clip_to_arrangement(clip, target)
             moved = None

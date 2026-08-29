@@ -610,11 +610,12 @@ def set_device_parameter(ctx: Context, track_index: int, device_index: int,
             "parameter", ("parameter_name",),
             "the parameter's name as get_device_parameters shows it "
             "(e.g. \"Dry/Wet\"), or its index as a string"))
-    # Accept an integer index passed as a string without making the caller care.
-    try:
-        param = int(str(param).strip())
-    except (TypeError, ValueError):
-        pass
+    # Deliberately NOT coerced to int here. The script resolves a string by
+    # NAME first and only then as an index, so that a parameter genuinely
+    # named "3" stays reachable; coercing "3" to 3 in this layer would send
+    # the singular tool down the index path while set_device_parameters sent
+    # the same key down the name path — the two tools would write to
+    # different parameters on the same device.
     result = _deps(ctx).service.set_device_parameter(
         track_index, device_index, param, value, track_type,
         expect_track_name)

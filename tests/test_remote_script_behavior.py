@@ -634,6 +634,46 @@ def test_duplicate_arrangement_clip_carries_the_same_guard():
     assert result["loop_phase_reset"] == ["Hats 8"]
 
 
+def test_move_arrangement_clip_carries_the_same_guard():
+    # move IS a stamp: it duplicates to the destination and deletes the
+    # original, the identical LOM call the other two guard. Review caught this
+    # one unguarded — duplicate_arrangement_clip refused a placement while
+    # move performed the very same geometry and silently re-phased the victim.
+    # One stamp site guarded and another not is the drift the shared check
+    # exists to prevent, so this asserts move consults it too.
+    harness = make_harness()
+    mover = _looping_hats(harness, track_index=2, start_time=0.0, length=8.0)
+    victim = _looping_hats(harness, track_index=2, start_time=16.0, length=16.0)
+
+    message = _err(harness.process(_cmd(
+        "move_arrangement_clip", track_index=2, clip_index=0,
+        destination_time=20.0)))
+    assert "Refusing this stamp at beat 20.0" in message
+    # Refused means refused: the source is still where it was and the victim
+    # is untouched. A guard that refused *after* moving would be worse than none.
+    assert (mover.start_time, mover.end_time) == (0.0, 8.0)
+    assert (victim.start_time, victim.end_time) == (16.0, 32.0)
+
+    # ...and the override reaches this handler too.
+    result = _ok(harness.process(_cmd(
+        "move_arrangement_clip", track_index=2, clip_index=0,
+        destination_time=20.0, allow_loop_phase_reset=True)))
+    assert result["moved"] is True
+
+
+def test_move_to_clear_timeline_is_not_refused():
+    # The false-positive case. Moving into empty space must stay ordinary —
+    # a guard that refused every move would be a worse bug than the one it fixes.
+    harness = make_harness()
+    mover = _looping_hats(harness, track_index=2, start_time=0.0, length=8.0)
+
+    result = _ok(harness.process(_cmd(
+        "move_arrangement_clip", track_index=2, clip_index=0,
+        destination_time=64.0)))
+    assert result["moved"] is True
+    assert result["start_time"] == 64.0
+
+
 # --------------------------------------------------------------------------
 # Batched stamps — the partial-success path
 # --------------------------------------------------------------------------

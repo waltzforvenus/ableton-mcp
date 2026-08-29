@@ -410,11 +410,15 @@ BASE_CASES = [
     ]),
     # "3" is coerced to int 3 on the wire; no display_value falls back to
     # the raw value; no clamped flag, no suffix.
+    # A digit string is passed through UNCOERCED, so the script's resolver —
+    # which tries the name first, keeping a parameter genuinely named "3"
+    # reachable — decides for this tool and set_device_parameters alike.
+    # Coercing here made the two tools disagree on such a device.
     _case("set_device_parameter", "success_by_index_string",
           {"track_index": 1, "device_index": 0, "parameter": "3",
            "value": 0.35}, [
         _ok("set_device_parameter",
-            {"track_index": 1, "device_index": 0, "parameter": 3,
+            {"track_index": 1, "device_index": 0, "parameter": "3",
              "value": 0.35, "track_type": "regular"},
             {"device_name": "Delay", "parameter_name": "Feedback",
              "value": 0.35}),

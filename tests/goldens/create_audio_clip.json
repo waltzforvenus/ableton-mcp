@@ -59,7 +59,7 @@
         "path": "/tmp/stem.wav",
         "track_index": 1
       },
-      "expect": "Created audio clip 'stem' at track 1, slot 0 (length 32.0 beats); imported unwarped, so it plays at its recorded rate. That does NOT match the 16.0 beats you expected \u2014 the file is fine, Live's import guessed a wrong source tempo; set_clip_warp it off or delete and re-import",
+      "expect": "Created audio clip 'stem' at track 1, slot 0 (length 32.0 beats); imported unwarped, so it plays at its recorded rate. That does NOT match the 16.0 beats you expected. Most likely Live's import guessed a wrong source tempo \u2014 but this length was read in the same tick the warp was cleared, so re-read the clip before acting; if it really is wrong, set_clip_warp it off",
       "name": "length_disagrees_with_expected_beats",
       "wire": [
         {
