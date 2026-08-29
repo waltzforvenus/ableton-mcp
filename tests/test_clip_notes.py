@@ -91,7 +91,8 @@ def _sample_response(notes=SAMPLE_NOTES, name="Fred Pattern", length=8.0):
 def test_read_sends_correct_command_and_params(fake_conn):
     conn = fake_conn(response=_sample_response())
     tools.get_clip_notes(conn.ctx, track_index=2, clip_index=5)
-    assert conn.sent == [("get_clip_notes", {"track_index": 2, "clip_index": 5})]
+    assert conn.sent == [("get_clip_notes", {"track_index": 2, "clip_index": 5,
+                                             "arrangement": False})]
 
 
 def test_read_returns_the_payload_as_json(fake_conn):
@@ -132,7 +133,8 @@ def test_add_notes_forwards_track_clip_and_notes(fake_conn):
     one = [{"pitch": 60, "start_time": 0.0, "duration": 1.0, "velocity": 100, "mute": False}]
     tools.add_notes_to_clip(conn.ctx, 3, 7, one)
     assert conn.sent == [("add_notes_to_clip",
-                          {"track_index": 3, "clip_index": 7, "notes": one})]
+                          {"track_index": 3, "clip_index": 7, "notes": one,
+                           "arrangement": False})]
 
 
 # --------------------------------------------------------------------------
@@ -142,7 +144,9 @@ def test_add_notes_forwards_track_clip_and_notes(fake_conn):
 def test_clear_sends_correct_command_and_params(fake_conn):
     conn = fake_conn(response={"clip_name": "Fred", "cleared_count": 3})
     tools.clear_notes_from_clip(conn.ctx, track_index=1, clip_index=4)
-    assert conn.sent == [("clear_notes_from_clip", {"track_index": 1, "clip_index": 4})]
+    assert conn.sent == [("clear_notes_from_clip", {"track_index": 1,
+                                                    "clip_index": 4,
+                                                    "arrangement": False})]
 
 
 def test_clear_output_reports_count_and_name(fake_conn):
@@ -183,7 +187,8 @@ def test_true_replace_loop_read_clear_add(fake_conn):
     ]
     # clear targeted the same slot
     clear_cmd = [c for c in conn.sent if c[0] == "clear_notes_from_clip"][0]
-    assert clear_cmd[1] == {"track_index": 0, "clip_index": 0}
+    assert clear_cmd[1] == {"track_index": 0, "clip_index": 0,
+                            "arrangement": False}
     # and the only notes written back are the transposed ones
     written = [c for c in conn.sent if c[0] == "add_notes_to_clip"][0][1]["notes"]
     assert [n["pitch"] for n in written] == [43, 45, 49]

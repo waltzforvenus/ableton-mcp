@@ -10,9 +10,11 @@ create_return_track
 delete_arrangement_clip
 delete_clip
 delete_device
+delete_locator
 delete_track
 duplicate_arrangement_clip
 duplicate_to_arrangement
+duplicate_track
 fire_clip
 get_arrangement_clips
 get_browser_items_at_path
@@ -36,6 +38,7 @@ set_clip_name
 set_clip_warp
 set_count_in
 set_device_parameter
+set_device_parameters
 set_tempo
 set_track_arm
 set_track_monitoring

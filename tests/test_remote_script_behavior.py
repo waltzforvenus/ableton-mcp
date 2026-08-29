@@ -17,7 +17,7 @@ Runs anywhere: no Ableton, no network.
 
 import pytest
 
-from fake_ableton import FakeClip, FakeLiveConfig, make_harness
+from fake_ableton import FakeClip, FakeDevice, FakeLiveConfig, make_harness
 
 
 # --------------------------------------------------------------------------
@@ -115,7 +115,10 @@ def test_get_script_info():
     assert result["script_version"] == harness.module.SCRIPT_VERSION
     assert result["protocol_version"] == harness.module.PROTOCOL_VERSION
     assert result["capabilities"] == list(harness.module.SCRIPT_CAPABILITIES)
-    assert result["snapshot_schema"] == "ableton_mcp_snapshot_v2"
+    # v3: the scoping flags landed and warp markers / rack chains stopped
+    # being emitted unconditionally, so the same call returns a materially
+    # different payload — a schema bump, not a cosmetic one.
+    assert result["snapshot_schema"] == "ableton_mcp_snapshot_v3"
 
 
 def test_get_session_info():
@@ -195,7 +198,11 @@ def test_set_track_name():
     harness = make_harness()
     result = _ok(harness.process(_cmd("set_track_name", track_index=1,
                                       name="Kicks")))
-    assert result == {"name": "Kicks"}
+    # The resolved-track echo: every modifying result now names the track it
+    # actually landed on, so a caller whose index went stale after a delete
+    # can see it in the reply instead of discovering it in the mix.
+    assert result == {"track_index": 1, "name": "Kicks",
+                      "previous_name": "Drums"}
     assert harness.song.tracks[1].name == "Kicks"
 
 
@@ -223,7 +230,14 @@ def test_create_clip_add_notes_get_notes_round_trip(note_api):
     ]
     added = _ok(harness.process(_cmd("add_notes_to_clip", track_index=0,
                                      clip_index=1, notes=notes)))
-    assert added == {"note_count": 2}
+    # Measured, not echoed: `requested` is what the caller sent, `added` is
+    # the before/after delta Live actually took. The old {"note_count": N}
+    # printed the caller's own argument back and so said "Added 262 notes"
+    # whether Live took 262 or none.
+    assert added == {"track_index": 0, "track_name": "Lead",
+                     "clip_index": 1, "clip_name": "",
+                     "arrangement": False,
+                     "requested": 2, "added": 2, "clip_note_count": 2}
 
     read = _ok(harness.process(_cmd("get_clip_notes", track_index=0,
                                     clip_index=1)))
@@ -247,8 +261,10 @@ def test_clear_notes_from_clip_on_both_note_apis(note_api):
     harness = make_harness(config=FakeLiveConfig(note_api=note_api))
     result = _ok(harness.process(_cmd("clear_notes_from_clip", track_index=0,
                                       clip_index=0)))
-    assert result == {"track_index": 0, "clip_index": 0,
-                      "clip_name": "Lead Riff", "cleared_count": 3}
+    assert result == {"track_index": 0, "track_name": "Lead",
+                      "clip_index": 0, "clip_name": "Lead Riff",
+                      "arrangement": False,
+                      "cleared_count": 3, "clip_note_count": 0}
     assert harness.song.tracks[0].clip_slots[0].clip.stored_notes == []
 
 
@@ -304,17 +320,23 @@ def test_delete_clip_echoes_the_deleted_clip_name():
     harness = make_harness()
     result = _ok(harness.process(_cmd("delete_clip", track_index=0,
                                       clip_index=0)))
-    assert result == {"deleted": True, "deleted_clip_name": "Lead Riff"}
+    assert result == {"track_index": 0, "track_name": "Lead",
+                      "clip_index": 0,
+                      "deleted": True, "deleted_clip_name": "Lead Riff"}
 
 
 def test_fire_clip_and_stop_clip():
     harness = make_harness()
     clip = harness.song.tracks[0].clip_slots[0].clip
     assert _ok(harness.process(_cmd("fire_clip", track_index=0,
-                                    clip_index=0))) == {"fired": True}
+                                    clip_index=0))) == {
+        "track_index": 0, "track_name": "Lead",
+        "clip_index": 0, "clip_name": "Lead Riff", "fired": True}
     assert clip.is_playing is True
     assert _ok(harness.process(_cmd("stop_clip", track_index=0,
-                                    clip_index=0))) == {"stopped": True}
+                                    clip_index=0))) == {
+        "track_index": 0, "track_name": "Lead",
+        "clip_index": 0, "stopped": True}
     assert clip.is_playing is False
 
 
@@ -481,6 +503,260 @@ def test_duplicate_session_clip_to_arrangement():
     assert track.clip_slots[0].clip.name == "Lead Riff"
 
 
+# --------------------------------------------------------------------------
+# The loop-phase guard — the session's worst correctness incident, mechanized
+#
+# Live crops whatever an Arrangement stamp lands on. Cropping a clip's TAIL
+# keeps its start, so it keeps its phase; cropping its HEAD (or splitting it)
+# leaves a right-hand survivor that still carries the clip's own loop_start,
+# so from that beat on it replays the loop from the top. On a looping MIDI
+# clip that is silent corruption that sounds plausible: three hat stamps
+# scrambled bars 60-68, 156-164 and 204-208 and invented a crash nobody
+# played, caught only by diffing a snapshot days later.
+# --------------------------------------------------------------------------
+
+def _looping_hats(harness, track_index=0, start_time=0.0, length=16.0):
+    """Put one LOOPING arrangement clip on a track and return it."""
+    track = harness.song.tracks[track_index]
+    hats = FakeClip("Hats 8", length, midi=True, config=harness.config,
+                    start_time=start_time)
+    hats.looping = True
+    hats.loop_start = 0.0
+    hats.loop_end = 8.0
+    track.arrangement_clips.append(hats)
+    return hats
+
+
+def test_stamp_is_refused_when_it_would_re_phase_a_looping_clip():
+    harness = make_harness()
+    _looping_hats(harness)
+
+    # Beats 16-20 are free; the clip under the stamp is the one at 0-16.
+    # Stamping at beat 4 lands strictly inside it, which splits it and
+    # leaves a right-hand survivor from beat 8 on — the damaging shape.
+    message = _err(harness.process(_cmd(
+        "duplicate_session_clip_to_arrangement",
+        track_index=0, clip_index=0, destination_time=4.0)))
+    assert "Refusing this stamp at beat 4.0" in message
+    assert "'Hats 8'" in message
+    # The refusal names the two safe shapes and the override, because a
+    # refusal the caller cannot act on just becomes a retry loop.
+    assert "destination_time 12.0" in message   # end the stamp at the clip's end
+    assert "destination_time 0.0" in message    # or cover it exactly
+    assert "allow_loop_phase_reset=true" in message
+
+    # "Nothing was changed" has to be literally true: the guard runs BEFORE
+    # the stamp, so the timeline is untouched and the victim keeps its shape.
+    clips = harness.song.tracks[0].arrangement_clips
+    assert len(clips) == 1
+    assert (clips[0].name, clips[0].start_time, clips[0].end_time) == (
+        "Hats 8", 0.0, 16.0)
+
+
+def test_stamp_is_allowed_over_a_non_looping_clip():
+    # The guard is about LOOP PHASE, not about overlaps in general. The same
+    # geometry over a non-looping clip has no phase to scramble, so it must
+    # go through — a guard that refused this would make ordinary comping
+    # impossible.
+    harness = make_harness()
+    hats = _looping_hats(harness)
+    hats.looping = False
+
+    result = _ok(harness.process(_cmd(
+        "duplicate_session_clip_to_arrangement",
+        track_index=0, clip_index=0, destination_time=4.0)))
+    assert result["success"] is True
+    assert "loop_phase_reset" not in result
+    assert len(harness.song.tracks[0].arrangement_clips) == 3  # split + stamp
+
+
+def test_stamp_over_a_looping_clips_tail_is_allowed():
+    # The other half of the geometry: a stamp reaching PAST the victim's end
+    # crops only its tail, so nothing survives to the right and nothing can
+    # be re-phased. Refusing this would be a false positive.
+    harness = make_harness()
+    _looping_hats(harness, length=16.0)
+
+    # Source clip is 4 beats, so a stamp at 14.0 covers 14-18 and the victim
+    # (0-16) loses only its tail.
+    result = _ok(harness.process(_cmd(
+        "duplicate_session_clip_to_arrangement",
+        track_index=0, clip_index=0, destination_time=14.0)))
+    assert result["success"] is True
+    assert "loop_phase_reset" not in result
+    survivor = harness.song.tracks[0].arrangement_clips[0]
+    assert (survivor.name, survivor.start_time, survivor.end_time) == (
+        "Hats 8", 0.0, 14.0)
+
+
+def test_allow_loop_phase_reset_stamps_anyway_and_says_what_it_re_phased():
+    # The override exists so a caller who has decided the re-phasing is what
+    # they want is not stuck. What it must NOT do is go quiet: the reply
+    # names every clip whose phase was reset, so the decision is on the
+    # record rather than something to rediscover in a snapshot diff.
+    harness = make_harness()
+    _looping_hats(harness)
+
+    result = _ok(harness.process(_cmd(
+        "duplicate_session_clip_to_arrangement",
+        track_index=0, clip_index=0, destination_time=4.0,
+        allow_loop_phase_reset=True)))
+    assert result["success"] is True
+    assert result["loop_phase_reset"] == ["Hats 8"]
+
+    # And it really stamped: the victim was split around the 4.0-8.0 stamp.
+    clips = harness.song.tracks[0].arrangement_clips
+    assert [(c.name, c.start_time, c.end_time) for c in clips] == [
+        ("Hats 8", 0.0, 4.0),
+        ("Lead Riff", 4.0, 8.0),
+        ("Hats 8", 8.0, 16.0),
+    ]
+
+
+def test_duplicate_arrangement_clip_carries_the_same_guard():
+    # Identical LOM call, identical physics — and no batch form, so it only
+    # ever refuses whole. Worth its own test because "the other stamp is
+    # guarded" is exactly the assumption that would let a rewrite drop this.
+    harness = make_harness()
+    hats = _looping_hats(harness, track_index=2, start_time=16.0, length=16.0)
+
+    message = _err(harness.process(_cmd(
+        "duplicate_arrangement_clip", track_index=2, clip_index=0,
+        destination_time=20.0)))
+    assert "Refusing this stamp at beat 20.0" in message
+    assert "'Hats 8'" in message
+    assert (hats.start_time, hats.end_time) == (16.0, 32.0)
+
+    # ...and the override reaches this handler too.
+    result = _ok(harness.process(_cmd(
+        "duplicate_arrangement_clip", track_index=2, clip_index=0,
+        destination_time=20.0, allow_loop_phase_reset=True)))
+    assert result["loop_phase_reset"] == ["Hats 8"]
+
+
+# --------------------------------------------------------------------------
+# Batched stamps — the partial-success path
+# --------------------------------------------------------------------------
+
+def test_batched_stamp_places_every_destination_in_one_call():
+    harness = make_harness()
+    result = _ok(harness.process(_cmd(
+        "duplicate_session_clip_to_arrangement",
+        track_index=0, clip_index=0, destination_times=[0.0, 8.0, 16.0])))
+    assert result["success"] is True
+    assert (result["requested_count"], result["placed_count"],
+            result["failed_count"]) == (3, 3, 0)
+    assert [row["ok"] for row in result["placements"]] == [True, True, True]
+    assert [c.start_time
+            for c in harness.song.tracks[0].arrangement_clips] == [0.0, 8.0, 16.0]
+
+
+def test_batched_stamp_reports_a_partial_run_without_losing_what_landed():
+    # The case the whole per-placement shape exists for. Placement 2 of 3 is
+    # refused by the loop-phase guard; placements 1 and 3 are REAL and stay
+    # on the timeline. Nothing raises, because a raise would throw away the
+    # only record of what did land.
+    harness = make_harness()
+    _looping_hats(harness, start_time=8.0, length=16.0)  # spans beats 8-24
+
+    result = _ok(harness.process(_cmd(
+        "duplicate_session_clip_to_arrangement",
+        track_index=0, clip_index=0, destination_times=[0.0, 12.0, 32.0])))
+
+    # success is False the moment ANY placement fails — a half-landed batch
+    # is not a success, and the caller must see that without reading rows.
+    assert result["success"] is False
+    assert (result["requested_count"], result["placed_count"],
+            result["failed_count"]) == (3, 2, 1)
+
+    # Each placement is guarded on its own geometry, and a refusal does not
+    # abort the run: the 4-beat source lands clear at 0-4, is refused at
+    # 12-16 (strictly inside the looping 8-24 clip), and lands again at
+    # 32-36. A run that stopped at the first refusal would silently drop the
+    # placement after it.
+    rows = {row["destination_time"]: row for row in result["placements"]}
+    assert rows[0.0]["ok"] is True and rows[0.0]["error"] is None
+    assert rows[32.0]["ok"] is True and rows[32.0]["error"] is None
+    assert rows[12.0]["ok"] is False
+    assert "Refusing this stamp at beat 12.0" in rows[12.0]["error"]
+
+    # What landed is REAL and on the timeline; what was refused left no
+    # trace, and the victim is intact because the guard ran before the stamp.
+    placed = [(c.name, c.start_time)
+              for c in harness.song.tracks[0].arrangement_clips]
+    assert ("Lead Riff", 0.0) in placed
+    assert ("Lead Riff", 32.0) in placed
+    assert ("Lead Riff", 12.0) not in placed
+    assert ("Hats 8", 8.0) in placed
+    hats = [c for c in harness.song.tracks[0].arrangement_clips
+            if c.name == "Hats 8"]
+    assert len(hats) == 1 and hats[0].end_time == 24.0
+
+
+def test_batched_stamp_refuses_a_run_longer_than_the_cap():
+    # The cap is not a style rule: the whole run happens inside one
+    # main-thread task, where Live's UI and audio housekeeping live.
+    harness = make_harness()
+    over = [float(i) for i in range(harness.module.MAX_STAMP_PLACEMENTS + 1)]
+    message = _err(harness.process(_cmd(
+        "duplicate_session_clip_to_arrangement",
+        track_index=0, clip_index=0, destination_times=over)))
+    assert "Nothing was stamped" in message
+    assert harness.song.tracks[0].arrangement_clips == []
+
+
+def test_batched_stamp_refuses_an_empty_list_rather_than_succeeding_at_nothing():
+    harness = make_harness()
+    message = _err(harness.process(_cmd(
+        "duplicate_session_clip_to_arrangement",
+        track_index=0, clip_index=0, destination_times=[])))
+    assert "nothing was stamped" in message.lower()
+
+
+# --------------------------------------------------------------------------
+# delete_device — verified, and deliberately not retried
+# --------------------------------------------------------------------------
+
+def test_delete_device_verifies_against_a_before_count():
+    harness = make_harness()
+    track = harness.song.tracks[0]
+    track.devices.append(FakeDevice("Auto Pan", class_name="AutoPan"))
+    assert [d.name for d in track.devices] == ["Operator", "Auto Pan"]
+
+    result = _ok(harness.process(_cmd("delete_device", track_index=0,
+                                      device_index=1)))
+    assert result["deleted"] is True
+    assert result["deleted_device_name"] == "Auto Pan"
+    assert result["device_count_before"] == 2
+    assert result["remaining_matches_expected"] is True
+    # Names, not a bare count: a sweep walking a chain highest-index-first
+    # can re-anchor on these when the ordinals renumber under it.
+    assert result["remaining_devices"] == [{"index": 0, "name": "Operator"}]
+    assert result["remaining_device_count"] == 1
+
+
+def test_delete_device_reports_deleted_false_when_nothing_went():
+    # The bug this replaced: the handler returned len(track.devices) with no
+    # before-count, so a delete that did nothing still printed a plausible
+    # "deleted X; N devices remain" — and a sweep built on that lie then
+    # removed the wrong devices.
+    harness = make_harness(config=FakeLiveConfig(device_delete_lands=False))
+    track = harness.song.tracks[0]
+    track.devices.append(FakeDevice("Auto Pan", class_name="AutoPan"))
+
+    result = _ok(harness.process(_cmd("delete_device", track_index=0,
+                                      device_index=1)))
+    assert result["deleted"] is False
+    assert result["device_count_before"] == 2
+    assert result["remaining_device_count"] == 2
+    assert result["remaining_matches_expected"] is False
+    # Deliberately NO retry: if the read was merely stale rather than the
+    # delete having failed, a blind second delete removes the NEXT device
+    # and destroys a chain that was dialled in by hand. The chain is
+    # untouched and the caller is told to look.
+    assert [d.name for d in track.devices] == ["Operator", "Auto Pan"]
+
+
 def test_create_locator_creates_and_restores_the_playhead():
     harness = make_harness()
     result = _ok(harness.process(_cmd("create_locator", name="Drop",
@@ -543,7 +819,9 @@ def test_trim_arrangement_clip_tail():
     harness = make_harness()
     result = _ok(harness.process(_cmd("trim_arrangement_clip", track_index=2,
                                       clip_index=0, end_time=6.0)))
-    assert result == {"start_time": 0.0, "end_time": 6.0,
+    assert result == {"track_index": 2, "track_name": "Audio",
+                      "clip_name": "Vox Take",
+                      "start_time": 0.0, "end_time": 6.0,
                       "requested_start_time": 0.0, "requested_end_time": 6.0,
                       "trimmed_head": False, "trimmed_tail": True,
                       "refusals": []}
@@ -660,7 +938,9 @@ def test_trim_arrangement_clip_with_nothing_to_trim():
     result = _ok(harness.process(_cmd("trim_arrangement_clip", track_index=2,
                                       clip_index=0, start_time=0.0,
                                       end_time=8.0)))
-    assert result == {"start_time": 0.0, "end_time": 8.0,
+    assert result == {"track_index": 2, "track_name": "Audio",
+                      "clip_name": "Vox Take",
+                      "start_time": 0.0, "end_time": 8.0,
                       "requested_start_time": 0.0, "requested_end_time": 8.0,
                       "trimmed_head": False, "trimmed_tail": False,
                       "refusals": []}
@@ -708,8 +988,14 @@ def test_delete_arrangement_clip():
     harness = make_harness()
     result = _ok(harness.process(_cmd("delete_arrangement_clip",
                                       track_index=2, clip_index=0)))
-    assert result == {"deleted": True, "deleted_clip_name": "Vox Take",
-                      "start_time": 0.0, "end_time": 8.0}
+    # matched_by records WHICH key resolved the clip: clip_index is the
+    # positional ordinal that renumbers on every delete, start_time is the
+    # stable one (Live permits no overlaps, so it is a genuine unique key).
+    assert result == {"track_index": 2, "track_name": "Audio",
+                      "clip_index": 0, "matched_by": "clip_index",
+                      "deleted": True, "deleted_clip_name": "Vox Take",
+                      "start_time": 0.0, "end_time": 8.0,
+                      "arrangement_clip_count": 0}
     assert harness.song.tracks[2].arrangement_clips == []
 
 
@@ -725,7 +1011,8 @@ def test_move_arrangement_clip_duplicates_then_deletes():
     harness = make_harness()
     result = _ok(harness.process(_cmd("move_arrangement_clip", track_index=2,
                                       clip_index=0, destination_time=16.0)))
-    assert result == {"clip_name": "Vox Take", "start_time": 16.0,
+    assert result == {"track_index": 2, "track_name": "Audio",
+                      "clip_name": "Vox Take", "start_time": 16.0,
                       "end_time": 24.0, "moved": True}
     clips = harness.song.tracks[2].arrangement_clips
     # One clip: the copy at the destination; the original is gone.
@@ -756,8 +1043,18 @@ def test_duplicate_arrangement_clip_reuses_a_take_elsewhere():
     result = _ok(harness.process(_cmd("duplicate_arrangement_clip",
                                       track_index=2, clip_index=0,
                                       destination_time=16.0)))
-    assert result == {"clip_name": "Vox Take", "destination_time": 16.0,
-                      "source_start_time": 0.0, "source_end_time": 8.0}
+    # The stamp reports its own footprint and what it landed on top of:
+    # overlapped_clips is empty here (bar 16 was free) and clips_in_span_after
+    # is the after-picture the loop-phase guard is built to protect.
+    assert result == {"track_index": 2, "track_name": "Audio",
+                      "clip_name": "Vox Take", "destination_time": 16.0,
+                      "source_start_time": 0.0, "source_end_time": 8.0,
+                      "stamp_start_time": 16.0, "stamp_end_time": 24.0,
+                      "overlapped_clips": [],
+                      "clips_in_span_after": [
+                          {"name": "Vox Take", "start_time": 16.0,
+                           "end_time": 24.0, "looping": False,
+                           "loop_start": 0.0, "loop_end": 8.0}]}
     clips = harness.song.tracks[2].arrangement_clips
     assert len(clips) == 2
     assert clips[0].start_time == 0.0
@@ -858,7 +1155,7 @@ def test_get_session_snapshot_smoke():
     result = _ok(harness.process(_cmd("get_session_snapshot",
                                       include_notes=True,
                                       include_params=True)))
-    assert result["schema"] == "ableton_mcp_snapshot_v2"
+    assert result["schema"] == "ableton_mcp_snapshot_v3"
     assert result["session"]["tempo"] == 120.0
     assert [t["name"] for t in result["tracks"]] == ["Lead", "Drums", "Audio"]
 

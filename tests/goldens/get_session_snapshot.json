@@ -8,8 +8,11 @@
         {
           "command": "get_session_snapshot",
           "params": {
+            "include_empty_slots": false,
             "include_notes": true,
-            "include_params": true
+            "include_params": true,
+            "include_rack_chains": false,
+            "include_warp_markers": false
           },
           "response": {
             "tempo": 120.0,
@@ -67,8 +70,11 @@
         {
           "command": "get_session_snapshot",
           "params": {
+            "include_empty_slots": false,
             "include_notes": false,
-            "include_params": false
+            "include_params": false,
+            "include_rack_chains": false,
+            "include_warp_markers": false
           },
           "response": {
             "tempo": 120.0,
@@ -84,6 +90,40 @@
       ]
     },
     {
+      "args": {
+        "tracks": "DRUMS"
+      },
+      "expect": "{\n  \"schema\": \"ableton_mcp_snapshot_v3\",\n  \"tracks\": [\n    {\n      \"index\": 2,\n      \"name\": \"DRUMS\"\n    }\n  ],\n  \"tracks_selected\": [\n    2\n  ]\n}",
+      "name": "success_scoped_to_one_track",
+      "wire": [
+        {
+          "command": "get_session_snapshot",
+          "params": {
+            "include_empty_slots": false,
+            "include_notes": true,
+            "include_params": true,
+            "include_rack_chains": false,
+            "include_warp_markers": false,
+            "tracks": [
+              "DRUMS"
+            ]
+          },
+          "response": {
+            "schema": "ableton_mcp_snapshot_v3",
+            "tracks": [
+              {
+                "index": 2,
+                "name": "DRUMS"
+              }
+            ],
+            "tracks_selected": [
+              2
+            ]
+          }
+        }
+      ]
+    },
+    {
       "args": {},
       "expect": "Error getting session snapshot: boom",
       "name": "error",
@@ -91,8 +131,11 @@
         {
           "command": "get_session_snapshot",
           "params": {
+            "include_empty_slots": false,
             "include_notes": true,
-            "include_params": true
+            "include_params": true,
+            "include_rack_chains": false,
+            "include_warp_markers": false
           },
           "raise": "boom"
         }

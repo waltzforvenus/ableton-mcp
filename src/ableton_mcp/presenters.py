@@ -18,7 +18,7 @@ single owner.
 from __future__ import annotations
 
 import json
-from typing import Any, Callable, Dict, List, Union
+from typing import Any, Callable, Dict, Sequence
 
 
 def as_json(result: Dict[str, Any]) -> str:
@@ -41,6 +41,22 @@ def create_midi_track(result: Dict[str, Any]) -> str:
 
 def create_audio_track(result: Dict[str, Any]) -> str:
     return f"Created new audio track: {result.get('name', 'unknown')}"
+
+
+def duplicate_track(result: Dict[str, Any]) -> str:
+    source = result.get("source_track_name")
+    if not result.get("duplicated"):
+        # The count did not move. Say so plainly rather than reporting an
+        # index the caller would then address something else through.
+        return (f"Live did not duplicate track "
+                f"{result.get('source_track_index')} ('{source}') — the "
+                f"session still has {result.get('track_count_after')} tracks "
+                f"and no copy was made")
+    return (f"Duplicated '{source}' with its devices, mixer, routing and "
+            f"clips — the copy is track {result.get('index')} "
+            f"('{result.get('name')}'), directly below the source. Every "
+            f"track index from {result.get('index')} down has shifted by one; "
+            f"rename the copy with set_track_name")
 
 
 def set_track_name(result: Dict[str, Any], name: str) -> str:
@@ -121,9 +137,46 @@ def set_device_parameter(result: Dict[str, Any]) -> str:
             f"to {result.get('display_value') or result.get('value')}{note}")
 
 
+def set_device_parameters(result: Dict[str, Any]) -> str:
+    landed, problems = [], []
+    for row in result.get("parameters") or []:
+        if row.get("error"):
+            # The key as the caller wrote it, which is what makes a typo
+            # findable — a resolved name would hide it.
+            problems.append(f"{row.get('name')} ({row.get('error')})")
+            continue
+        shown = row.get("display_value") or row.get("value")
+        landed.append(f"{row.get('name')} = {shown}"
+                      + (" (clamped)" if row.get("clamped") else ""))
+    head = (f"Set {result.get('applied_count')} of "
+            f"{result.get('requested_count')} parameters on "
+            f"{result.get('device_name')}")
+    body = f": {', '.join(landed)}" if landed else ""
+    tail = f". NOT applied: {'; '.join(problems)}" if problems else ""
+    return head + body + tail
+
+
 def delete_device(result: Dict[str, Any], track_index: int) -> str:
-    return (f"Deleted '{result.get('deleted_device_name')}' from track {track_index}; "
-            f"{result.get('remaining_device_count')} devices remain")
+    name = result.get("deleted_device_name")
+    remaining = result.get("remaining_devices") or []
+    chain = ", ".join(f"{d.get('index')} {d.get('name')}"
+                      for d in remaining) or "nothing"
+    if not result.get("deleted"):
+        # The before/after counts disagreed. Never suggest simply calling
+        # again: if the readback was merely stale, a second delete takes the
+        # NEXT device and destroys a chain that was dialled in by hand.
+        return (f"Did NOT delete '{name}' from track {track_index} — the "
+                f"device count did not drop "
+                f"({result.get('device_count_before')} before, "
+                f"{result.get('remaining_device_count')} after). Nothing was "
+                f"deleted twice on purpose; re-read the chain before trying "
+                f"again. The track now reads: {chain}")
+    warning = ("" if result.get("remaining_matches_expected", True) else
+               " — but that is NOT the chain removing this device alone "
+               "would leave, so re-read before deleting anything else")
+    return (f"Deleted '{name}' from track {track_index}; "
+            f"{result.get('remaining_device_count')} devices remain: "
+            f"{chain}{warning}")
 
 
 def set_track_volume(result: Dict[str, Any]) -> str:
@@ -149,21 +202,78 @@ def delete_track(result: Dict[str, Any], track_index: int) -> str:
 
 def create_audio_clip(result: Dict[str, Any], track_index: int,
                       clip_index: int) -> str:
-    return f"Created audio clip '{result.get('name', 'clip')}' at track {track_index}, slot {clip_index} (length {result.get('length', '?')} beats)"
+    text = (f"Created audio clip '{result.get('name', 'clip')}' at track "
+            f"{track_index}, slot {clip_index} (length "
+            f"{result.get('length', '?')} beats)")
+    if result.get("warp_error"):
+        text += (f"; warping could NOT be turned off ({result['warp_error']}) "
+                 f"— Live's tempo guess is still in play, so check the length")
+    elif result.get("warping"):
+        text += ("; warping is still ON, so this length is Live's tempo guess "
+                 "rather than the file's own rate")
+    else:
+        text += "; imported unwarped, so it plays at its recorded rate"
+    matches = result.get("length_matches_expected")
+    if matches is False:
+        text += (f". That does NOT match the {result.get('expected_beats')} "
+                 f"beats you expected — the file is fine, Live's import "
+                 f"guessed a wrong source tempo; set_clip_warp it off or "
+                 f"delete and re-import")
+    elif matches is True:
+        text += f", matching the expected {result.get('expected_beats')} beats"
+    return text
 
 
-def add_notes_to_clip(track_index: int, clip_index: int,
-                      notes: List[Dict[str, Union[int, float, bool]]]) -> str:
-    return f"Added {len(notes)} notes to clip at track {track_index}, slot {clip_index}"
+def _clip_location(result: Dict[str, Any], track_index: int,
+                   clip_index: int) -> str:
+    """Where a note edit landed, in the view it actually happened in."""
+    where = ("arrangement clip" if result.get("arrangement") else "slot")
+    return f"track {track_index}, {where} {clip_index}"
+
+
+def _clip_phrase(result: Dict[str, Any], track_index: int,
+                 clip_index: int) -> str:
+    """The clip a note edit hit, named if it has a name.
+
+    Live leaves a freshly created clip's name empty, and "notes added to ''"
+    reads like a bug rather than like an unnamed clip.
+    """
+    where = _clip_location(result, track_index, clip_index)
+    name = result.get("clip_name")
+    return f"'{name}' ({where})" if name else f"the clip at {where}"
+
+
+def add_notes_to_clip(result: Dict[str, Any], track_index: int,
+                      clip_index: int) -> str:
+    where = _clip_phrase(result, track_index, clip_index)
+    requested = result.get("requested")
+    added = result.get("added")
+    total = result.get("clip_note_count")
+    if added is None:
+        # The clip could not be counted. "I could not check" and "none
+        # arrived" are different answers and must not be conflated.
+        return (f"Sent {requested} notes to {where} — this clip's notes could "
+                f"not be counted, so how many Live took is unverified; read "
+                f"it back with get_clip_notes")
+    if added != requested:
+        return (f"Live took {added} of the {requested} notes sent to {where}; "
+                f"the clip now holds {total}. Notes written past the clip's "
+                f"marker window are stored but never sound — read it back "
+                f"with get_clip_notes")
+    return (f"Added {added} notes to {where}; the clip now holds {total}")
 
 
 def clear_notes_from_clip(result: Dict[str, Any], track_index: int,
                           clip_index: int) -> str:
-    return "Cleared {n} note(s) from clip '{name}' (track {t}, slot {c})".format(
+    remaining = result.get("clip_note_count")
+    tail = ("" if remaining in (0, None)
+            else f" — {remaining} note(s) remain, which should not happen; "
+                 f"read the clip back")
+    return "Cleared {n} note(s) from clip '{name}' ({where}){tail}".format(
         n=result.get("cleared_count", "?"),
         name=result.get("clip_name", "clip"),
-        t=track_index,
-        c=clip_index,
+        where=_clip_location(result, track_index, clip_index),
+        tail=tail,
     )
 
 
@@ -299,13 +409,58 @@ def set_arrangement_time(result: Dict[str, Any], time: float) -> str:
 get_arrangement_clips = as_json
 
 
+def _loop_phase_note(result: Dict[str, Any]) -> str:
+    """The override's footnote: which looping clips were re-phased.
+
+    Only ever present when the caller passed allow_loop_phase_reset, so its
+    absence is silence and its presence is a decision on the record.
+    """
+    victims = result.get("loop_phase_reset")
+    if not victims:
+        return ""
+    named = ", ".join(f"'{name}'" for name in victims)
+    return (f" — loop phase was RESET on {named}, which now replay from the "
+            f"top of their loop; check those bars")
+
+
 def duplicate_to_arrangement(result: Dict[str, Any], track_index: int,
-                             clip_index: int, destination_time: float) -> str:
+                             clip_index: int,
+                             destination_time: Any) -> str:
     clip_name = result.get("clip_name", "clip")
     track_name = result.get("track_name", f"track {track_index}")
+    times = result.get("destination_times")
+    if times is None:
+        return (
+            f"Duplicated '{clip_name}' from Session slot {clip_index} "
+            f"on '{track_name}' to arrangement at beat {destination_time}"
+            + _loop_phase_note(result)
+        )
+
+    placements = result.get("placements") or []
+    placed = result.get("placed_count")
+    requested = result.get("requested_count")
+    if result.get("success"):
+        beats = ", ".join(str(row.get("destination_time"))
+                          for row in placements)
+        return (
+            f"Stamped '{clip_name}' from Session slot {clip_index} on "
+            f"'{track_name}' at {placed} positions: beats {beats}"
+            + _loop_phase_note(result)
+        )
+    # A partial run is the case this whole shape exists for: the placements
+    # that landed are REAL and stay on the timeline, so the text has to name
+    # both halves rather than reading as a failure.
+    failures = "; ".join(
+        f"beat {row.get('destination_time')}: {row.get('error')}"
+        for row in placements if not row.get("ok")
+    )
+    landed = ", ".join(str(row.get("destination_time"))
+                       for row in placements if row.get("ok")) or "none"
     return (
-        f"Duplicated '{clip_name}' from Session slot {clip_index} "
-        f"on '{track_name}' to arrangement at beat {destination_time}"
+        f"Stamped '{clip_name}' at {placed} of {requested} positions on "
+        f"'{track_name}' — the rest were refused and nothing was placed for "
+        f"them. Landed at beats: {landed}. Refused — {failures}"
+        + _loop_phase_note(result)
     )
 
 
@@ -333,6 +488,25 @@ def jump_to_locator(result: Dict[str, Any], name: str, time: Any) -> str:
     )
 
 
+def delete_locator(result: Dict[str, Any], name: str, time: Any) -> str:
+    cue_name = result.get("name", name)
+    cue_time = result.get("time", time)
+    if result.get("success"):
+        return (f"Deleted locator '{cue_name}' at beat {cue_time}; "
+                f"{result.get('cue_point_count')} locators remain")
+    if result.get("deleted"):
+        # The beat is clear but the count did not fall by exactly one, which
+        # is what a toggle looks like when it also CREATED something.
+        return (f"Beat {cue_time} is clear of locators, but the count went "
+                f"from {result.get('cue_point_count_before')} to "
+                f"{result.get('cue_point_count')} rather than down by one — "
+                f"read the locators before deleting another")
+    return (f"Locator '{cue_name}' is STILL at beat {cue_time} — the toggle "
+            f"did not remove it and there are now "
+            f"{result.get('cue_point_count')} locators. Re-read them before "
+            f"retrying")
+
+
 def trim_arrangement_clip(result: Dict[str, Any], track_index: int,
                           clip_index: int, start_time: Any,
                           end_time: Any) -> str:
@@ -351,15 +525,32 @@ def trim_arrangement_clip(result: Dict[str, Any], track_index: int,
 
 
 def delete_arrangement_clip(result: Dict[str, Any], track_index: int,
-                            clip_index: int) -> str:
-    name = result.get("deleted_clip_name") or f"clip {clip_index}"
-    return (
-        f"Deleted arrangement clip '{name}' (beats "
-        f"{result.get('start_time')} to {result.get('end_time')}) from "
-        f"track {track_index} — the audio file on disk is untouched. "
-        f"Remaining arrangement clip indices on this track have shifted; "
-        f"re-read get_arrangement_clips before the next arrangement edit"
-    )
+                            clip_index: Any) -> str:
+    deletions = result.get("deletions")
+    if deletions is None:
+        name = result.get("deleted_clip_name") or f"clip {clip_index}"
+        return (
+            f"Deleted arrangement clip '{name}' (beats "
+            f"{result.get('start_time')} to {result.get('end_time')}) from "
+            f"track {track_index} — the audio file on disk is untouched. "
+            f"Remaining arrangement clip indices on this track have shifted; "
+            f"re-read get_arrangement_clips before the next arrangement edit"
+        )
+
+    gone = ", ".join(f"'{row.get('deleted_clip_name')}' at {row.get('start_time')}"
+                     for row in deletions if row.get("ok")) or "none"
+    tail = (f" {result.get('arrangement_clip_count')} clips remain on the "
+            f"track; the audio files on disk are untouched")
+    if result.get("success"):
+        return (f"Deleted {result.get('deleted_count')} arrangement clips "
+                f"from track {track_index}: {gone}.{tail}")
+    # Beats, not indices, so the caller can retry exactly what failed
+    # without re-deriving anything from a list that has now shifted.
+    failures = "; ".join(f"beat {row.get('start_time')}: {row.get('error')}"
+                         for row in deletions if not row.get("ok"))
+    return (f"Deleted {result.get('deleted_count')} of "
+            f"{result.get('requested_count')} arrangement clips from track "
+            f"{track_index}: {gone}. FAILED — {failures}.{tail}")
 
 
 def move_arrangement_clip(result: Dict[str, Any], track_index: int,
@@ -391,7 +582,47 @@ def duplicate_arrangement_clip(result: Dict[str, Any], track_index: int,
         f"{track_index}. Clip indices on this track have shifted "
         f"(start-time order); re-read get_arrangement_clips to confirm the "
         f"copy and find its index"
+        + _loop_phase_note(result)
     )
+
+
+# ── Boundary refusals (raised by controllers, worded here) ───────────────────
+
+def alias_conflict(first_name: str, first_value: Any,
+                   second_name: str, second_value: Any) -> str:
+    """Two spellings of one argument, given two different values."""
+    return (
+        f"{first_name}={first_value!r} and {second_name}={second_value!r} are "
+        f"two names for the SAME argument but were given different values, so "
+        f"nothing was sent to Ableton. Pass just one of them."
+    )
+
+
+def conflicting_forms(first_name: str, first_value: Any,
+                      second_name: str, second_value: Any,
+                      advice: str) -> str:
+    """Two ways of saying the same thing, where only one can be honoured.
+
+    Distinct from :func:`alias_conflict`: these are not two spellings of one
+    argument but two different forms of a request (one position or a run of
+    them, an ordinal or a beat), and the wire carries exactly one. Ignoring
+    the loser silently is what turns "stamp here and at these" into a
+    placement the caller believes landed and never did.
+    """
+    return (
+        f"{first_name}={first_value!r} and {second_name}={second_value!r} were "
+        f"both given, and only one of them can be honoured — so nothing was "
+        f"sent to Ableton. {advice}"
+    )
+
+
+def argument_required(canonical: str, aliases: Sequence[str],
+                      what: str) -> str:
+    """A required argument arrived under none of its accepted spellings."""
+    spellings = (f" (also accepted as {' or '.join(aliases)})"
+                 if aliases else "")
+    return (f"{canonical}{spellings} is required — give {what}. Nothing was "
+            f"sent to Ableton.")
 
 
 # ── Error translation ────────────────────────────────────────────────────────
@@ -407,6 +638,7 @@ ERROR_PHRASES: Dict[str, str] = {
     "get_session_snapshot": "getting session snapshot",
     "create_midi_track": "creating MIDI track",
     "create_audio_track": "creating audio track",
+    "duplicate_track": "duplicating track",
     "set_track_name": "setting track name",
     "create_clip": "creating clip",
     "set_clip_gain": "setting clip gain",
@@ -422,6 +654,7 @@ ERROR_PHRASES: Dict[str, str] = {
     "set_track_monitoring": "setting monitoring",
     "get_device_parameters": "getting device parameters",
     "set_device_parameter": "setting device parameter",
+    "set_device_parameters": "setting device parameters",
     "delete_device": "deleting device",
     "set_track_volume": "setting track volume",
     "set_track_pan": "setting track pan",
@@ -446,6 +679,7 @@ ERROR_PHRASES: Dict[str, str] = {
     "duplicate_to_arrangement": "duplicating clip to arrangement",
     "create_locator": "creating locator",
     "jump_to_locator": "jumping to locator",
+    "delete_locator": "deleting locator",
     "trim_arrangement_clip": "trimming arrangement clip",
     "delete_arrangement_clip": "deleting arrangement clip",
     "move_arrangement_clip": "moving arrangement clip",

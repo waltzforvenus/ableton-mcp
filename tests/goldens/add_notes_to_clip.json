@@ -21,12 +21,13 @@
         ],
         "track_index": 0
       },
-      "expect": "Added 2 notes to clip at track 0, slot 0",
+      "expect": "Added 2 notes to 'Beat' (track 0, slot 0); the clip now holds 2",
       "name": "success",
       "wire": [
         {
           "command": "add_notes_to_clip",
           "params": {
+            "arrangement": false,
             "clip_index": 0,
             "notes": [
               {
@@ -47,7 +48,189 @@
             "track_index": 0
           },
           "response": {
-            "note_count": 2
+            "added": 2,
+            "arrangement": false,
+            "clip_name": "Beat",
+            "clip_note_count": 2,
+            "requested": 2,
+            "track_name": "Drums"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "clip_index": 0,
+        "notes": [
+          {
+            "duration": 0.5,
+            "mute": false,
+            "pitch": 60,
+            "start_time": 0.0,
+            "velocity": 100
+          },
+          {
+            "duration": 0.25,
+            "mute": true,
+            "pitch": 64,
+            "start_time": 1.0,
+            "velocity": 90
+          }
+        ],
+        "track_index": 0
+      },
+      "expect": "Live took 1 of the 2 notes sent to 'Beat' (track 0, slot 0); the clip now holds 1. Notes written past the clip's marker window are stored but never sound \u2014 read it back with get_clip_notes",
+      "name": "live_took_fewer_than_were_sent",
+      "wire": [
+        {
+          "command": "add_notes_to_clip",
+          "params": {
+            "arrangement": false,
+            "clip_index": 0,
+            "notes": [
+              {
+                "duration": 0.5,
+                "mute": false,
+                "pitch": 60,
+                "start_time": 0.0,
+                "velocity": 100
+              },
+              {
+                "duration": 0.25,
+                "mute": true,
+                "pitch": 64,
+                "start_time": 1.0,
+                "velocity": 90
+              }
+            ],
+            "track_index": 0
+          },
+          "response": {
+            "added": 1,
+            "arrangement": false,
+            "clip_name": "Beat",
+            "clip_note_count": 1,
+            "requested": 2,
+            "track_name": "Drums"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "clip_index": 0,
+        "notes": [
+          {
+            "duration": 0.5,
+            "mute": false,
+            "pitch": 60,
+            "start_time": 0.0,
+            "velocity": 100
+          },
+          {
+            "duration": 0.25,
+            "mute": true,
+            "pitch": 64,
+            "start_time": 1.0,
+            "velocity": 90
+          }
+        ],
+        "track_index": 0
+      },
+      "expect": "Sent 2 notes to 'Beat' (track 0, slot 0) \u2014 this clip's notes could not be counted, so how many Live took is unverified; read it back with get_clip_notes",
+      "name": "count_unavailable",
+      "wire": [
+        {
+          "command": "add_notes_to_clip",
+          "params": {
+            "arrangement": false,
+            "clip_index": 0,
+            "notes": [
+              {
+                "duration": 0.5,
+                "mute": false,
+                "pitch": 60,
+                "start_time": 0.0,
+                "velocity": 100
+              },
+              {
+                "duration": 0.25,
+                "mute": true,
+                "pitch": 64,
+                "start_time": 1.0,
+                "velocity": 90
+              }
+            ],
+            "track_index": 0
+          },
+          "response": {
+            "added": null,
+            "arrangement": false,
+            "clip_name": "Beat",
+            "clip_note_count": null,
+            "requested": 2,
+            "track_name": "Drums"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "arrangement": true,
+        "clip_index": 3,
+        "expect_count": 2,
+        "notes": [
+          {
+            "duration": 0.5,
+            "mute": false,
+            "pitch": 60,
+            "start_time": 0.0,
+            "velocity": 100
+          },
+          {
+            "duration": 0.25,
+            "mute": true,
+            "pitch": 64,
+            "start_time": 1.0,
+            "velocity": 90
+          }
+        ],
+        "track_index": 0
+      },
+      "expect": "Added 2 notes to 'Beat 60' (track 0, arrangement clip 3); the clip now holds 2",
+      "name": "arrangement_write_with_expect_count",
+      "wire": [
+        {
+          "command": "add_notes_to_clip",
+          "params": {
+            "arrangement": true,
+            "clip_index": 3,
+            "expect_count": 2,
+            "notes": [
+              {
+                "duration": 0.5,
+                "mute": false,
+                "pitch": 60,
+                "start_time": 0.0,
+                "velocity": 100
+              },
+              {
+                "duration": 0.25,
+                "mute": true,
+                "pitch": 64,
+                "start_time": 1.0,
+                "velocity": 90
+              }
+            ],
+            "track_index": 0
+          },
+          "response": {
+            "added": 2,
+            "arrangement": true,
+            "clip_name": "Beat 60",
+            "clip_note_count": 2,
+            "requested": 2,
+            "track_name": "Drums"
           }
         }
       ]
@@ -79,6 +262,7 @@
         {
           "command": "add_notes_to_clip",
           "params": {
+            "arrangement": false,
             "clip_index": 0,
             "notes": [
               {

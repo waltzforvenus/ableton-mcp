@@ -5,7 +5,7 @@
         "device_index": 2,
         "track_index": 0
       },
-      "expect": "Deleted 'Compressor' from track 0; 2 devices remain",
+      "expect": "Deleted 'Compressor' from track 0; 2 devices remain: 0 EQ Eight, 1 Saturator",
       "name": "success",
       "wire": [
         {
@@ -16,8 +16,66 @@
             "track_type": "regular"
           },
           "response": {
+            "deleted": true,
+            "deleted_device_index": 2,
             "deleted_device_name": "Compressor",
-            "remaining_device_count": 2
+            "device_count_before": 3,
+            "remaining_device_count": 2,
+            "remaining_devices": [
+              {
+                "index": 0,
+                "name": "EQ Eight"
+              },
+              {
+                "index": 1,
+                "name": "Saturator"
+              }
+            ],
+            "remaining_matches_expected": true,
+            "track_index": 0,
+            "track_name": "Drums"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "device_index": 2,
+        "track_index": 0
+      },
+      "expect": "Did NOT delete 'Compressor' from track 0 \u2014 the device count did not drop (3 before, 3 after). Nothing was deleted twice on purpose; re-read the chain before trying again. The track now reads: 0 EQ Eight, 1 Saturator, 2 Compressor",
+      "name": "nothing_was_deleted",
+      "wire": [
+        {
+          "command": "delete_device",
+          "params": {
+            "device_index": 2,
+            "track_index": 0,
+            "track_type": "regular"
+          },
+          "response": {
+            "deleted": false,
+            "deleted_device_index": 2,
+            "deleted_device_name": "Compressor",
+            "device_count_before": 3,
+            "remaining_device_count": 3,
+            "remaining_devices": [
+              {
+                "index": 0,
+                "name": "EQ Eight"
+              },
+              {
+                "index": 1,
+                "name": "Saturator"
+              },
+              {
+                "index": 2,
+                "name": "Compressor"
+              }
+            ],
+            "remaining_matches_expected": false,
+            "track_index": 0,
+            "track_name": "Drums"
           }
         }
       ]

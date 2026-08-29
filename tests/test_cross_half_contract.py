@@ -206,7 +206,25 @@ def test_every_registry_row_is_gated_unless_floor_or_probe():
     # reply and cannot gate it). A future command added without gated=True
     # fails here instead of silently shipping raw "Unknown command" socket
     # errors to users on old Remote Scripts.
-    expected_ungated = (set(LEGACY_CAPABILITIES) | {"get_script_info"}) & set(COMMANDS)
+    #
+    # One refinement since PR10: a floor row MAY carry gated=True after all,
+    # but only to buy a version floor. `require` consults min_script_version
+    # only on a gated row, so a floor command whose OLD implementation was
+    # wrong (add_notes_to_clip: every script serves it, but pre-1.15.0
+    # scripts echo back the count the caller sent instead of measuring what
+    # Live took) has no other way to reach the friendly installer message.
+    # Gating a floor row WITHOUT a floor stays forbidden — the capability
+    # half always passes there, so it would be pure decoration.
+    floor_rows = set(LEGACY_CAPABILITIES) & set(COMMANDS)
+    gated_floor_rows = {n for n in floor_rows if COMMANDS[n].gated}
+    pointless = {n for n in gated_floor_rows
+                 if COMMANDS[n].min_script_version is None}
+    assert pointless == set(), (
+        f"floor rows gated with no version floor (the gate is a no-op there, "
+        f"so gated=True buys nothing): {sorted(pointless)}"
+    )
+
+    expected_ungated = (floor_rows | {"get_script_info"}) - gated_floor_rows
     ungated = {name for name, spec in COMMANDS.items() if not spec.gated}
     assert ungated == expected_ungated, (
         f"ungated rows outside the LEGACY floor (missing gated=True): "
@@ -221,6 +239,14 @@ def test_min_version_floors_are_exactly_the_broken_but_advertised():
     # 1.7.0 handlers were duplicate-definition-broken, and the 1.9.0–1.11.0
     # trim's marker writes are verifiably inert on real Live (12.4.3).
     # Nothing else needs one.
+    #
+    # 1.15.0 adds nine, and they are all the same species — a command whose
+    # NAME an older script advertises while its handler either cannot accept
+    # the new keyword (a raw TypeError from **params inside Live) or serves
+    # the old, wrong behaviour under the same name. Growing this dict is a
+    # deliberate act: each entry costs an out-of-date user the command until
+    # they re-run the installer, which is the trade the friendly message
+    # exists to make.
     floored = {name: spec.min_script_version
                for name, spec in COMMANDS.items()
                if spec.min_script_version is not None}
@@ -228,6 +254,19 @@ def test_min_version_floors_are_exactly_the_broken_but_advertised():
         "get_device_parameters": "1.8.0",
         "set_device_parameter": "1.8.0",
         "trim_arrangement_clip": "1.12.0",
+        # New keyword an older handler has no parameter for.
+        "get_clip_notes": "1.15.0",            # arrangement=True
+        "get_session_snapshot": "1.15.0",      # scoping flags; schema v2 -> v3
+        "clear_notes_from_clip": "1.15.0",     # arrangement=True
+        "delete_arrangement_clip": "1.15.0",   # start_time / start_times
+        # Same call, materially different (and previously wrong) behaviour.
+        "add_notes_to_clip": "1.15.0",         # measured delta, not an echo
+        "create_audio_clip": "1.15.0",         # imports with warping OFF
+        "delete_device": "1.15.0",             # verifies instead of asserting
+        # The loop-phase guard: an older script performs the stamp that
+        # silently re-phases a looping survivor rather than refusing it.
+        "duplicate_session_clip_to_arrangement": "1.15.0",
+        "duplicate_arrangement_clip": "1.15.0",
     }
 
 

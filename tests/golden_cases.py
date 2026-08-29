@@ -1,4 +1,4 @@
-"""Golden-case definitions for all 51 MCP tools (docs/REFACTOR_PLAN.md
+"""Golden-case definitions for all 55 MCP tools (docs/REFACTOR_PLAN.md
 section 5 Level 1, section 6 PR3).
 
 Each case names a tool, the arguments to call it with, and the exact ordered
@@ -116,19 +116,35 @@ BASE_CASES = [
 
     # ── get_clip_notes (gated) ────────────────────────────────────────────
     _case("get_clip_notes", "success", {"track_index": 0, "clip_index": 2}, [
-        _ok("get_clip_notes", {"track_index": 0, "clip_index": 2}, {
-            "clip_name": "Bassline",
-            "length": 4.0,
-            "note_count": 2,
-            "notes": NOTES,
-        }),
+        _ok("get_clip_notes",
+            {"track_index": 0, "clip_index": 2, "arrangement": False}, {
+                "clip_name": "Bassline",
+                "length": 4.0,
+                "note_count": 2,
+                "notes": NOTES,
+            }),
+    ]),
+    # Which view a note read comes from is never left to the script's
+    # default — the flag is explicit in both directions.
+    _case("get_clip_notes", "success_arrangement",
+          {"track_index": 0, "clip_index": 2, "arrangement": True}, [
+        _ok("get_clip_notes",
+            {"track_index": 0, "clip_index": 2, "arrangement": True}, {
+                "clip_name": "Bassline",
+                "arrangement": True,
+                "length": 4.0,
+                "note_count": 2,
+                "notes": NOTES,
+            }),
     ]),
 
     # ── get_session_snapshot (gated) ──────────────────────────────────────
     # Default args must reach the wire as include_notes/include_params True.
     _case("get_session_snapshot", "success_defaults", {}, [
         _ok("get_session_snapshot",
-            {"include_notes": True, "include_params": True}, {
+            {"include_notes": True, "include_params": True,
+             "include_warp_markers": False, "include_rack_chains": False,
+             "include_empty_slots": False}, {
                 "tempo": 120.0,
                 "track_count": 1,
                 "tracks": [{
@@ -142,10 +158,25 @@ BASE_CASES = [
     _case("get_session_snapshot", "success_lean",
           {"include_notes": False, "include_params": False}, [
         _ok("get_session_snapshot",
-            {"include_notes": False, "include_params": False}, {
+            {"include_notes": False, "include_params": False,
+             "include_warp_markers": False, "include_rack_chains": False,
+             "include_empty_slots": False}, {
                 "tempo": 120.0,
                 "track_count": 1,
                 "tracks": [{"index": 0, "name": "1-MIDI"}],
+            }),
+    ]),
+    # A bare selector is wrapped into the wire's list form by the
+    # controller — "just the DRUMS bus" is the common case.
+    _case("get_session_snapshot", "success_scoped_to_one_track",
+          {"tracks": "DRUMS"}, [
+        _ok("get_session_snapshot",
+            {"include_notes": True, "include_params": True,
+             "include_warp_markers": False, "include_rack_chains": False,
+             "include_empty_slots": False, "tracks": ["DRUMS"]}, {
+                "schema": "ableton_mcp_snapshot_v3",
+                "tracks_selected": [2],
+                "tracks": [{"index": 2, "name": "DRUMS"}],
             }),
     ]),
 
@@ -162,6 +193,31 @@ BASE_CASES = [
     # ── create_audio_track ────────────────────────────────────────────────
     _case("create_audio_track", "success", {}, [
         _ok("create_audio_track", {"index": -1}, {"index": 3, "name": "4-Audio"}),
+    ]),
+
+    # ── duplicate_track ───────────────────────────────────────────────────
+    _case("duplicate_track", "success", {"track_index": 2}, [
+        _ok("duplicate_track", {"track_index": 2},
+            {"source_track_index": 2, "source_track_name": "GTR L",
+             "duplicated": True, "index": 3, "name": "GTR L 2",
+             "track_count_before": 6, "track_count_after": 7}),
+    ]),
+    # The count did not move: Live returned without inserting anything, so
+    # the reply must not hand back an index to address.
+    _case("duplicate_track", "not_duplicated", {"track_index": 2}, [
+        _ok("duplicate_track", {"track_index": 2},
+            {"source_track_index": 2, "source_track_name": "GTR L",
+             "duplicated": False, "index": None, "name": None,
+             "track_count_before": 6, "track_count_after": 6}),
+    ]),
+    # The guard rides along only when the caller asks for it.
+    _case("duplicate_track", "success_guarded",
+          {"track_index": 2, "expect_track_name": "GTR L"}, [
+        _ok("duplicate_track",
+            {"track_index": 2, "expect_track_name": "GTR L"},
+            {"source_track_index": 2, "source_track_name": "GTR L",
+             "duplicated": True, "index": 3, "name": "GTR L 2",
+             "track_count_before": 6, "track_count_after": 7}),
     ]),
 
     # ── set_track_name ────────────────────────────────────────────────────
@@ -364,12 +420,79 @@ BASE_CASES = [
              "value": 0.35}),
     ]),
 
+    # ── set_device_parameters (the batch form) ────────────────────────────
+    # One key that resolves to nothing does not cost the caller the rest of
+    # the batch: it comes back as its own row, echoing the key as written.
+    _case("set_device_parameters", "success_with_one_unknown_key",
+          {"track_index": 0, "device_index": 1,
+           "parameters": {"Dry/Wet": 0.25, "Decay Time": 3.2,
+                          "Wetness": 0.5}}, [
+        _ok("set_device_parameters",
+            {"track_index": 0, "device_index": 1,
+             "parameters": {"Dry/Wet": 0.25, "Decay Time": 3.2,
+                            "Wetness": 0.5},
+             "track_type": "regular"},
+            {"track_index": 0, "track_name": "GUITARS", "device_index": 1,
+             "device_name": "Reverb", "requested_count": 3,
+             "applied_count": 2, "not_found": ["Wetness"],
+             "parameters": [
+                 {"name": "Dry/Wet", "requested": 0.25, "old_value": 0.4,
+                  "value": 0.25, "display_value": "25 %", "clamped": False,
+                  "min": 0.0, "max": 1.0, "found": True},
+                 {"name": "Decay Time", "requested": 3.2, "old_value": 1.5,
+                  "value": 3.2, "display_value": "3.20 s", "clamped": False,
+                  "min": 0.2, "max": 60.0, "found": True},
+                 {"name": "Wetness", "requested": 0.5, "value": None,
+                  "display_value": "", "clamped": False, "found": False,
+                  "error": "No parameter named 'Wetness'. Available: "
+                           "Dry/Wet, Decay Time"},
+             ]}),
+    ]),
+    _case("set_device_parameters", "success_clamped",
+          {"track_index": 1, "device_index": 0,
+           "parameters": {"Feedback": 1.5}, "track_type": "return"}, [
+        _ok("set_device_parameters",
+            {"track_index": 1, "device_index": 0,
+             "parameters": {"Feedback": 1.5}, "track_type": "return"},
+            {"track_index": 1, "track_name": "B-Delay", "device_index": 0,
+             "device_name": "Delay", "requested_count": 1,
+             "applied_count": 1, "not_found": [],
+             "parameters": [
+                 {"name": "Feedback", "requested": 1.5, "old_value": 0.3,
+                  "value": 1.0, "display_value": "100 %", "clamped": True,
+                  "min": 0.0, "max": 1.0, "found": True},
+             ]}),
+    ]),
+
     # ── delete_device ─────────────────────────────────────────────────────
+    # The verified delete: before/after counts and the surviving chain by
+    # name, so a highest-index-first sweep can re-anchor on names.
     _case("delete_device", "success", {"track_index": 0, "device_index": 2}, [
         _ok("delete_device",
             {"track_index": 0, "device_index": 2, "track_type": "regular"},
-            {"deleted_device_name": "Compressor",
+            {"track_index": 0, "track_name": "Drums", "deleted": True,
+             "deleted_device_index": 2,
+             "deleted_device_name": "Compressor",
+             "device_count_before": 3, "remaining_matches_expected": True,
+             "remaining_devices": [{"index": 0, "name": "EQ Eight"},
+                                   {"index": 1, "name": "Saturator"}],
              "remaining_device_count": 2}),
+    ]),
+    # The lie this command was rebuilt to stop: the count did not drop, so
+    # nothing was deleted — and the reply must not invite a blind retry,
+    # which would take the NEXT device.
+    _case("delete_device", "nothing_was_deleted",
+          {"track_index": 0, "device_index": 2}, [
+        _ok("delete_device",
+            {"track_index": 0, "device_index": 2, "track_type": "regular"},
+            {"track_index": 0, "track_name": "Drums", "deleted": False,
+             "deleted_device_index": 2,
+             "deleted_device_name": "Compressor",
+             "device_count_before": 3, "remaining_matches_expected": False,
+             "remaining_devices": [{"index": 0, "name": "EQ Eight"},
+                                   {"index": 1, "name": "Saturator"},
+                                   {"index": 2, "name": "Compressor"}],
+             "remaining_device_count": 3}),
     ]),
 
     # ── set_track_volume ──────────────────────────────────────────────────
@@ -408,22 +531,89 @@ BASE_CASES = [
           {"track_index": 1, "clip_index": 0, "path": "/tmp/loop.wav"}, [
         _ok("create_audio_clip",
             {"track_index": 1, "clip_index": 0, "path": "/tmp/loop.wav"},
-            {"name": "loop", "length": 16.0}),
+            {"track_name": "Stems", "name": "loop", "length": 16.0,
+             "is_audio_clip": True, "warping": False}),
+    ]),
+    # file_path is the spelling callers reach for; it lands on `path`.
+    _case("create_audio_clip", "success_via_file_path_alias",
+          {"track_index": 1, "clip_index": 0,
+           "file_path": "/tmp/loop.wav"}, [
+        _ok("create_audio_clip",
+            {"track_index": 1, "clip_index": 0, "path": "/tmp/loop.wav"},
+            {"track_name": "Stems", "name": "loop", "length": 16.0,
+             "is_audio_clip": True, "warping": False}),
+    ]),
+    # The six-stems incident, caught at import: Live's auto-warp guessed a
+    # source tempo and produced twice the length the caller expected.
+    _case("create_audio_clip", "length_disagrees_with_expected_beats",
+          {"track_index": 1, "clip_index": 0, "path": "/tmp/stem.wav",
+           "expected_beats": 16.0}, [
+        _ok("create_audio_clip",
+            {"track_index": 1, "clip_index": 0, "path": "/tmp/stem.wav",
+             "expected_beats": 16.0},
+            {"track_name": "Stems", "name": "stem", "length": 32.0,
+             "is_audio_clip": True, "warping": False,
+             "expected_beats": 16.0, "length_matches_expected": False}),
     ]),
 
     # ── add_notes_to_clip ─────────────────────────────────────────────────
     _case("add_notes_to_clip", "success",
           {"track_index": 0, "clip_index": 0, "notes": NOTES}, [
         _ok("add_notes_to_clip",
-            {"track_index": 0, "clip_index": 0, "notes": NOTES},
-            {"note_count": 2}),
+            {"track_index": 0, "clip_index": 0, "notes": NOTES,
+             "arrangement": False},
+            {"track_name": "Drums", "clip_name": "Beat",
+             "arrangement": False, "requested": 2, "added": 2,
+             "clip_note_count": 2}),
+    ]),
+    # The measured delta disagreeing with the request is the whole reason
+    # the result stopped echoing len(notes) back.
+    _case("add_notes_to_clip", "live_took_fewer_than_were_sent",
+          {"track_index": 0, "clip_index": 0, "notes": NOTES}, [
+        _ok("add_notes_to_clip",
+            {"track_index": 0, "clip_index": 0, "notes": NOTES,
+             "arrangement": False},
+            {"track_name": "Drums", "clip_name": "Beat",
+             "arrangement": False, "requested": 2, "added": 1,
+             "clip_note_count": 1}),
+    ]),
+    # A clip whose notes could not be counted: "I could not check" is not
+    # "none arrived", and the text must not conflate them.
+    _case("add_notes_to_clip", "count_unavailable",
+          {"track_index": 0, "clip_index": 0, "notes": NOTES}, [
+        _ok("add_notes_to_clip",
+            {"track_index": 0, "clip_index": 0, "notes": NOTES,
+             "arrangement": False},
+            {"track_name": "Drums", "clip_name": "Beat",
+             "arrangement": False, "requested": 2, "added": None,
+             "clip_note_count": None}),
+    ]),
+    # expect_count and the arrangement write path, both on the wire.
+    _case("add_notes_to_clip", "arrangement_write_with_expect_count",
+          {"track_index": 0, "clip_index": 3, "notes": NOTES,
+           "expect_count": 2, "arrangement": True}, [
+        _ok("add_notes_to_clip",
+            {"track_index": 0, "clip_index": 3, "notes": NOTES,
+             "arrangement": True, "expect_count": 2},
+            {"track_name": "Drums", "clip_name": "Beat 60",
+             "arrangement": True, "requested": 2, "added": 2,
+             "clip_note_count": 2}),
     ]),
 
     # ── clear_notes_from_clip (gated) ─────────────────────────────────────
     _case("clear_notes_from_clip", "success",
           {"track_index": 0, "clip_index": 0}, [
-        _ok("clear_notes_from_clip", {"track_index": 0, "clip_index": 0},
-            {"clip_name": "Beat", "cleared_count": 5}),
+        _ok("clear_notes_from_clip",
+            {"track_index": 0, "clip_index": 0, "arrangement": False},
+            {"clip_name": "Beat", "arrangement": False,
+             "cleared_count": 5, "clip_note_count": 0}),
+    ]),
+    _case("clear_notes_from_clip", "success_on_an_arrangement_clip",
+          {"track_index": 0, "clip_index": 3, "arrangement": True}, [
+        _ok("clear_notes_from_clip",
+            {"track_index": 0, "clip_index": 3, "arrangement": True},
+            {"clip_name": "Beat 60", "arrangement": True,
+             "cleared_count": 5, "clip_note_count": 0}),
     ]),
 
     # ── set_clip_name ─────────────────────────────────────────────────────
@@ -709,6 +899,117 @@ BASE_CASES = [
             {"track_index": 0, "clip_index": 0, "destination_time": 16.0},
             {"clip_name": "Chorus Beat", "track_name": "Drums"}),
     ]),
+    # The spelling this argument gets guessed as — seven times in four days
+    # of one session. It reaches the canonical key.
+    _case("duplicate_to_arrangement", "success_via_arrangement_time_alias",
+          {"track_index": 0, "clip_index": 0, "arrangement_time": 16.0}, [
+        _ok("duplicate_session_clip_to_arrangement",
+            {"track_index": 0, "clip_index": 0, "destination_time": 16.0},
+            {"clip_name": "Chorus Beat", "track_name": "Drums"}),
+    ]),
+    # Two spellings, two different values: refused in the controller, so
+    # the wire exchange is empty — nothing was stamped anywhere.
+    _case("duplicate_to_arrangement", "conflicting_spellings_refused",
+          {"track_index": 0, "clip_index": 0, "destination_time": 16.0,
+           "arrangement_time": 32.0}, []),
+    # The batch: one call, a whole run of placements, each reported.
+    _case("duplicate_to_arrangement", "success_batch",
+          {"track_index": 0, "clip_index": 0,
+           "destination_times": [0.0, 4.0, 8.0]}, [
+        _ok("duplicate_session_clip_to_arrangement",
+            {"track_index": 0, "clip_index": 0,
+             "destination_times": [0.0, 4.0, 8.0]},
+            {"success": True, "track_index": 0, "track_name": "Drums",
+             "clip_name": "Chorus Beat",
+             "destination_times": [0.0, 4.0, 8.0], "requested_count": 3,
+             "placed_count": 3, "failed_count": 0,
+             "placements": [
+                 {"destination_time": 0.0, "ok": True, "error": None,
+                  "stamp_start_time": 0.0, "stamp_end_time": 4.0,
+                  "overlapped_clips": [], "clips_in_span_after": 1},
+                 {"destination_time": 4.0, "ok": True, "error": None,
+                  "stamp_start_time": 4.0, "stamp_end_time": 8.0,
+                  "overlapped_clips": [], "clips_in_span_after": 1},
+                 {"destination_time": 8.0, "ok": True, "error": None,
+                  "stamp_start_time": 8.0, "stamp_end_time": 12.0,
+                  "overlapped_clips": [], "clips_in_span_after": 1},
+             ]}),
+    ]),
+    # A run that half landed. The placements that landed are REAL and stay
+    # on the timeline, so the text has to name both halves — this is the
+    # case that must never read as a clean failure.
+    _case("duplicate_to_arrangement", "partial_batch_with_a_refusal",
+          {"track_index": 0, "clip_index": 0,
+           "destination_times": [0.0, 4.0]}, [
+        _ok("duplicate_session_clip_to_arrangement",
+            {"track_index": 0, "clip_index": 0,
+             "destination_times": [0.0, 4.0]},
+            {"success": False, "track_index": 0, "track_name": "Drums",
+             "clip_name": "Chorus Beat", "destination_times": [0.0, 4.0],
+             "requested_count": 2, "placed_count": 1, "failed_count": 1,
+             "placements": [
+                 {"destination_time": 0.0, "ok": True, "error": None,
+                  "stamp_start_time": 0.0, "stamp_end_time": 4.0,
+                  "overlapped_clips": [], "clips_in_span_after": 1},
+                 {"destination_time": 4.0, "ok": False,
+                  "stamp_start_time": 4.0, "stamp_end_time": 8.0,
+                  "error": "Refusing to stamp beats 4.0-8.0: it would leave "
+                           "the looping clip 'Hats 8' (beats 0.0-16.0) "
+                           "surviving to the right, which restarts its loop "
+                           "from the top and re-phases everything after the "
+                           "cut."},
+             ]}),
+    ]),
+    # The whole-call refusal, which is the OTHER half of the guard's
+    # contract: with a scalar destination_time the script raises instead of
+    # returning rows, because nothing landed and there is nothing to report.
+    # The message is long on purpose — it names the victim, the beat the
+    # survivor would re-phase from, and the two safe shapes — and freezing
+    # it here is what keeps a future edit from quietly shortening it into
+    # advice the model cannot act on.
+    _case("duplicate_to_arrangement", "loop_phase_refused",
+          {"track_index": 0, "clip_index": 0, "destination_time": 4.0}, [
+        _boom("duplicate_session_clip_to_arrangement",
+              {"track_index": 0, "clip_index": 0, "destination_time": 4.0},
+              "Refusing this stamp at beat 4.0 (footprint 4.0 to 8.0 on "
+              "'Drums'): it would re-phase 1 looping clip(s). Live crops "
+              "whatever a stamp lands on, and a survivor to the RIGHT of the "
+              "stamp keeps its own loop_start, so it replays the loop from "
+              "the top from that beat on — silently, and it sounds "
+              "plausible. 'Hats 8' spans beats 0.0 to 16.0 (loop_start 0.0) "
+              "and would survive from beat 8.0 on with its loop restarted "
+              "from the top; to end this stamp at that clip's end instead "
+              "use destination_time 12.0, or cover the clip exactly with "
+              "destination_time 0.0 and a 16.0-beat source. Nothing was "
+              "changed. Delete or unloop the clip first, use one of the safe "
+              "shapes above, or pass allow_loop_phase_reset=true to accept "
+              "the re-phasing."),
+    ]),
+    # The override taken deliberately. allow_loop_phase_reset reaches the
+    # wire only when the caller actually passed it, and the reply's
+    # loop_phase_reset list becomes a footnote naming what was re-phased —
+    # the decision goes on the record instead of vanishing into a success.
+    _case("duplicate_to_arrangement", "loop_phase_reset_accepted",
+          {"track_index": 0, "clip_index": 0, "destination_time": 4.0,
+           "allow_loop_phase_reset": True}, [
+        _ok("duplicate_session_clip_to_arrangement",
+            {"track_index": 0, "clip_index": 0, "destination_time": 4.0,
+             "allow_loop_phase_reset": True},
+            {"success": True, "track_index": 0, "track_name": "Drums",
+             "clip_name": "Chorus Beat", "destination_time": 4.0,
+             "stamp_start_time": 4.0, "stamp_end_time": 8.0,
+             "overlapped_clips": [
+                 {"name": "Hats 8", "start_time": 0.0, "end_time": 16.0,
+                  "looping": True, "loop_start": 0.0, "loop_end": 8.0}],
+             "clips_in_span_after": 2,
+             "loop_phase_reset": ["Hats 8"],
+             "placements": [
+                 {"destination_time": 4.0, "ok": True, "error": None,
+                  "stamp_start_time": 4.0, "stamp_end_time": 8.0,
+                  "overlapped_clips": [], "clips_in_span_after": 2,
+                  "loop_phase_reset": ["Hats 8"]},
+             ]}),
+    ]),
 
     # ── create_locator (gated) ────────────────────────────────────────────
     _case("create_locator", "success", {"name": "Chorus", "time": 16.0}, [
@@ -723,6 +1024,22 @@ BASE_CASES = [
         _ok("jump_to_locator", {"name": "Chorus"},
             {"name": "Chorus", "time": 16.0,
              "was_playing": False, "start_marker_set": True}),
+    ]),
+
+    # ── delete_locator (gated) ────────────────────────────────────────────
+    _case("delete_locator", "success", {"name": "Chorus"}, [
+        _ok("delete_locator", {"name": "Chorus"},
+            {"success": True, "deleted": True, "name": "Chorus",
+             "time": 16.0, "cue_point_count_before": 4,
+             "cue_point_count": 3}),
+    ]),
+    # The toggle did not remove it. Saying so is the point: the same call
+    # fired one beat off would have CREATED a locator instead.
+    _case("delete_locator", "still_there", {"time": 16.0}, [
+        _ok("delete_locator", {"time": 16.0},
+            {"success": False, "deleted": False, "name": "Chorus",
+             "time": 16.0, "cue_point_count_before": 4,
+             "cue_point_count": 4}),
     ]),
 
     # ── arrangement clip editing (gated) ──────────────────────────────────
@@ -766,6 +1083,34 @@ BASE_CASES = [
             {"deleted": True, "deleted_clip_name": "Vox Take",
              "start_time": 0.0, "end_time": 8.0}),
     ]),
+    # Addressed by beat: the stable key, since Live permits no overlaps.
+    _case("delete_arrangement_clip", "success_by_start_time",
+          {"track_index": 0, "start_time": 64.0}, [
+        _ok("delete_arrangement_clip",
+            {"track_index": 0, "start_time": 64.0},
+            {"deleted": True, "deleted_clip_name": "Vox Take",
+             "clip_index": 2, "matched_by": "start_time",
+             "start_time": 64.0, "end_time": 72.0,
+             "arrangement_clip_count": 5}),
+    ]),
+    # The plural: every position resolved before anything is deleted, and
+    # the caller never maintains the highest-index-first ritual.
+    _case("delete_arrangement_clip", "success_by_start_times",
+          {"track_index": 0, "start_times": [64.0, 96.0]}, [
+        _ok("delete_arrangement_clip",
+            {"track_index": 0, "start_times": [64.0, 96.0]},
+            {"track_index": 0, "track_name": "ELIZABETH", "success": True,
+             "requested_count": 2, "deleted_count": 2, "failed_count": 0,
+             "arrangement_clip_count": 4,
+             "deletions": [
+                 {"start_time": 64.0, "clip_index": 2, "ok": True,
+                  "error": None, "deleted_clip_name": "Vox Take",
+                  "end_time": 72.0},
+                 {"start_time": 96.0, "clip_index": 3, "ok": True,
+                  "error": None, "deleted_clip_name": "Vox Take 2",
+                  "end_time": 104.0},
+             ]}),
+    ]),
     _case("move_arrangement_clip", "success",
           {"track_index": 0, "clip_index": 0, "destination_time": 32.0}, [
         _ok("move_arrangement_clip",
@@ -779,6 +1124,42 @@ BASE_CASES = [
             {"track_index": 0, "clip_index": 0, "destination_time": 32.0},
             {"clip_name": "Vox Take", "destination_time": 32.0,
              "source_start_time": 0.0, "source_end_time": 8.0}),
+    ]),
+    # The arrangement-side stamp makes the identical Live call as the
+    # session one, so it carries the identical guard — and, having no batch
+    # form, only ever refuses whole. Frozen separately because "the other
+    # stamp is guarded" is exactly the assumption that lets a rewrite drop
+    # this one.
+    _case("duplicate_arrangement_clip", "loop_phase_refused",
+          {"track_index": 0, "clip_index": 0, "destination_time": 4.0}, [
+        _boom("duplicate_arrangement_clip",
+              {"track_index": 0, "clip_index": 0, "destination_time": 4.0},
+              "Refusing this stamp at beat 4.0 (footprint 4.0 to 12.0 on "
+              "'Vox'): it would re-phase 1 looping clip(s). Live crops "
+              "whatever a stamp lands on, and a survivor to the RIGHT of the "
+              "stamp keeps its own loop_start, so it replays the loop from "
+              "the top from that beat on — silently, and it sounds "
+              "plausible. 'Vox Double' spans beats 0.0 to 24.0 (loop_start "
+              "0.0) and would survive from beat 12.0 on with its loop "
+              "restarted from the top; to end this stamp at that clip's end "
+              "instead use destination_time 16.0, or cover the clip exactly "
+              "with destination_time 0.0 and a 24.0-beat source. Nothing was "
+              "changed. Delete or unloop the clip first, use one of the safe "
+              "shapes above, or pass allow_loop_phase_reset=true to accept "
+              "the re-phasing."),
+    ]),
+    # The same override on this side, so the footnote is frozen for both
+    # stamps rather than only the one that happened to get a case.
+    _case("duplicate_arrangement_clip", "loop_phase_reset_accepted",
+          {"track_index": 0, "clip_index": 0, "destination_time": 4.0,
+           "allow_loop_phase_reset": True}, [
+        _ok("duplicate_arrangement_clip",
+            {"track_index": 0, "clip_index": 0, "destination_time": 4.0,
+             "allow_loop_phase_reset": True},
+            {"clip_name": "Vox Take", "destination_time": 4.0,
+             "source_start_time": 0.0, "source_end_time": 8.0,
+             "stamp_start_time": 4.0, "stamp_end_time": 12.0,
+             "loop_phase_reset": ["Vox Double"]}),
     ]),
 
     # ── Gated-path cases (plan PR10) ──────────────────────────────────────

@@ -348,19 +348,36 @@ def test_the_matrix_is_not_vacuous():
     # The device pair's floor catches 1.7.0's broken duplicate-definition
     # handlers; trim's catches 1.9.0–1.11.0's marker-write implementation,
     # which is verifiably inert on real Live (12.4.3).
+    # 1.15.0 floors nine more: commands whose name an older script advertises
+    # while its handler either rejects the new keyword or serves the old,
+    # wrong behaviour under it (test_cross_half_contract's floor pin carries
+    # the per-command reasoning).
     assert GATED_WITH_FLOOR == [
+        "add_notes_to_clip",
+        "clear_notes_from_clip",
+        "create_audio_clip",
+        "delete_arrangement_clip",
+        "delete_device",
+        "duplicate_arrangement_clip",
+        "duplicate_session_clip_to_arrangement",
+        "get_clip_notes",
         "get_device_parameters",
+        "get_session_snapshot",
         "set_device_parameter",
         "trim_arrangement_clip",
     ]
     # Growing this list is a deliberate act: each entry is a command 1.7.0
-    # users lose until they re-run the installer.
+    # users lose until they re-run the installer. (delete_arrangement_clip
+    # and duplicate_arrangement_clip left it in 1.15.0 — not because 1.7.0
+    # regained them, but because they now carry a floor, which refuses 1.7.0
+    # by the more specific version message instead of the capability one.)
     assert GATED_POST_1_7_0 == [
-        "delete_arrangement_clip",
-        "duplicate_arrangement_clip",
+        "delete_locator",
+        "duplicate_track",
         "jump_to_locator",
         "move_arrangement_clip",
         "set_clip_warp",
+        "set_device_parameters",
     ]
     assert FLOOR_UNADVERTISED_IN_1_7_0 == [
         "fire_clip", "load_browser_item", "set_clip_name", "set_tempo",
@@ -431,14 +448,24 @@ def test_a_1_11_0_script_is_blocked_from_the_reworked_trim():
 
 @pytest.mark.parametrize("name", sorted(GATED))
 def test_legacy_script_gets_the_installer_message_for_every_gated_command(name):
-    # No gated command sits in the legacy floor, so a pre-get_script_info
-    # script is (correctly) refused all of them — with the friendly message
-    # a raw "Unknown command" socket error used to occupy.
+    # A pre-get_script_info script is (correctly) refused every gated
+    # command — with the friendly message a raw "Unknown command" socket
+    # error used to occupy. Which of the two refusals it gets depends on
+    # whether the command is in the legacy floor: the floor makes the
+    # capability half pass, so the version floor is what catches it (and a
+    # floor row is only ever gated when it HAS one — see
+    # test_cross_half_contract's pin). "legacy" is unparseable as a version,
+    # which _parse_version deliberately counts as older than anything.
     handshake = _seeded_legacy()
     with pytest.raises(CapabilityError) as excinfo:
         handshake.require(name, min_version=GATED[name].min_script_version)
     message = str(excinfo.value)
-    assert f"missing capability '{name}'" in message
+    if name in LEGACY_CAPABILITIES:
+        floor = GATED[name].min_script_version
+        assert floor is not None
+        assert f"v{floor}" in message and "'%s'" % name in message
+    else:
+        assert f"missing capability '{name}'" in message
     assert "ableton-mcp-install-script" in message
 
 

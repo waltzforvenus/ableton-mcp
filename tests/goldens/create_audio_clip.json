@@ -6,7 +6,7 @@
         "path": "/tmp/loop.wav",
         "track_index": 1
       },
-      "expect": "Created audio clip 'loop' at track 1, slot 0 (length 16.0 beats)",
+      "expect": "Created audio clip 'loop' at track 1, slot 0 (length 16.0 beats); imported unwarped, so it plays at its recorded rate",
       "name": "success",
       "wire": [
         {
@@ -17,8 +17,67 @@
             "track_index": 1
           },
           "response": {
+            "is_audio_clip": true,
             "length": 16.0,
-            "name": "loop"
+            "name": "loop",
+            "track_name": "Stems",
+            "warping": false
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "clip_index": 0,
+        "file_path": "/tmp/loop.wav",
+        "track_index": 1
+      },
+      "expect": "Created audio clip 'loop' at track 1, slot 0 (length 16.0 beats); imported unwarped, so it plays at its recorded rate",
+      "name": "success_via_file_path_alias",
+      "wire": [
+        {
+          "command": "create_audio_clip",
+          "params": {
+            "clip_index": 0,
+            "path": "/tmp/loop.wav",
+            "track_index": 1
+          },
+          "response": {
+            "is_audio_clip": true,
+            "length": 16.0,
+            "name": "loop",
+            "track_name": "Stems",
+            "warping": false
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "clip_index": 0,
+        "expected_beats": 16.0,
+        "path": "/tmp/stem.wav",
+        "track_index": 1
+      },
+      "expect": "Created audio clip 'stem' at track 1, slot 0 (length 32.0 beats); imported unwarped, so it plays at its recorded rate. That does NOT match the 16.0 beats you expected \u2014 the file is fine, Live's import guessed a wrong source tempo; set_clip_warp it off or delete and re-import",
+      "name": "length_disagrees_with_expected_beats",
+      "wire": [
+        {
+          "command": "create_audio_clip",
+          "params": {
+            "clip_index": 0,
+            "expected_beats": 16.0,
+            "path": "/tmp/stem.wav",
+            "track_index": 1
+          },
+          "response": {
+            "expected_beats": 16.0,
+            "is_audio_clip": true,
+            "length": 32.0,
+            "length_matches_expected": false,
+            "name": "stem",
+            "track_name": "Stems",
+            "warping": false
           }
         }
       ]

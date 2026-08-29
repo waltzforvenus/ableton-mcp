@@ -129,6 +129,7 @@ That's it — ask your assistant to build something.
 - [Troubleshooting](#troubleshooting)
 - [Technical Details](#technical-details)
 - [Limitations & Security Considerations](#limitations--security-considerations)
+  - [Dead ends](#dead-ends)
 - [Licensing](#licensing)
 - [Contributing](#contributing)
 - [Credits](#credits)
@@ -183,16 +184,16 @@ On top of that:
 
 ### Added tools
 
-Upstream exposes 37 MCP tools; this fork exposes 51. The mixer, device control
+Upstream exposes 37 MCP tools; this fork exposes 55. The mixer, device control
 and routing tools are new here:
 
 | Area | Tools |
 |---|---|
 | **Mixer** | `set_track_volume`, `set_track_pan`, `set_track_mute`, `set_track_arm`, `set_track_monitoring` |
-| **Devices** | `delete_device` — plus `get_device_parameters` / `set_device_parameter` extended to address parameters *by name* and to reach return tracks via `track_type` |
+| **Devices** | `delete_device`, `set_device_parameters` (the batch form) — plus `get_device_parameters` / `set_device_parameter` extended to address parameters *by name* and to reach return tracks via `track_type` |
 | **Sends & buses** | `create_return_track`, `set_track_send` — one shared reverb instead of a copy per track |
 | **Routing** | `set_track_routing`, `get_track_routing` |
-| **Clips & tracks** | `set_clip_gain`, `set_clip_warp`, `delete_track` |
+| **Clips & tracks** | `set_clip_gain`, `set_clip_warp`, `duplicate_track`, `delete_track` |
 | **Transport & session** | `back_to_arrangement`, `set_count_in`, `save_set` |
 
 ### Security fix
@@ -372,7 +373,7 @@ A few notes that apply to every install method:
 
 ### Tool reference
 
-All 51 tools the server exposes. Tools marked **†** are added by this fork and
+All 55 tools the server exposes. Tools marked **†** are added by this fork and
 are not present upstream.
 
 #### Session & info
@@ -381,7 +382,7 @@ are not present upstream.
 |---|---|---|
 | `get_session_info` | — | Get detailed information about the current Ableton session |
 | `get_track_info` | `track_index` | Get detailed information about a specific track in Ableton |
-| `get_session_snapshot` | `include_notes`?, `include_params`? | Read the whole project state in one call |
+| `get_session_snapshot` | `include_notes`?, `include_params`?, `include_warp_markers`?, `include_rack_chains`?, `include_empty_slots`?, `tracks`? | Read project state in one call — scope it with `tracks` (names or indices); the three detail flags default off |
 | `get_remote_script_info` | — | Report Ableton Remote Script version and capabilities (handshake) |
 | `set_tempo` | `tempo` | Set the tempo of the Ableton session |
 | `save_set` † | — | Save the open Live Set, if this Live build exposes a save through its API |
@@ -393,6 +394,7 @@ are not present upstream.
 | `create_midi_track` | `index`? | Create a new MIDI track in the Ableton session |
 | `create_audio_track` | `index`? | Create a new audio track in the Ableton session |
 | `create_return_track` † | — | Create a new return track — a shared effects bus that any track can send to |
+| `duplicate_track` † | `track_index` | Duplicate a whole track (devices, mixer, routing, clips); the copy lands directly below the source |
 | `delete_track` † | `track_index` | Delete a track from the Ableton session, along with all clips on it |
 | `set_track_name` | `track_index`, `name` | Set the name of a track |
 
@@ -420,6 +422,7 @@ are not present upstream.
 |---|---|---|
 | `get_device_parameters` | `track_index`, `device_index`, `track_type`? | List every parameter on a device, with its current value, range and the |
 | `set_device_parameter` | `track_index`, `device_index`, `parameter`, `value`, `track_type`? | Set one parameter on a device. This is how you actually mix: pull a reverb's |
+| `set_device_parameters` † | `track_index`, `device_index`, `parameters`, `track_type`? | Set MANY parameters on one device in a single call — the batch form, preferred when dialling a device in |
 | `delete_device` † | `track_index`, `device_index`, `track_type`? | Remove a device from a track's chain |
 | `load_instrument_or_effect` | `track_index`, `uri`, `track_type`? | Load an instrument or effect onto a track using its URI |
 | `load_drum_kit` | `track_index`, `rack_uri`, `kit_path` | Load a drum rack and then load a specific drum kit into it |
@@ -436,14 +439,14 @@ are not present upstream.
 | Tool | Arguments | Description |
 |---|---|---|
 | `create_clip` | `track_index`, `clip_index`, `length`? | Create a new MIDI clip in the specified track and clip slot |
-| `create_audio_clip` | `track_index`, `clip_index`, `path` | Create a new audio clip in an audio track's clip slot by importing a file |
+| `create_audio_clip` | `track_index`, `clip_index`, `path`, `expected_beats`? | Import an audio file into a clip slot, warping OFF, and cross-check its length against `expected_beats` |
 | `delete_clip` | `track_index`, `clip_index` | Delete the clip in the given clip slot, freeing it for reuse |
 | `set_clip_name` | `track_index`, `clip_index`, `name` | Set the name of a clip |
 | `set_clip_gain` † | `track_index`, `clip_index`, `gain`, `arrangement`? | Set one audio clip's gain, leaving every other clip on the track untouched |
 | `set_clip_warp` † | `track_index`, `clip_index`, `warping`, `warp_mode`?, `arrangement`? | Turn a clip's warping on or off — the fix for stems Live auto-warped to different tempos |
-| `get_clip_notes` | `track_index`, `clip_index` | Read all MIDI notes from a Session-view clip |
-| `add_notes_to_clip` | `track_index`, `clip_index`, `notes` | Add MIDI notes to a clip |
-| `clear_notes_from_clip` | `track_index`, `clip_index` | Remove all MIDI notes from a Session clip |
+| `get_clip_notes` | `track_index`, `clip_index`, `arrangement`? | Read all MIDI notes from a clip, in either view |
+| `add_notes_to_clip` | `track_index`, `clip_index`, `notes`, `expect_count`?, `arrangement`? | Add MIDI notes to a clip in either view; reports what Live actually took, and `expect_count` refuses a truncated list |
+| `clear_notes_from_clip` | `track_index`, `clip_index`, `arrangement`? | Remove all MIDI notes from a clip, in either view |
 
 #### Arrangement
 
@@ -451,15 +454,16 @@ are not present upstream.
 |---|---|---|
 | `switch_to_arrangement_view` | — | Switch Ableton's main window to the Arrangement view |
 | `get_arrangement_clips` | `track_index` | List all clips placed in the Arrangement timeline for a track |
-| `duplicate_to_arrangement` | `track_index`, `clip_index`, `destination_time` | Copy a Session-view clip into the Arrangement timeline |
+| `duplicate_to_arrangement` | `track_index`, `clip_index`, `destination_time`, `destination_times`?, `allow_loop_phase_reset`? | Copy a Session-view clip into the Arrangement — pass `destination_times` to place a whole run in one call; refuses stamps that would re-phase a looping clip |
 | `set_arrangement_clip_name` | `track_index`, `clip_index`, `name` | Set the name of a clip placed in the Arrangement timeline |
 | `set_arrangement_time` | `time` | Move the arrangement playhead to a specific position |
 | `create_locator` | `name`, `time` | Create a named locator (cue point) in the Arrangement at a beat position |
 | `jump_to_locator` † | `name`?, `time`? | Jump to an existing locator by name or beat time; while stopped this plants the start marker, so play/record launch from it |
+| `delete_locator` † | `name`?, `time`? | Delete a locator, matched by name or beat — parks the playhead on it first, and refuses rather than toggling from the wrong position |
 | `trim_arrangement_clip` † | `track_index`, `clip_index`, `start_time`?, `end_time`? | Trim an Arrangement clip's edges inward (take cleanup) — crops UI-style via a temporary silent stamp, each edge verified by readback |
-| `delete_arrangement_clip` † | `track_index`, `clip_index` | Delete a clip from the Arrangement timeline (stray record fragments, scrapped takes) |
+| `delete_arrangement_clip` † | `track_index`, `start_times`?, `start_time`?, `clip_index`? | Delete Arrangement clips, addressed by beat position — `start_times` removes a whole set in one pass, all-or-nothing |
 | `move_arrangement_clip` † | `track_index`, `clip_index`, `destination_time` | Move an Arrangement clip to a new start position (duplicate + delete under the hood; refuses a self-overlapping destination) |
-| `duplicate_arrangement_clip` † | `track_index`, `clip_index`, `destination_time` | Copy an Arrangement clip elsewhere on its track — reuse a recorded take at another section |
+| `duplicate_arrangement_clip` † | `track_index`, `clip_index`, `destination_time`, `allow_loop_phase_reset`? | Copy an Arrangement clip elsewhere on its track — reuse a recorded take at another section; refuses stamps that would re-phase a looping clip |
 | `back_to_arrangement` † | — | Return every track to Arrangement playback — Live's "Back to Arrangement" button |
 
 #### Transport
@@ -476,6 +480,19 @@ Arguments marked `?` are optional. `track_type` accepts `"regular"` or
 `"return"`, so the device and mixer tools reach return tracks as well as
 ordinary ones. `set_device_parameter` takes a parameter *name* as shown by
 `get_device_parameters` (e.g. `"Dry/Wet"`), or an index passed as a string.
+
+Every tool that writes to a track also accepts an optional
+`expect_track_name`: give it the name you believe is at `track_index` and the
+write is refused, naming what is actually there, if the two disagree. Track
+indices renumber whenever a track is created or deleted, and an index that is
+still in range but now points at a different track fails silently otherwise.
+
+A few arguments accept a second spelling, because they get guessed by the
+name a neighbouring tool uses: `duplicate_to_arrangement`'s
+`destination_time` is also accepted as `arrangement_time` or `time`,
+`set_device_parameter`'s `parameter` as `parameter_name`, and
+`create_audio_clip`'s `path` as `file_path`. Passing both spellings with
+different values is refused rather than resolved.
 
 ### Example Commands
 
@@ -520,6 +537,25 @@ A JSON-based protocol over a TCP socket bound to `127.0.0.1`:
   to loopback, so only processes on your own machine can reach it — do not
   forward or rebind that port
 - Always save your work before extensive experimentation
+
+### Dead ends
+
+Things that look like they should work through the Live Object Model and do
+not. Each was attempted against real Live (12.4.3) and verified impossible —
+recorded here so nobody spends another afternoon rebuilding one.
+`fade_arrangement_clip` was written once, passed 424 tests against the fake,
+and had to be deleted in review; that is the cost this list exists to avoid.
+The long form, with line references, is in `docs/IMPROVEMENTS.md`.
+
+| Dead end | Why |
+|---|---|
+| **Clip fades and arrangement automation lanes** | `Clip.automation_envelope` returns `None` for arrangement clips and `create_automation_envelope` raises there. Fades stay a baked-render job. |
+| **Any in-tick retry or same-tick readback** | A write and a re-read inside one Live callback return the same stale value by construction — the read can stay stale for the whole tick even though the write landed. There is no yield primitive, and sleeping on Live's main thread blocks audio and UI. Only a later tick can clear. |
+| **Moving an Arrangement clip's footprint by writing markers** | `start_marker` / `end_marker` writes land but never move the footprint. They do change what plays, which is why marker writes are still useful on *Session* clips — but nothing resizes an arrangement clip except the stamp path. |
+| **Creating group tracks** | No LOM function creates one and `Track.group_track` is read-only. Buses built with `set_track_routing` are the only path. |
+| **Render, export, and `save_set` on 12.4.3** | Rendering and export are UI-only with no LOM entry point; `save_set` reports that it found nothing to try on this build. Both are permanent. |
+| **Detecting Live's edition by probing** | The LOM exposes no edition or product property, so Intro's track / return / scene caps cannot be read ahead of time. They surface only as a raise, which is why every tool that can hit a cap catches and reports it instead of pre-checking. |
+| **A gapless `split_arrangement_clip`** | There is no LOM split and no zero-width stamp, so any eraser-based split leaves a gap of the eraser's own width. |
 
 ---
 

@@ -359,8 +359,10 @@ PR5_SCRIPT_CAPABILITIES = [
     "get_device_parameters",
     "get_session_snapshot",
     "set_device_parameter",
+    "set_device_parameters",
     "create_midi_track",
     "create_audio_track",
+    "duplicate_track",
     "create_clip",
     "create_audio_clip",
     "add_notes_to_clip",
@@ -370,6 +372,7 @@ PR5_SCRIPT_CAPABILITIES = [
     "duplicate_session_clip_to_arrangement",
     "create_locator",
     "jump_to_locator",
+    "delete_locator",
     "trim_arrangement_clip",
     "delete_arrangement_clip",
     "move_arrangement_clip",
@@ -403,7 +406,8 @@ PR5_SCRIPT_CAPABILITIES = [
 def test_derived_capabilities_equal_the_pr5_snapshot():
     table = _commands_table()
     derived = sorted(name for name, row in table.items() if row[3])
-    assert len(PR5_SCRIPT_CAPABILITIES) == 45  # pinned (PR5 + locator jump + arrangement editing + clip warp)
+    assert len(PR5_SCRIPT_CAPABILITIES) == 48  # pinned (PR5 + locator jump + arrangement editing + clip warp
+    # + 1.15.0's duplicate_track, set_device_parameters, delete_locator)
     assert derived == sorted(PR5_SCRIPT_CAPABILITIES), (
         f"advertised-command drift — "
         f"gained: {sorted(set(derived) - set(PR5_SCRIPT_CAPABILITIES))}, "

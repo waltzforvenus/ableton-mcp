@@ -26,6 +26,7 @@ from mcp.shared.memory import create_connected_server_and_client_session
 
 import ableton_mcp.tools as tools
 from ableton_mcp.app import Deps, build_app
+from ableton_mcp.commands import COMMANDS
 from ableton_mcp.handshake import ScriptHandshake
 from ableton_mcp.services import AbletonService
 from fake_ableton import make_harness
@@ -104,7 +105,7 @@ def test_in_memory_session_matches_direct_calls():
     assert payload["note_count"] == 3
 
 
-def test_in_memory_session_lists_all_52_tools():
+def test_in_memory_session_lists_all_55_tools():
     deps, _harness = _make_deps()
     app = build_app(deps=deps)
 
@@ -113,7 +114,7 @@ def test_in_memory_session_lists_all_52_tools():
             return await session.list_tools()
 
     listed = asyncio.run(run())
-    assert len(listed.tools) == 52
+    assert len(listed.tools) == 55
 
 
 # --------------------------------------------------------------------------
@@ -142,7 +143,11 @@ def test_scenario_build_a_midi_clip_and_read_it_back():
         {"pitch": 67, "start_time": 2.0, "duration": 1.0, "velocity": 80, "mute": True},
     ]
     out = tools.add_notes_to_clip(ctx, track_index, 0, notes)
-    assert out == f"Added 3 notes to clip at track {track_index}, slot 0"
+    # Counted by the handler before and after the write, not echoed back
+    # from the caller's own list — and the clip Live just created has no
+    # name yet, which the presenter says rather than quoting an empty one.
+    assert out == (f"Added 3 notes to the clip at track {track_index}, "
+                   f"slot 0; the clip now holds 3")
 
     # Read back through the gated reader (a REAL handshake ran lazily first).
     payload = json.loads(tools.get_clip_notes(ctx, track_index, 0))
@@ -160,9 +165,17 @@ def test_scenario_build_a_midi_clip_and_read_it_back():
 
     # The gate's lazy handshake is visible on the wire exactly once,
     # immediately before the first gated send (nothing earlier needed it).
+    # Which send that is is derived from the registry rather than named:
+    # add_notes_to_clip took the position from get_clip_notes in 1.15.0 when
+    # it gained a version floor, and pinning the tool name here would make
+    # this test fail for a gating change it is not about.
     commands = [command for command, _ in deps.client.sent]
     assert commands.count("get_script_info") == 1
-    assert commands.index("get_script_info") == commands.index("get_clip_notes") - 1
+    first_gated = next(i for i, c in enumerate(commands)
+                       if c != "get_script_info" and COMMANDS[c].gated)
+    assert commands.index("get_script_info") == first_gated - 1
+    # ...and it really is a gate-triggered send, not the first command overall.
+    assert first_gated > 0
 
 
 def test_scenario_set_device_parameter_by_name_reports_clamping():

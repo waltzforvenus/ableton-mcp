@@ -9,10 +9,17 @@ separately, and a script change means **re-run
 
 ## [Unreleased]
 
-Ships Remote Script **1.14.0**. **Re-run `ableton-mcp-install-script` and
-restart Live after upgrading** — the new command lives in the script half,
+Ships Remote Script **1.15.0**. **Re-run `ableton-mcp-install-script` and
+restart Live after upgrading** — the new commands live in the script half,
 and Live caches an already-imported script module, so re-selecting the
-control surface is not enough.
+control surface is not enough. This release is larger than usual on the
+script side: several existing commands changed what they *return*, and a few
+now refuse work they previously performed, so an out-of-date script is
+refused with the re-run-the-installer message rather than served wrongly.
+
+Everything here comes out of a four-day production session in which this fork
+drove a complete track; the backlog it was mined from, with the measured
+counts, is `docs/IMPROVEMENTS.md`.
 
 ### Added (user-facing)
 
@@ -28,6 +35,156 @@ control surface is not enough.
   aligned stems aligned. The response reports the clip's resulting length,
   so a caller can confirm a set of stems now agree with each other rather
   than trusting the write.
+- `duplicate_track` †: duplicate a whole track — devices, mixer, routing and
+  every clip — the way Ctrl-D does on a track header. Double-tracking a part
+  previously meant creating a track, re-routing it to the same bus,
+  re-panning it and reloading each device by hand. The copy lands
+  immediately below the source, so the renumbering is knowable in advance
+  (the copy is `track_index + 1`) instead of needing a re-read. Live names
+  the copy itself; follow with `set_track_name`.
+- `set_device_parameters` †: set many parameters on one device in a single
+  call, as a `{name: value}` map. A device is normally a handful of values
+  that only make sense together, and sending them one at a time cost 257
+  round-trips in one session. Each value is clamped into its own range
+  exactly as the singular tool clamps, and one key that matches nothing
+  comes back as its own not-found row rather than losing the writes around
+  it. It buys round-trips, not freshness — read-back values are exactly as
+  trustworthy as the singular tool's.
+- `delete_locator` †: delete a locator by name or beat. Live's API has no
+  "delete this cue" call, only a toggle at the playhead, so this parks the
+  playhead on the locator, verifies it landed, and only then toggles — and
+  refuses without toggling if the transport never settles. That refusal is
+  the safety: toggling from the wrong position does not fail, it *creates* a
+  stray locator there and leaves the intended one in place.
+- `duplicate_to_arrangement` takes `destination_times`, placing the same
+  source clip at a whole run of beats in one call. It was the single most
+  used tool of the session — 465 calls and 63.5 minutes, arriving in runs of
+  up to 76 identical calls with no reasoning between them. The run is capped
+  (128 placements) because it all happens inside one main-thread task, where
+  Live's UI and audio housekeeping also live.
+- `add_notes_to_clip`, `clear_notes_from_clip` and `get_clip_notes` take
+  `arrangement=True`, so notes can be edited in place on an arrangement clip
+  instead of editing the Session clip and re-stamping every position it was
+  placed at. This does not end the re-stamp treadmill — 15 placements are 15
+  independent clips — but it removes the reason to stamp over live material
+  for a one-bar fix.
+- `delete_arrangement_clip` addresses clips by `start_time`, and
+  `start_times` deletes a whole set in one all-or-nothing pass. `clip_index`
+  is a positional ordinal that renumbers on every delete, which is what
+  forced 63 `get_arrangement_clips` calls and a hand-maintained
+  highest-index-first ritual across 19 delete runs. Live permits no overlaps
+  on a track, so a start time is a genuine unique key; near-misses are
+  listed in the error, since a hand-dragged clip can sit on any fraction.
+- `create_audio_clip` takes `expected_beats` and cross-checks the imported
+  clip's length against it.
+- Every tool that writes to a track takes an optional `expect_track_name`:
+  give it the name you believe is at `track_index` and the write is refused,
+  naming what is actually there, if the two disagree. The out-of-range
+  errors were the lucky half; the silent half is an in-range-but-wrong index
+  after a mid-session delete, which is how an Auto Pan meant for the GUITARS
+  bus landed on BASS with a success message.
+- Three arguments accept a second spelling, because they get guessed by the
+  name a neighbouring tool uses: `duplicate_to_arrangement`'s
+  `destination_time` as `arrangement_time` or `time`,
+  `set_device_parameter`'s `parameter` as `parameter_name`, and
+  `create_audio_clip`'s `path` as `file_path`. `destination_time` was
+  guessed wrong seven times across four days and never stuck. Passing two
+  spellings with different values is refused rather than resolved.
+
+### Changed (user-facing)
+
+- **`duplicate_to_arrangement` and `duplicate_arrangement_clip` now REFUSE a
+  stamp that would leave a looping clip re-phased.** This is the correctness
+  fix the release is built around. Live crops whatever an arrangement stamp
+  lands on; cropping a clip's tail is harmless, but cropping its *head* (or
+  splitting it) leaves a right-hand survivor that still carries the clip's
+  own `loop_start`, so from that beat on it replays the loop from the top.
+  On a looping MIDI clip that is silent corruption that sounds plausible:
+  three hat stamps scrambled bars 60-68, 156-164 and 204-208 in one session
+  and invented a crash nobody played, caught only by diffing a snapshot days
+  later. The refusal names the victim and the two safe shapes (end the stamp
+  at the clip's end, or cover it exactly); `allow_loop_phase_reset=true`
+  stamps anyway and reports which clips were re-phased, so taking the
+  override is on the record. Batching makes the guard more load-bearing, not
+  less — an unguarded run corrupts up to 128 positions per call instead of
+  one. Some calls that previously succeeded will now be refused; that is the
+  point of the change.
+- `create_audio_clip` imports with **warping OFF** and reports it. This is
+  the same six-stems problem `set_clip_warp` fixes, moved to where the
+  damage happens: `set_clip_warp` cannot reach the clip until the import has
+  already been reported as fine, and the tool reported success with a
+  plausible-looking beat length either way.
+- `add_notes_to_clip` reports what Live actually accepted — `{requested,
+  added, clip_note_count}`, counted before and after the write — instead of
+  printing back the length of the caller's own list. It previously said
+  "Added 262 notes" whether Live took 262 or none. Pass `expect_count` to
+  have a short list refused rather than silently accepted; that is the
+  load-bearing half, because a truncated command never executes at all and
+  the loss happens above the server where a before/after delta stays silent.
+- `delete_device` verifies. It used to return `len(track.devices)` with no
+  before-count, so a delete that did nothing still printed a plausible
+  "deleted X; N devices remain" — and a highest-index-first sweep built on
+  that lie then removed the wrong devices. It now compares the count and the
+  device names before and after and returns `remaining_devices` with names,
+  so a sweep can re-anchor on names instead of ordinals that renumber under
+  it. Deliberately **no retry**: if the read was merely stale rather than
+  the delete having failed, a blind second delete removes the *next* device
+  and destroys a chain that was dialled in by hand.
+- `get_session_snapshot` is scopeable and much smaller by default. 21 of 24
+  calls in one session blew the output cap even with both existing flags
+  off, then cost 30 follow-up shell calls to parse dump files, and every
+  real use wanted one section of a handful of tracks. Warp markers, rack
+  chains and empty slots are now behind `include_warp_markers`,
+  `include_rack_chains` and `include_empty_slots`, all **default off**
+  (warp markers were previously emitted gated by neither flag, and a drum
+  rack's chains alone ran ~9.5 KB), and a `tracks` filter takes names or
+  indices. This is a deliberate payload break: the advertised snapshot
+  schema goes from v2 to **v3**.
+- Every modifying result echoes the track name it actually resolved, so a
+  caller who did not pass `expect_track_name` can still diff afterwards.
+
+### Internal
+
+- Remote Script **1.14.0 → 1.15.0**, with `EXPECTED_REMOTE_SCRIPT_VERSION`
+  moved in the same commit as always.
+- Nine existing registry rows gained `min_script_version="1.15.0"`. They are
+  all one species: a command whose *name* an older script advertises while
+  its handler either cannot accept the new keyword (a raw `TypeError` out of
+  the dispatch's `**params` inside Live) or serves the old, wrong behaviour
+  under it — `add_notes_to_clip`'s echoed count, `create_audio_clip`'s
+  warped import, `delete_device`'s unverified report, and the two stamps'
+  missing loop-phase guard. Each entry costs an out-of-date user the command
+  until they re-run the installer, which is the trade the friendly message
+  exists to make.
+- `add_notes_to_clip` is now `gated=True` despite sitting in the
+  `LEGACY_CAPABILITIES` floor. The floor makes the capability half of the
+  gate a no-op, but only a gated row consults `min_script_version`, and this
+  is the one row that needs the floor without needing the capability check.
+  `test_cross_half_contract` now permits exactly that combination and still
+  rejects a floor row gated *without* a version floor, which would buy
+  nothing.
+- `duplicate_session_clip_to_arrangement`'s socket timeout is 35 s against
+  the script's 30 s queue timeout, keeping the ≥ 5 s headroom the cross-half
+  contract test enforces — a batched run of placements is one main-thread
+  task and outlasts the default budget.
+- Tool surface 52 → 55; `tests/data/tool_names.txt`, the pinned counts in
+  four test modules, `PR5_SCRIPT_CAPABILITIES` (45 → 48 advertised commands)
+  and `GATED_POST_1_7_0` all updated to match.
+- Goldens re-recorded (169 cases across 55 tools), including new cases for
+  the whole-call loop-phase refusal and its override on *both* stamps, the
+  partial-success batch, and the plural device-parameter set. The refusal
+  text is frozen deliberately: it names the victim, the beat the survivor
+  would re-phase from and the two safe shapes, and a shortened version would
+  be advice the model cannot act on.
+- `tests/fake_ableton` gained a `device_delete_lands` toggle, modelling a
+  `Track.delete_device` call that returns normally having changed nothing —
+  the exact condition `delete_device`'s before/after check exists for, and
+  indistinguishable from a stale read inside one tick.
+- New behaviour tests cover the loop-phase guard from both sides (refused,
+  overridden, and the two shapes that must *not* be refused — a non-looping
+  victim and a tail-only crop), the batch partial-success path including
+  that a refusal mid-run does not abort the placements after it, and
+  `delete_device`'s verify in both outcomes.
 
 ## [1.7.0] - 2026-08-28
 

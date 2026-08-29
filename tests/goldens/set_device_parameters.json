@@ -1,0 +1,152 @@
+{
+  "cases": [
+    {
+      "args": {
+        "device_index": 1,
+        "parameters": {
+          "Decay Time": 3.2,
+          "Dry/Wet": 0.25,
+          "Wetness": 0.5
+        },
+        "track_index": 0
+      },
+      "expect": "Set 2 of 3 parameters on Reverb: Dry/Wet = 25 %, Decay Time = 3.20 s. NOT applied: Wetness (No parameter named 'Wetness'. Available: Dry/Wet, Decay Time)",
+      "name": "success_with_one_unknown_key",
+      "wire": [
+        {
+          "command": "set_device_parameters",
+          "params": {
+            "device_index": 1,
+            "parameters": {
+              "Decay Time": 3.2,
+              "Dry/Wet": 0.25,
+              "Wetness": 0.5
+            },
+            "track_index": 0,
+            "track_type": "regular"
+          },
+          "response": {
+            "applied_count": 2,
+            "device_index": 1,
+            "device_name": "Reverb",
+            "not_found": [
+              "Wetness"
+            ],
+            "parameters": [
+              {
+                "clamped": false,
+                "display_value": "25 %",
+                "found": true,
+                "max": 1.0,
+                "min": 0.0,
+                "name": "Dry/Wet",
+                "old_value": 0.4,
+                "requested": 0.25,
+                "value": 0.25
+              },
+              {
+                "clamped": false,
+                "display_value": "3.20 s",
+                "found": true,
+                "max": 60.0,
+                "min": 0.2,
+                "name": "Decay Time",
+                "old_value": 1.5,
+                "requested": 3.2,
+                "value": 3.2
+              },
+              {
+                "clamped": false,
+                "display_value": "",
+                "error": "No parameter named 'Wetness'. Available: Dry/Wet, Decay Time",
+                "found": false,
+                "name": "Wetness",
+                "requested": 0.5,
+                "value": null
+              }
+            ],
+            "requested_count": 3,
+            "track_index": 0,
+            "track_name": "GUITARS"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "device_index": 0,
+        "parameters": {
+          "Feedback": 1.5
+        },
+        "track_index": 1,
+        "track_type": "return"
+      },
+      "expect": "Set 1 of 1 parameters on Delay: Feedback = 100 % (clamped)",
+      "name": "success_clamped",
+      "wire": [
+        {
+          "command": "set_device_parameters",
+          "params": {
+            "device_index": 0,
+            "parameters": {
+              "Feedback": 1.5
+            },
+            "track_index": 1,
+            "track_type": "return"
+          },
+          "response": {
+            "applied_count": 1,
+            "device_index": 0,
+            "device_name": "Delay",
+            "not_found": [],
+            "parameters": [
+              {
+                "clamped": true,
+                "display_value": "100 %",
+                "found": true,
+                "max": 1.0,
+                "min": 0.0,
+                "name": "Feedback",
+                "old_value": 0.3,
+                "requested": 1.5,
+                "value": 1.0
+              }
+            ],
+            "requested_count": 1,
+            "track_index": 1,
+            "track_name": "B-Delay"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "device_index": 1,
+        "parameters": {
+          "Decay Time": 3.2,
+          "Dry/Wet": 0.25,
+          "Wetness": 0.5
+        },
+        "track_index": 0
+      },
+      "expect": "Error setting device parameters: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "set_device_parameters",
+          "params": {
+            "device_index": 1,
+            "parameters": {
+              "Decay Time": 3.2,
+              "Dry/Wet": 0.25,
+              "Wetness": 0.5
+            },
+            "track_index": 0,
+            "track_type": "regular"
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

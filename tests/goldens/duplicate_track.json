@@ -1,0 +1,94 @@
+{
+  "cases": [
+    {
+      "args": {
+        "track_index": 2
+      },
+      "expect": "Duplicated 'GTR L' with its devices, mixer, routing and clips \u2014 the copy is track 3 ('GTR L 2'), directly below the source. Every track index from 3 down has shifted by one; rename the copy with set_track_name",
+      "name": "success",
+      "wire": [
+        {
+          "command": "duplicate_track",
+          "params": {
+            "track_index": 2
+          },
+          "response": {
+            "duplicated": true,
+            "index": 3,
+            "name": "GTR L 2",
+            "source_track_index": 2,
+            "source_track_name": "GTR L",
+            "track_count_after": 7,
+            "track_count_before": 6
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "track_index": 2
+      },
+      "expect": "Live did not duplicate track 2 ('GTR L') \u2014 the session still has 6 tracks and no copy was made",
+      "name": "not_duplicated",
+      "wire": [
+        {
+          "command": "duplicate_track",
+          "params": {
+            "track_index": 2
+          },
+          "response": {
+            "duplicated": false,
+            "index": null,
+            "name": null,
+            "source_track_index": 2,
+            "source_track_name": "GTR L",
+            "track_count_after": 6,
+            "track_count_before": 6
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "expect_track_name": "GTR L",
+        "track_index": 2
+      },
+      "expect": "Duplicated 'GTR L' with its devices, mixer, routing and clips \u2014 the copy is track 3 ('GTR L 2'), directly below the source. Every track index from 3 down has shifted by one; rename the copy with set_track_name",
+      "name": "success_guarded",
+      "wire": [
+        {
+          "command": "duplicate_track",
+          "params": {
+            "expect_track_name": "GTR L",
+            "track_index": 2
+          },
+          "response": {
+            "duplicated": true,
+            "index": 3,
+            "name": "GTR L 2",
+            "source_track_index": 2,
+            "source_track_name": "GTR L",
+            "track_count_after": 7,
+            "track_count_before": 6
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "track_index": 2
+      },
+      "expect": "Error duplicating track: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "duplicate_track",
+          "params": {
+            "track_index": 2
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

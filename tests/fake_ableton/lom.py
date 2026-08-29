@@ -59,7 +59,7 @@ class FakeLiveConfig(object):
                  create_audio_clip_api=True, count_in_read_only=False,
                  save_owner="song", warp_markers=False,
                  extended_note_fields=False, track_delete_clip_api=True,
-                 transport_write_lag=False):
+                 transport_write_lag=False, device_delete_lands=True):
         if note_api not in _NOTE_API_GENERATIONS:
             raise ValueError("note_api must be one of %r" % (_NOTE_API_GENERATIONS,))
         if save_owner not in _SAVE_OWNERS:
@@ -80,6 +80,13 @@ class FakeLiveConfig(object):
         # settles. False = writes land; "once" = the first write is
         # swallowed, a retry lands; "always" = writes never land.
         self.transport_write_lag = transport_write_lag
+        # The condition _delete_device's before/after check exists for: the
+        # chain is unchanged after Track.delete_device returned. Whether the
+        # delete truly failed or the read merely came back stale, the
+        # handler cannot tell them apart inside one tick — and both look
+        # identical from here, which is the point. False = the call is a
+        # silent no-op.
+        self.device_delete_lands = device_delete_lands
 
 
 # ── Parameters, devices, mixer ───────────────────────────────────────────────
@@ -475,6 +482,11 @@ class FakeTrack(object):
         self.input_routing_channel = all_channels
 
     def delete_device(self, device_index):
+        # Silently doing nothing is a real observed outcome, not a fake-only
+        # curiosity — see FakeLiveConfig.device_delete_lands. Live raises
+        # nothing either way, so the no-op branch returns normally too.
+        if not self._config.device_delete_lands:
+            return
         del self.devices[device_index]
 
     def duplicate_clip_to_arrangement(self, clip, destination_time):

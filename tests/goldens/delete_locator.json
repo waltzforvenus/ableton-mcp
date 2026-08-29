@@ -1,0 +1,66 @@
+{
+  "cases": [
+    {
+      "args": {
+        "name": "Chorus"
+      },
+      "expect": "Deleted locator 'Chorus' at beat 16.0; 3 locators remain",
+      "name": "success",
+      "wire": [
+        {
+          "command": "delete_locator",
+          "params": {
+            "name": "Chorus"
+          },
+          "response": {
+            "cue_point_count": 3,
+            "cue_point_count_before": 4,
+            "deleted": true,
+            "name": "Chorus",
+            "success": true,
+            "time": 16.0
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "time": 16.0
+      },
+      "expect": "Locator 'Chorus' is STILL at beat 16.0 \u2014 the toggle did not remove it and there are now 4 locators. Re-read them before retrying",
+      "name": "still_there",
+      "wire": [
+        {
+          "command": "delete_locator",
+          "params": {
+            "time": 16.0
+          },
+          "response": {
+            "cue_point_count": 4,
+            "cue_point_count_before": 4,
+            "deleted": false,
+            "name": "Chorus",
+            "success": false,
+            "time": 16.0
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "name": "Chorus"
+      },
+      "expect": "Error deleting locator: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "delete_locator",
+          "params": {
+            "name": "Chorus"
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

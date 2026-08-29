@@ -63,22 +63,48 @@ COMMANDS: dict[str, CommandSpec] = {
     # handlers (duplicate class-body definitions), hence the version floor.
     "get_device_parameters": CommandSpec(gated=True, min_script_version="1.8.0"),
     "get_arrangement_clips": CommandSpec(gated=True),
-    "get_clip_notes": CommandSpec(gated=True),
-    "get_session_snapshot": CommandSpec(gated=True),
+    # 1.15.0 taught it to read arrangement clips (arrangement=True). An
+    # older script advertises the name but its handler has no such keyword,
+    # so the dispatch's **params call dies on a raw TypeError inside Live.
+    "get_clip_notes": CommandSpec(gated=True, min_script_version="1.15.0"),
+    # Snapshot schema v3: the scoping flags and the tracks filter are new
+    # keywords (TypeError on an older handler), and v2 also emitted warp
+    # markers and rack chains unconditionally — the same call returns a
+    # materially different payload, which is the second half of the floor.
+    "get_session_snapshot": CommandSpec(gated=True, min_script_version="1.15.0"),
     "get_browser_tree": CommandSpec(),  # LEGACY floor — gate is a no-op
     "get_browser_items_at_path": CommandSpec(),  # LEGACY floor — gate is a no-op
     # ── State-modifying commands (15 s socket timeout) ───────────────────
     "create_midi_track": CommandSpec(modifying=True),  # LEGACY floor — gate is a no-op
     "create_audio_track": CommandSpec(modifying=True, gated=True),
+    "duplicate_track": CommandSpec(modifying=True, gated=True),
     "set_track_name": CommandSpec(modifying=True),  # LEGACY floor — gate is a no-op
     "create_clip": CommandSpec(modifying=True),  # LEGACY floor — gate is a no-op
     # Importing/decoding a large audio file happens on Live's main thread and
     # can far outlast the default budget; the Remote Script's own queue
     # timeout for it is 60 s, and the server must outlast that (+5 s
     # headroom) or it gives up while Live is still working.
-    "create_audio_clip": CommandSpec(modifying=True, timeout=65.0, gated=True),
-    "add_notes_to_clip": CommandSpec(modifying=True),  # LEGACY floor — gate is a no-op
-    "clear_notes_from_clip": CommandSpec(modifying=True, gated=True),
+    # 1.15.0 turns warping OFF inside the import task and reports it back
+    # (six identically-long stems each got a different Auto-Warp tempo
+    # guess); an older script warps on import and its reply carries no
+    # `warping` at all, so the floor is about the DEFAULT behaviour, not
+    # just the new expected_beats keyword.
+    "create_audio_clip": CommandSpec(
+        modifying=True, timeout=65.0, gated=True, min_script_version="1.15.0"
+    ),
+    # In the LEGACY floor (so the capability half of the gate is a no-op)
+    # but gated anyway, because only a gated row consults
+    # min_script_version — and this one needs it: 1.15.0 added the
+    # arrangement=True write path and expect_count, and replaced the old
+    # {"note_count": <what you sent>} echo with a measured before/after
+    # delta. An older script serves it, but serves it in exactly the way
+    # that made "Added 262 notes" print when Live took none.
+    "add_notes_to_clip": CommandSpec(
+        modifying=True, gated=True, min_script_version="1.15.0"
+    ),
+    "clear_notes_from_clip": CommandSpec(
+        modifying=True, gated=True, min_script_version="1.15.0"
+    ),
     "set_clip_name": CommandSpec(modifying=True),  # LEGACY floor — gate is a no-op
     "set_arrangement_clip_name": CommandSpec(modifying=True, gated=True),
     "set_tempo": CommandSpec(modifying=True),  # LEGACY floor — gate is a no-op
@@ -86,10 +112,17 @@ COMMANDS: dict[str, CommandSpec] = {
     "stop_clip": CommandSpec(modifying=True),  # LEGACY floor — gate is a no-op
     "delete_clip": CommandSpec(modifying=True, gated=True),
     "delete_track": CommandSpec(modifying=True, gated=True),
-    "delete_device": CommandSpec(modifying=True, gated=True),
+    # Up to 1.14.0 the handler returned len(track.devices) with no
+    # before-count, so a delete that did nothing still reported "deleted X;
+    # N devices remain" — a lie a highest-index-first sweep then builds on.
+    # 1.15.0 verifies and returns the surviving device names.
+    "delete_device": CommandSpec(
+        modifying=True, gated=True, min_script_version="1.15.0"
+    ),
     "set_device_parameter": CommandSpec(
         modifying=True, gated=True, min_script_version="1.8.0"
     ),
+    "set_device_parameters": CommandSpec(modifying=True, gated=True),
     "set_track_volume": CommandSpec(modifying=True, gated=True),
     "set_track_pan": CommandSpec(modifying=True, gated=True),
     "set_track_mute": CommandSpec(modifying=True, gated=True),
@@ -118,9 +151,19 @@ COMMANDS: dict[str, CommandSpec] = {
     "load_instrument_or_effect": CommandSpec(modifying=True),
     "switch_to_arrangement_view": CommandSpec(modifying=True, gated=True),
     "set_current_song_time": CommandSpec(modifying=True, gated=True),
-    "duplicate_session_clip_to_arrangement": CommandSpec(modifying=True, gated=True),
+    # 35 s, not the modifying default: the Remote Script's queue timeout for
+    # this row is 30 s because destination_times places a whole run of
+    # stamps inside one main-thread task, and the socket must outlast it by
+    # the 5 s headroom test_cross_half_contract enforces. The floor covers
+    # both new keywords AND the loop-phase guard, which now REFUSES stamps
+    # an older script performs happily (and silently re-phases a looping
+    # survivor doing it — the worst correctness incident of the session).
+    "duplicate_session_clip_to_arrangement": CommandSpec(
+        modifying=True, timeout=35.0, gated=True, min_script_version="1.15.0"
+    ),
     "create_locator": CommandSpec(modifying=True, gated=True),
     "jump_to_locator": CommandSpec(modifying=True, gated=True),
+    "delete_locator": CommandSpec(modifying=True, gated=True),
     # Scripts up to 1.11.0 advertise trim_arrangement_clip but serve the
     # marker-write implementation, which is verifiably inert on real Live
     # (12.4.3: every trim self-refuses); the floor turns that endless
@@ -128,7 +171,17 @@ COMMANDS: dict[str, CommandSpec] = {
     "trim_arrangement_clip": CommandSpec(
         modifying=True, gated=True, min_script_version="1.12.0"
     ),
-    "delete_arrangement_clip": CommandSpec(modifying=True, gated=True),
+    # 1.15.0 addresses clips by start_time (and a plural start_times that
+    # resolves every position before deleting any). Older scripts take only
+    # the positional clip_index, so a start_time request would be dispatched
+    # into a handler that has no such keyword.
+    "delete_arrangement_clip": CommandSpec(
+        modifying=True, gated=True, min_script_version="1.15.0"
+    ),
     "move_arrangement_clip": CommandSpec(modifying=True, gated=True),
-    "duplicate_arrangement_clip": CommandSpec(modifying=True, gated=True),
+    # Same loop-phase guard as the session stamp, and the same reason for a
+    # floor: an older script makes the re-phasing stamp without refusing.
+    "duplicate_arrangement_clip": CommandSpec(
+        modifying=True, gated=True, min_script_version="1.15.0"
+    ),
 }
