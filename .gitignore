@@ -59,3 +59,6 @@ src/ableton_mcp/secrets.py
 
 # Lock files (optional - uncomment if you don't want to track)
 # uv.lock
+
+# Local private-names denylist for tests/test_no_private_names.py (never commit)
+tests/.private-names.txt
