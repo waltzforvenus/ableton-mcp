@@ -133,6 +133,14 @@ counts, is `docs/IMPROVEMENTS.md`.
   connection (the server reconnects) instead of carrying on out of step.
   Ported from upstream `7e90cd6`; its `ABLETON_MCP_HOST` bind override was
   not taken, so the socket stays loopback-only.
+- Long commands get the time they were budgeted: `create_audio_clip` (65 s)
+  and `duplicate_session_clip_to_arrangement` (35 s) were silently cut off
+  at 15 s, because the receive loop reset every exchange's socket timeout
+  to the 15 s default after the per-command one had been set. A slow audio
+  import was reported as a failure while Live was still doing it. Other
+  commands keep the 15 s they always effectively had. A failed connect
+  now closes its socket instead of leaking it. Server-side only. Ported
+  from upstream PR #139 (open), rewritten for this fork's transport.
 
 ### Changed (user-facing)
 

@@ -22,7 +22,7 @@ import time
 
 import pytest
 
-from ableton_mcp.connection import AbletonClient
+from ableton_mcp.connection import AbletonClient, AbletonConnection
 from ableton_mcp.handshake import ScriptHandshake
 
 
@@ -197,6 +197,74 @@ def test_timeout_drops_the_socket_and_the_stale_reply_is_never_read(make_peer):
         assert len(peer.connections) == 2
     finally:
         client.close()
+
+
+# --------------------------------------------------------------------------
+# A registry timeout override is the exchange's real budget (upstream #139)
+# --------------------------------------------------------------------------
+
+def test_a_registry_timeout_override_outlasts_the_default(make_peer, monkeypatch):
+    """receive_full_response used to reset the socket timeout to
+    receive_timeout, so create_audio_clip's 65 s row was silently a 15 s one
+    and a long import was abandoned while Live was still working on it."""
+    from ableton_mcp.commands import COMMANDS, CommandSpec
+    monkeypatch.setitem(COMMANDS, "slow_import",
+                        CommandSpec(modifying=True, timeout=3.0))
+
+    def handler(request, conn, conn_no):
+        time.sleep(0.8)  # longer than the default below, shorter than the row
+        return _success({"echo": request["type"]})
+
+    peer = make_peer(handler)
+    client = AbletonClient("127.0.0.1", peer.port, receive_timeout=0.3)
+    try:
+        assert client.send_command("slow_import") == {"echo": "slow_import"}
+        assert len(peer.connections) == 1
+    finally:
+        client.close()
+
+
+def test_a_command_without_an_override_still_gets_the_default(make_peer):
+    release = threading.Event()
+
+    def handler(request, conn, conn_no):
+        release.wait(timeout=5.0)
+        return None
+
+    peer = make_peer(handler)
+    client = AbletonClient("127.0.0.1", peer.port, receive_timeout=0.3)
+    try:
+        started = time.monotonic()
+        with pytest.raises(Exception):
+            client.send_command("get_session_info")
+        assert time.monotonic() - started < 2.0
+        assert client._connection.sock is None
+    finally:
+        release.set()
+        client.close()
+
+
+def test_a_failed_connect_closes_its_socket(monkeypatch):
+    closed = []
+
+    class _RefusingSocket(object):
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def settimeout(self, _timeout):
+            pass
+
+        def connect(self, _address):
+            raise ConnectionRefusedError("refused")
+
+        def close(self):
+            closed.append(True)
+
+    monkeypatch.setattr("ableton_mcp.connection.socket.socket", _RefusingSocket)
+    connection = AbletonConnection(host="127.0.0.1", port=1)
+    assert connection.connect() is False
+    assert connection.sock is None
+    assert closed == [True]
 
 
 # --------------------------------------------------------------------------
