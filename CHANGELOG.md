@@ -9,6 +9,12 @@ separately, and a script change means **re-run
 
 ## [Unreleased]
 
+### Documentation
+
+- Added a branch-scoped [fork comparison](docs/FORK_FEATURES.md), separating
+  shipped additions, upstream ports, pending Live validation and planned work.
+- Corrected the README tool count and installation examples to use this fork.
+
 Ships Remote Script **1.18.0**. **Re-run `ableton-mcp-install-script` and
 restart Live after upgrading** — the new commands live in the script half,
 and Live caches an already-imported script module, so re-selecting the

@@ -180,8 +180,14 @@ edit. It uploads nothing.
 
 ## What this fork changes
 
-Everything upstream does, this fork also does — it is merged, not diverged from.
-On top of that:
+This fork retains the upstream music-control foundation, removes its data
+collection, and selectively ports later fixes. It is not a promise of parity
+with every future upstream change.
+
+See **[Fork features and upstream comparison](docs/FORK_FEATURES.md)** for a
+summary of additions, reliability work, and what still awaits Live validation.
+The list below describes this branch; `dev` additions are not necessarily
+available on `main` or in a released package.
 
 ### Added tools
 
@@ -275,7 +281,7 @@ This copies the matching Remote Script into your Ableton **User Library**'s `Rem
 If your User Library lives somewhere non-standard and isn't detected, point the installer at it directly:
 
 ```bash
-uvx --from ableton-mcp ableton-mcp-install-script --target "/path/to/User Library/Remote Scripts"
+uvx --from git+https://github.com/waltzforvenus/ableton-mcp ableton-mcp-install-script --target "/path/to/User Library/Remote Scripts"
 ```
 
 > The legacy `Preferences/User Remote Scripts` folder (used for instant-mapping configs, not Python control surfaces) is no longer targeted by default; pass `--legacy` if you need it for an old Live version.
@@ -381,7 +387,7 @@ A few notes that apply to every install method:
 
 ### Tool reference
 
-All 60 tools the server exposes. Tools marked **†** are added by this fork and
+All 64 tools the server exposes. Tools marked **†** are added by this fork and
 are not present upstream.
 
 #### Session & info
@@ -465,7 +471,8 @@ are not present upstream.
 
 Look at an audio clip, fix its warping, verify. The two audio tools read the
 clip's file on this machine (nothing is uploaded) and need the optional
-extra: `uv pip install 'ableton-mcp[analysis]'` (numpy, soundfile, Pillow).
+extra: run `uv sync --extra analysis` from this fork's checkout
+(numpy, soundfile, Pillow).
 Workflow: `analyze_clip_audio` → `suggest_warp_markers` (dry run) → apply →
 `analyze_clip_audio` again; `grid_alignment` (median/p90 ms off the grid) is
 the before/after number. Warp-marker editing needs Live 11.0.5 or later.
