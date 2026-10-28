@@ -25,6 +25,82 @@
     },
     {
       "args": {
+        "start_time": 64.0,
+        "track_index": 0
+      },
+      "expect": "Deleted arrangement clip 'Vox Take' (beats 64.0 to 72.0) from track 0 \u2014 the audio file on disk is untouched. Remaining arrangement clip indices on this track have shifted; re-read get_arrangement_clips before the next arrangement edit",
+      "name": "success_by_start_time",
+      "wire": [
+        {
+          "command": "delete_arrangement_clip",
+          "params": {
+            "start_time": 64.0,
+            "track_index": 0
+          },
+          "response": {
+            "arrangement_clip_count": 5,
+            "clip_index": 2,
+            "deleted": true,
+            "deleted_clip_name": "Vox Take",
+            "end_time": 72.0,
+            "matched_by": "start_time",
+            "start_time": 64.0
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "start_times": [
+          64.0,
+          96.0
+        ],
+        "track_index": 0
+      },
+      "expect": "Deleted 2 arrangement clips from track 0: 'Vox Take' at 64.0, 'Vox Take 2' at 96.0. 4 clips remain on the track; the audio files on disk are untouched",
+      "name": "success_by_start_times",
+      "wire": [
+        {
+          "command": "delete_arrangement_clip",
+          "params": {
+            "start_times": [
+              64.0,
+              96.0
+            ],
+            "track_index": 0
+          },
+          "response": {
+            "arrangement_clip_count": 4,
+            "deleted_count": 2,
+            "deletions": [
+              {
+                "clip_index": 2,
+                "deleted_clip_name": "Vox Take",
+                "end_time": 72.0,
+                "error": null,
+                "ok": true,
+                "start_time": 64.0
+              },
+              {
+                "clip_index": 3,
+                "deleted_clip_name": "Vox Take 2",
+                "end_time": 104.0,
+                "error": null,
+                "ok": true,
+                "start_time": 96.0
+              }
+            ],
+            "failed_count": 0,
+            "requested_count": 2,
+            "success": true,
+            "track_index": 0,
+            "track_name": "ELIZABETH"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
         "clip_index": 0,
         "track_index": 0
       },

@@ -43,7 +43,7 @@
           "command": "set_device_parameter",
           "params": {
             "device_index": 0,
-            "parameter": 3,
+            "parameter": "3",
             "track_index": 1,
             "track_type": "regular",
             "value": 0.35

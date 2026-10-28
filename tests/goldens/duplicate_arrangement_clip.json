@@ -28,6 +28,58 @@
     {
       "args": {
         "clip_index": 0,
+        "destination_time": 4.0,
+        "track_index": 0
+      },
+      "expect": "Error duplicating arrangement clip: Refusing this stamp at beat 4.0 (footprint 4.0 to 12.0 on 'Vox'): it would re-phase 1 looping clip(s). Live crops whatever a stamp lands on, and a survivor to the RIGHT of the stamp keeps its own loop_start, so it replays the loop from the top from that beat on \u2014 silently, and it sounds plausible. 'Vox Double' spans beats 0.0 to 24.0 (loop_start 0.0) and would survive from beat 12.0 on with its loop restarted from the top; to end this stamp at that clip's end instead use destination_time 16.0, or cover the clip exactly with destination_time 0.0 and a 24.0-beat source. Nothing was changed. Delete or unloop the clip first, use one of the safe shapes above, or pass allow_loop_phase_reset=true to accept the re-phasing.",
+      "name": "loop_phase_refused",
+      "wire": [
+        {
+          "command": "duplicate_arrangement_clip",
+          "params": {
+            "clip_index": 0,
+            "destination_time": 4.0,
+            "track_index": 0
+          },
+          "raise": "Refusing this stamp at beat 4.0 (footprint 4.0 to 12.0 on 'Vox'): it would re-phase 1 looping clip(s). Live crops whatever a stamp lands on, and a survivor to the RIGHT of the stamp keeps its own loop_start, so it replays the loop from the top from that beat on \u2014 silently, and it sounds plausible. 'Vox Double' spans beats 0.0 to 24.0 (loop_start 0.0) and would survive from beat 12.0 on with its loop restarted from the top; to end this stamp at that clip's end instead use destination_time 16.0, or cover the clip exactly with destination_time 0.0 and a 24.0-beat source. Nothing was changed. Delete or unloop the clip first, use one of the safe shapes above, or pass allow_loop_phase_reset=true to accept the re-phasing."
+        }
+      ]
+    },
+    {
+      "args": {
+        "allow_loop_phase_reset": true,
+        "clip_index": 0,
+        "destination_time": 4.0,
+        "track_index": 0
+      },
+      "expect": "Duplicated arrangement clip 'Vox Take' (source beats 0.0 to 8.0) to beat 4.0 on track 0. Clip indices on this track have shifted (start-time order); re-read get_arrangement_clips to confirm the copy and find its index \u2014 loop phase was RESET on 'Vox Double', which now replay from the top of their loop; check those bars",
+      "name": "loop_phase_reset_accepted",
+      "wire": [
+        {
+          "command": "duplicate_arrangement_clip",
+          "params": {
+            "allow_loop_phase_reset": true,
+            "clip_index": 0,
+            "destination_time": 4.0,
+            "track_index": 0
+          },
+          "response": {
+            "clip_name": "Vox Take",
+            "destination_time": 4.0,
+            "loop_phase_reset": [
+              "Vox Double"
+            ],
+            "source_end_time": 8.0,
+            "source_start_time": 0.0,
+            "stamp_end_time": 12.0,
+            "stamp_start_time": 4.0
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "clip_index": 0,
         "destination_time": 32.0,
         "track_index": 0
       },

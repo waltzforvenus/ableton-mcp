@@ -25,6 +25,244 @@
     },
     {
       "args": {
+        "arrangement_time": 16.0,
+        "clip_index": 0,
+        "track_index": 0
+      },
+      "expect": "Duplicated 'Chorus Beat' from Session slot 0 on 'Drums' to arrangement at beat 16.0",
+      "name": "success_via_arrangement_time_alias",
+      "wire": [
+        {
+          "command": "duplicate_session_clip_to_arrangement",
+          "params": {
+            "clip_index": 0,
+            "destination_time": 16.0,
+            "track_index": 0
+          },
+          "response": {
+            "clip_name": "Chorus Beat",
+            "track_name": "Drums"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "arrangement_time": 32.0,
+        "clip_index": 0,
+        "destination_time": 16.0,
+        "track_index": 0
+      },
+      "expect": "Error duplicating clip to arrangement: destination_time=16.0 and arrangement_time=32.0 are two names for the SAME argument but were given different values, so nothing was sent to Ableton. Pass just one of them.",
+      "name": "conflicting_spellings_refused",
+      "wire": []
+    },
+    {
+      "args": {
+        "clip_index": 0,
+        "destination_times": [
+          0.0,
+          4.0,
+          8.0
+        ],
+        "track_index": 0
+      },
+      "expect": "Stamped 'Chorus Beat' from Session slot 0 on 'Drums' at 3 positions: beats 0.0, 4.0, 8.0",
+      "name": "success_batch",
+      "wire": [
+        {
+          "command": "duplicate_session_clip_to_arrangement",
+          "params": {
+            "clip_index": 0,
+            "destination_times": [
+              0.0,
+              4.0,
+              8.0
+            ],
+            "track_index": 0
+          },
+          "response": {
+            "clip_name": "Chorus Beat",
+            "destination_times": [
+              0.0,
+              4.0,
+              8.0
+            ],
+            "failed_count": 0,
+            "placed_count": 3,
+            "placements": [
+              {
+                "clips_in_span_after": 1,
+                "destination_time": 0.0,
+                "error": null,
+                "ok": true,
+                "overlapped_clips": [],
+                "stamp_end_time": 4.0,
+                "stamp_start_time": 0.0
+              },
+              {
+                "clips_in_span_after": 1,
+                "destination_time": 4.0,
+                "error": null,
+                "ok": true,
+                "overlapped_clips": [],
+                "stamp_end_time": 8.0,
+                "stamp_start_time": 4.0
+              },
+              {
+                "clips_in_span_after": 1,
+                "destination_time": 8.0,
+                "error": null,
+                "ok": true,
+                "overlapped_clips": [],
+                "stamp_end_time": 12.0,
+                "stamp_start_time": 8.0
+              }
+            ],
+            "requested_count": 3,
+            "success": true,
+            "track_index": 0,
+            "track_name": "Drums"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "clip_index": 0,
+        "destination_times": [
+          0.0,
+          4.0
+        ],
+        "track_index": 0
+      },
+      "expect": "Stamped 'Chorus Beat' at 1 of 2 positions on 'Drums' \u2014 the rest were refused and nothing was placed for them. Landed at beats: 0.0. Refused \u2014 beat 4.0: Refusing to stamp beats 4.0-8.0: it would leave the looping clip 'Hats 8' (beats 0.0-16.0) surviving to the right, which restarts its loop from the top and re-phases everything after the cut.",
+      "name": "partial_batch_with_a_refusal",
+      "wire": [
+        {
+          "command": "duplicate_session_clip_to_arrangement",
+          "params": {
+            "clip_index": 0,
+            "destination_times": [
+              0.0,
+              4.0
+            ],
+            "track_index": 0
+          },
+          "response": {
+            "clip_name": "Chorus Beat",
+            "destination_times": [
+              0.0,
+              4.0
+            ],
+            "failed_count": 1,
+            "placed_count": 1,
+            "placements": [
+              {
+                "clips_in_span_after": 1,
+                "destination_time": 0.0,
+                "error": null,
+                "ok": true,
+                "overlapped_clips": [],
+                "stamp_end_time": 4.0,
+                "stamp_start_time": 0.0
+              },
+              {
+                "destination_time": 4.0,
+                "error": "Refusing to stamp beats 4.0-8.0: it would leave the looping clip 'Hats 8' (beats 0.0-16.0) surviving to the right, which restarts its loop from the top and re-phases everything after the cut.",
+                "ok": false,
+                "stamp_end_time": 8.0,
+                "stamp_start_time": 4.0
+              }
+            ],
+            "requested_count": 2,
+            "success": false,
+            "track_index": 0,
+            "track_name": "Drums"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "clip_index": 0,
+        "destination_time": 4.0,
+        "track_index": 0
+      },
+      "expect": "Error duplicating clip to arrangement: Refusing this stamp at beat 4.0 (footprint 4.0 to 8.0 on 'Drums'): it would re-phase 1 looping clip(s). Live crops whatever a stamp lands on, and a survivor to the RIGHT of the stamp keeps its own loop_start, so it replays the loop from the top from that beat on \u2014 silently, and it sounds plausible. 'Hats 8' spans beats 0.0 to 16.0 (loop_start 0.0) and would survive from beat 8.0 on with its loop restarted from the top; to end this stamp at that clip's end instead use destination_time 12.0, or cover the clip exactly with destination_time 0.0 and a 16.0-beat source. Nothing was changed. Delete or unloop the clip first, use one of the safe shapes above, or pass allow_loop_phase_reset=true to accept the re-phasing.",
+      "name": "loop_phase_refused",
+      "wire": [
+        {
+          "command": "duplicate_session_clip_to_arrangement",
+          "params": {
+            "clip_index": 0,
+            "destination_time": 4.0,
+            "track_index": 0
+          },
+          "raise": "Refusing this stamp at beat 4.0 (footprint 4.0 to 8.0 on 'Drums'): it would re-phase 1 looping clip(s). Live crops whatever a stamp lands on, and a survivor to the RIGHT of the stamp keeps its own loop_start, so it replays the loop from the top from that beat on \u2014 silently, and it sounds plausible. 'Hats 8' spans beats 0.0 to 16.0 (loop_start 0.0) and would survive from beat 8.0 on with its loop restarted from the top; to end this stamp at that clip's end instead use destination_time 12.0, or cover the clip exactly with destination_time 0.0 and a 16.0-beat source. Nothing was changed. Delete or unloop the clip first, use one of the safe shapes above, or pass allow_loop_phase_reset=true to accept the re-phasing."
+        }
+      ]
+    },
+    {
+      "args": {
+        "allow_loop_phase_reset": true,
+        "clip_index": 0,
+        "destination_time": 4.0,
+        "track_index": 0
+      },
+      "expect": "Duplicated 'Chorus Beat' from Session slot 0 on 'Drums' to arrangement at beat 4.0 \u2014 loop phase was RESET on 'Hats 8', which now replay from the top of their loop; check those bars",
+      "name": "loop_phase_reset_accepted",
+      "wire": [
+        {
+          "command": "duplicate_session_clip_to_arrangement",
+          "params": {
+            "allow_loop_phase_reset": true,
+            "clip_index": 0,
+            "destination_time": 4.0,
+            "track_index": 0
+          },
+          "response": {
+            "clip_name": "Chorus Beat",
+            "clips_in_span_after": 2,
+            "destination_time": 4.0,
+            "loop_phase_reset": [
+              "Hats 8"
+            ],
+            "overlapped_clips": [
+              {
+                "end_time": 16.0,
+                "loop_end": 8.0,
+                "loop_start": 0.0,
+                "looping": true,
+                "name": "Hats 8",
+                "start_time": 0.0
+              }
+            ],
+            "placements": [
+              {
+                "clips_in_span_after": 2,
+                "destination_time": 4.0,
+                "error": null,
+                "loop_phase_reset": [
+                  "Hats 8"
+                ],
+                "ok": true,
+                "overlapped_clips": [],
+                "stamp_end_time": 8.0,
+                "stamp_start_time": 4.0
+              }
+            ],
+            "stamp_end_time": 8.0,
+            "stamp_start_time": 4.0,
+            "success": true,
+            "track_index": 0,
+            "track_name": "Drums"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
         "clip_index": 0,
         "destination_time": 16.0,
         "track_index": 0
