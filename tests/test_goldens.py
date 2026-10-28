@@ -103,10 +103,10 @@ def test_goldens_match_case_definitions():
     )
 
 
-def test_goldens_cover_all_67_tools():
+def test_goldens_cover_all_68_tools():
     tools = {tool for tool, _ in RECORDED}
-    assert len(tools) == 67, (
-        "expected goldens for all 67 tools, found %d: %r"
+    assert len(tools) == 68, (
+        "expected goldens for all 68 tools, found %d: %r"
         % (len(tools), sorted(tools))
     )
 

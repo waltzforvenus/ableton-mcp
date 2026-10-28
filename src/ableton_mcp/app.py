@@ -40,6 +40,13 @@ class Settings:
     # honoured then; only the "nobody holds it" case stops refusing.
     lock_file: str = DEFAULT_LOCK_FILE
     require_lock: bool = True
+    # Server-wide consent for tools that drive Live's UI (save via the File
+    # menu, export, bounce). Off by default: each such call must then pass
+    # allow_ui_automation=true itself. ABLETON_MCP_EVIDENCE_DIR is where
+    # UI tools put evidence screenshots (never /tmp by default — image
+    # viewers in some agent sandboxes refuse it).
+    allow_ui: bool = False
+    evidence_dir: Optional[str] = None
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] = os.environ) -> "Settings":
@@ -49,6 +56,9 @@ class Settings:
             lock_file=env.get("ABLETON_MCP_LOCK_FILE") or DEFAULT_LOCK_FILE,
             require_lock=env.get("ABLETON_MCP_REQUIRE_LOCK", "1").strip().lower()
             not in ("0", "false", "no", "off"),
+            allow_ui=env.get("ABLETON_MCP_ALLOW_UI", "0").strip().lower()
+            in ("1", "true", "yes", "on"),
+            evidence_dir=env.get("ABLETON_MCP_EVIDENCE_DIR") or None,
         )
 
 
@@ -79,7 +89,9 @@ def build_deps(settings: Settings) -> Deps:
     client = AbletonClient(settings.host, settings.port,
                            on_reconnect=handshake.invalidate)
     lock = LiveLock(settings.lock_file, require=settings.require_lock)
-    service = AbletonService(client, handshake, lock=lock, ui=MacUI())
+    service = AbletonService(client, handshake, lock=lock, ui=MacUI(),
+                             allow_ui=settings.allow_ui,
+                             evidence_dir=settings.evidence_dir)
     return Deps(client=client, handshake=handshake, service=service)
 
 

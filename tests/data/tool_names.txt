@@ -2,6 +2,7 @@ acquire_live_lock
 add_notes_to_clip
 analyze_clip_audio
 back_to_arrangement
+checkpoint_set
 clear_notes_from_clip
 create_audio_clip
 create_audio_track

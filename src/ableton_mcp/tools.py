@@ -223,20 +223,27 @@ def acquire_live_lock(ctx: Context, holder: str, task: str = "") -> str:
 
 
 @tool
-def release_live_lock(ctx: Context, holder: str, set_path: str) -> str:
+def release_live_lock(ctx: Context, holder: str, set_path: Optional[str] = None,
+                      save_first: bool = False,
+                      allow_ui_automation: bool = False) -> str:
     """
     Release the shared Live lock — only after the set is verifiably saved.
 
     Parameters:
     - holder: the name you acquired the lock with.
-    - set_path: absolute path of the saved .als.
+    - set_path: absolute path of the saved .als. Optional on macOS, where
+      the open set is looked up from Live's window title.
+    - save_first: save (as save_set does) and then release, in one call.
+    - allow_ui_automation: consent for save_first to use Live's File menu.
 
     Refused (and the lock stays held) unless the .als on disk is at least as
     new as your last edit through this server, and — where Live's window
     titles can be read — Live shows that set with no unsaved marker and no
-    Save or Export dialog open. Save first (save_set), then release.
+    Save or Export dialog open.
     """
-    result = _deps(ctx).service.release_live_lock(holder, set_path)
+    result = _deps(ctx).service.release_live_lock(
+        holder, set_path, save_first=save_first,
+        allow_ui_automation=allow_ui_automation)
     return presenters.release_live_lock(result)
 
 
@@ -802,17 +809,62 @@ def set_track_send(ctx: Context, track_index: int, send_index: int, value: float
 
 
 @tool
-def save_set(ctx: Context) -> str:
+def save_set(ctx: Context, allow_ui_automation: bool = False,
+             set_path: Optional[str] = None) -> str:
     """
-    Save the open Live Set, if this Live build exposes a save through its API.
+    Save the open Live Set — through Live's API if it has one, otherwise
+    through Live's own File > Save Live Set menu item.
 
-    Live has never officially documented a save in the Python API, so this tries
-    the known candidates and reports exactly which one worked — or reports that
-    none exist rather than claiming a success that did not happen. Check the
-    result before assuming the set is safe on disk.
+    Live 12's Python API exposes no save, so on current builds the menu is
+    the path that works. Clicking it brings Live to the front for a moment,
+    so it only happens with consent: pass allow_ui_automation=true (or run
+    the server with ABLETON_MCP_ALLOW_UI=1); without it the reply says the
+    API had no save and nothing else is tried. macOS only, and the host
+    process needs the Accessibility permission.
+
+    A save is reported only once it is verified: Live's window title loses
+    its unsaved "*" and — when the .als is known — its modification time
+    advances. Parameters:
+    - allow_ui_automation: consent to click File > Save Live Set.
+    - set_path: absolute path of the open .als, if you know it; otherwise it
+      is looked up from the window title (and reported if ambiguous).
+
+    A set that was never saved (Untitled) opens a Save panel instead: that is
+    cancelled and refused, never saved to a guessed location. Needs the Live
+    lock like any state change. To keep a restorable copy as well, use
+    checkpoint_set.
     """
-    result = _deps(ctx).service.save_set()
+    result = _deps(ctx).service.save_set(allow_ui_automation=allow_ui_automation,
+                                         set_path=set_path)
     return presenters.save_set(result)
+
+
+@tool
+def checkpoint_set(ctx: Context, label: str, set_path: Optional[str] = None,
+                   allow_ui_automation: bool = False,
+                   checkpoint_dir: Optional[str] = None) -> str:
+    """
+    Save the set, then keep a labelled, verified copy of it to come back to.
+
+    Use before a risky change (a re-amp, a mix rebalance, swapping a chain)
+    and whenever a state is worth keeping: "put it back how it was" then
+    means opening the checkpoint, not reconstructing from memory. Saves as
+    save_set does (same consent and verification), copies the .als to
+    <set folder>/Checkpoints/<YYYYmmdd-HHMMSS>-<label>.als (or
+    checkpoint_dir), and checks the copy's sha256 against the saved file.
+
+    Parameters:
+    - label: a short name for this state, e.g. "before-reamp".
+    - set_path / allow_ui_automation: as for save_set.
+    - checkpoint_dir: absolute folder for the copy instead of Checkpoints/.
+
+    The checkpoint references the project's samples by path; it is a set
+    file, not a self-contained archive.
+    """
+    result = _deps(ctx).service.checkpoint_set(
+        label, set_path=set_path, allow_ui_automation=allow_ui_automation,
+        checkpoint_dir=checkpoint_dir)
+    return presenters.checkpoint_set(result)
 
 
 @tool

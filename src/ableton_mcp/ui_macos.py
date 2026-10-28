@@ -9,8 +9,12 @@ module asks them, in subprocesses: ``osascript -l JavaScript`` (JXA) and
 guardrail tests' import checks still hold.
 
 Everything goes through one injectable ``runner`` so tests replay recorded
-outputs and never touch a real UI. Reads here are passive (titles, roles,
-an idle counter); nothing in this module clicks, types or focuses.
+outputs and never touch a real UI. The reads (titles, roles, an idle
+counter, Spotlight lookups) are passive. The few ACTIONS — bring Live to
+the front, click one named menu item, press Escape, give focus back, take
+an evidence screenshot — live in clearly separate methods, and callers only
+reach them behind an explicit ``allow_ui_automation`` (services.py); they
+address menu items by title, never by position or screen coordinates.
 
 Off macOS, or without the Accessibility permission, every read returns
 ``None`` — "unknown", which callers must treat as unknown, never as "fine".
@@ -19,9 +23,11 @@ Off macOS, or without the Accessibility permission, every read returns
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import sys
+import time
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 # (returncode, stdout, stderr)
@@ -83,13 +89,76 @@ def parse_main_title(title: str) -> Dict[str, Any]:
             "project": m.group("project"), "unsaved": bool(m.group("star"))}
 
 
+_JXA_CLICK_MENU = """
+const se = Application("System Events");
+const ps = se.processes.whose({name: {_beginsWith: %(proc)s}});
+if (ps.length === 0) { JSON.stringify({ok: false, error: "live_not_running"}); } else {
+  const p = ps[0];
+  const want = %(want)s, exclude = %(exclude)s, menuName = %(menu)s;
+  let menu = null;
+  try { menu = p.menuBars[0].menuBarItems.byName(menuName).menus[0]; } catch (e) {}
+  if (menu === null) { JSON.stringify({ok: false, error: "menu_not_found", menu: menuName}); } else {
+    const names = [];
+    let target = null;
+    const items = menu.menuItems();
+    for (let i = 0; i < items.length; i++) {
+      let n = null;
+      try { n = items[i].name(); } catch (e) {}
+      if (n === null || n === "") continue;
+      names.push(n);
+      // Normalise the ellipsis: Live's titles end in U+2026, scripts type "...".
+      const norm = n.replace(/\u2026/g, "...");
+      if (target === null && norm.indexOf(want) === 0
+          && !exclude.some(function (x) { return norm.indexOf(x) === 0; })) {
+        target = items[i];
+      }
+    }
+    if (target === null) {
+      JSON.stringify({ok: false, error: "item_not_found", items: names});
+    } else if (!target.enabled()) {
+      JSON.stringify({ok: false, error: "item_disabled", item: target.name()});
+    } else {
+      p.frontmost = true;
+      delay(0.3);
+      target.click();
+      JSON.stringify({ok: true, clicked: target.name()});
+    }
+  }
+}
+"""
+
+_JXA_FRONTMOST = """
+const se = Application("System Events");
+const f = se.processes.whose({frontmost: true});
+JSON.stringify(f.length ? f[0].name() : null);
+"""
+
+_JXA_ACTIVATE = """
+const se = Application("System Events");
+const ps = se.processes.whose({name: %s});
+if (ps.length) { ps[0].frontmost = true; JSON.stringify(true); } else { JSON.stringify(false); }
+"""
+
+_JXA_ESCAPE = """
+const se = Application("System Events");
+const ps = se.processes.whose({name: {_beginsWith: %s}});
+if (ps.length && ps[0].frontmost()) { se.keyCode(53); JSON.stringify(true); }
+else { JSON.stringify(false); }
+"""
+
+
 class MacUI:
-    """Passive macOS reads about Live. ``available`` is False off darwin."""
+    """macOS reads about Live, and the few title-addressed actions.
+    ``available`` is False off darwin."""
 
     def __init__(self, runner: Optional[Runner] = None,
-                 platform: str = sys.platform) -> None:
+                 platform: str = sys.platform,
+                 sleep: Callable[[float], None] = time.sleep,
+                 clock: Callable[[], float] = time.monotonic) -> None:
         self._run = runner or _default_runner
         self.available = platform == "darwin"
+        self.sleep = sleep
+        self.clock = clock
 
     def _jxa(self, source: str, timeout: float = 15.0) -> Optional[Any]:
         if not self.available:
@@ -128,6 +197,79 @@ class MacUI:
             return None
         m = re.search(r'"HIDIdleTime"\s*=\s*(\d+)', out)
         return round(int(m.group(1)) / 1e9, 1) if m else None
+
+
+    # ── Spotlight (passive) ──────────────────────────────────────────────
+
+    def find_set_paths(self, set_name: str, project: Optional[str] = None,
+                       limit: int = 20) -> Optional[List[str]]:
+        """Absolute paths of ``<set_name>.als`` files Spotlight knows, the
+        ones inside a folder named ``project`` first. None if it cannot ask.
+
+        Live's API has no Song.file_path, so the window title (set and
+        project name) plus the local Spotlight index is how the server finds
+        the file it must check the mtime of. Backup/ copies are excluded."""
+        if not self.available or not set_name:
+            return None
+        query = 'kMDItemFSName == "%s.als"' % set_name.replace('"', '\\"')
+        code, out, _err = self._run(["mdfind", query], 15.0)
+        if code != 0:
+            return None
+        paths = [line.strip() for line in out.splitlines() if line.strip()]
+        paths = [p for p in paths
+                 if os.path.basename(os.path.dirname(p)) != "Backup"]
+        if project:
+            paths.sort(key=lambda p: os.path.basename(os.path.dirname(p)) != project)
+        return paths[:limit]
+
+    # ── actions (callers gate these behind allow_ui_automation) ──────────
+
+    def frontmost_app(self) -> Optional[str]:
+        data = self._jxa(_JXA_FRONTMOST)
+        return data if isinstance(data, str) else None
+
+    def activate(self, process_name: str) -> bool:
+        return self._jxa(_JXA_ACTIVATE % json.dumps(process_name)) is True
+
+    def click_menu_item(self, menu: str, prefix: str,
+                        exclude: Sequence[str] = ()) -> Dict[str, Any]:
+        """Bring Live to the front and click the first item of ``menu`` whose
+        title starts with ``prefix`` (U+2026 compared as "...") and with none
+        of ``exclude``. Refuses — clicking nothing — when the item is missing
+        or disabled, reporting the titles that were there."""
+        if not self.available:
+            return {"ok": False, "error": "not_macos"}
+        data = self._jxa(_JXA_CLICK_MENU % {
+            "proc": json.dumps(LIVE_PROCESS_PREFIX), "menu": json.dumps(menu),
+            "want": json.dumps(prefix), "exclude": json.dumps(list(exclude)),
+        }, timeout=20.0)
+        if not isinstance(data, dict):
+            return {"ok": False, "error": "osascript_failed"}
+        return data
+
+    def press_escape(self) -> bool:
+        """Escape, only while Live is frontmost (so it can never land in
+        whatever the user switched to)."""
+        return self._jxa(_JXA_ESCAPE % json.dumps(LIVE_PROCESS_PREFIX)) is True
+
+    def screenshot(self, path: str) -> Optional[str]:
+        """Full-screen evidence PNG at ``path`` (silent, no shutter sound)."""
+        if not self.available:
+            return None
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        code, _out, _err = self._run(["screencapture", "-x", "-t", "png", path], 15.0)
+        return path if code == 0 and os.path.exists(path) else None
+
+    def wait_for(self, predicate: Callable[[], Any], timeout_s: float,
+                 interval_s: float = 0.5) -> Any:
+        """Poll ``predicate`` until it returns something truthy or the time
+        runs out; returns the last value either way."""
+        deadline = self.clock() + timeout_s
+        value = predicate()
+        while not value and self.clock() < deadline:
+            self.sleep(interval_s)
+            value = predicate()
+        return value
 
 
 def summarize_windows(data: Optional[Dict[str, Any]]) -> Dict[str, Any]:

@@ -58,8 +58,9 @@ def acquire_live_lock(result: Dict[str, Any]) -> str:
 def release_live_lock(result: Dict[str, Any]) -> str:
     if not result.get("released"):
         return "No Live lock was held; nothing to release."
+    saved = " (saved first)" if (result.get("save") or {}).get("saved") else ""
     return (f"Released the Live lock; the set is saved at "
-            f"{result.get('saved_set')}.")
+            f"{result.get('saved_set')}{saved}.")
 
 
 _UNSAVED_PROBLEMS = {
@@ -98,6 +99,9 @@ def lock_refusal(e: Any) -> str:
         problem = _UNSAVED_PROBLEMS.get(d.get("problem"), d.get("problem"))
         return (f"Refused: {problem}. Live's windows: {d.get('live_windows')}. "
                 f"The lock stays held.")
+    if reason == "save_failed":
+        return ("Not released — the save failed, so the lock stays held. "
+                + save_set(d.get("save") or {}))
     if reason == "disabled":
         return "The Live lock is not configured in this server process."
     return f"Refused by the Live lock: {reason}"
@@ -271,11 +275,67 @@ def set_track_send(result: Dict[str, Any], send_index: int) -> str:
             f"{result.get('display_value') or result.get('value')}")
 
 
+_SAVE_ERRORS = {
+    "ui_unreadable": "Live's windows could not be read (is Live running, and does this process have the Accessibility permission?)",
+    "modal_open": "a dialog is open in Live",
+    "save_panel_opened": "Live opened a Save panel, so this set has never been saved (Untitled); the panel was cancelled. Save it once by hand, or open a saved set",
+    "not_confirmed": "the menu item was clicked but the save was not confirmed in time (title still unsaved, or the .als did not change)",
+    "menu_item_not_found": "File > Save Live Set was not found in Live's menu",
+    "menu_item_disabled": "File > Save Live Set is disabled",
+    "menu_live_not_running": "Live is not running",
+}
+
+
+def _save_detail(result: Dict[str, Any]) -> str:
+    v = result.get("verified") or {}
+    bits = []
+    if v.get("set_path"):
+        bits.append(f"file {v.get('set_path')}"
+                    + (" (modified time advanced)" if v.get("mtime_advanced") else ""))
+    elif v.get("set_path_candidates"):
+        bits.append(f"file not identified; candidates: {v.get('set_path_candidates')}")
+    if v.get("unsaved_after") is False:
+        bits.append("title shows no unsaved changes")
+    return "; ".join(bits)
+
+
 def save_set(result: Dict[str, Any]) -> str:
     if result.get("saved"):
-        return f"Saved the Live Set via {result.get('method')}"
-    return ("Could NOT save — this Live build exposes no callable save through the "
-            f"Python API. Tried: {result.get('attempts')}. The set must be saved from Live's UI.")
+        detail = _save_detail(result)
+        return (f"Saved the Live Set via {result.get('method')}"
+                + (f" — {detail}" if detail else ""))
+    if result.get("ui_path") in (None, "not_allowed", "not_macos"):
+        tail = {
+            "not_allowed": " Pass allow_ui_automation=true (or run the server with "
+                           "ABLETON_MCP_ALLOW_UI=1) to save through Live's File menu.",
+            "not_macos": " The File-menu fallback needs macOS.",
+        }.get(result.get("ui_path"), " The set must be saved from Live's UI.")
+        return ("Could NOT save — this Live build exposes no callable save through the "
+                f"Python API. Tried: {result.get('attempts')}.{tail}")
+    error = result.get("error")
+    why = _SAVE_ERRORS.get(error, error)
+    if error == "modal_open":
+        why += f" ({result.get('modal_dialog')!r}); close it first"
+    menu = result.get("menu") or {}
+    if menu.get("items"):
+        why += f". File menu items: {menu.get('items')}"
+    detail = _save_detail(result)
+    return f"Could NOT save: {why}." + (f" ({detail})" if detail else "")
+
+
+def checkpoint_set(result: Dict[str, Any]) -> str:
+    if result.get("checkpointed"):
+        return (f"Checkpoint saved: {result.get('checkpoint_path')} "
+                f"({result.get('bytes')} bytes, sha256 {str(result.get('sha256'))[:12]}…), "
+                f"a verified copy of {result.get('set_path')}")
+    error = result.get("error")
+    if error == "save_failed":
+        return "No checkpoint: " + save_set(result.get("save") or {})
+    if error == "set_path_unknown":
+        return ("Saved, but no checkpoint: the open set's .als could not be identified "
+                f"(candidates: {result.get('candidates')}). Pass set_path.")
+    return (f"Checkpoint copy at {result.get('checkpoint_path')} does NOT match the "
+            f"saved set; do not rely on it.")
 
 
 def create_return_track(result: Dict[str, Any]) -> str:
@@ -938,6 +998,7 @@ ERROR_PHRASES: Dict[str, str] = {
     "get_live_status": "getting Live status",
     "acquire_live_lock": "acquiring the Live lock",
     "release_live_lock": "releasing the Live lock",
+    "checkpoint_set": "checkpointing the set",
     "get_clip_notes": "getting clip notes",
     "get_session_snapshot": "getting session snapshot",
     "create_midi_track": "creating MIDI track",
