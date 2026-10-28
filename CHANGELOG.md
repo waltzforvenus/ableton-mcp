@@ -15,7 +15,7 @@ separately, and a script change means **re-run
   shipped additions, upstream ports, pending Live validation and planned work.
 - Corrected the README tool count and installation examples to use this fork.
 
-Ships Remote Script **1.19.0**. **Re-run `ableton-mcp-install-script` and
+Ships Remote Script **1.20.0**. **Re-run `ableton-mcp-install-script` and
 restart Live after upgrading** — the new commands live in the script half,
 and Live caches an already-imported script module, so re-selecting the
 control surface is not enough. This release is larger than usual on the
@@ -208,6 +208,19 @@ counts, is `docs/IMPROVEMENTS.md`.
   spellings with different values is refused rather than resolved.
 
 ### Fixed (user-facing)
+
+- **`get_session_snapshot` after opening another set** (Remote Script
+  **1.20.0** — re-run the installer). The script cached Live's Song once, at
+  load; after a set switch unscoped snapshots failed with Boost.Python's
+  "None.None(Song) did not match C++ signature: None(TPyHandle<ASong>)".
+  `self._song` now re-resolves through `ControlSurface.song()` on every
+  access. Independently, the snapshot reads each section (session, each
+  track, scenes, returns, master, cue points) in isolation: a failure there
+  becomes a `section_errors` entry (`{"section": "tracks[3]", "error":
+  "TypeError: ..."}`) and a stub for that track instead of failing the whole
+  call. Transport errors ("Could not connect to Ableton", "Connection to
+  Ableton lost") now end with a hint to call `get_live_status`, and that the
+  next call reconnects by itself.
 
 - `get_track_info` on a group track, and `get_session_snapshot` on any Set
   that contains one, no longer fail with "Master and Return Tracks have no

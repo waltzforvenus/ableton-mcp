@@ -1098,9 +1098,25 @@ ERROR_RENDERERS: Dict[str, Callable[[Exception], str]] = {
 }
 
 
+# Transport failures that usually mean Live is not answering *right now* —
+# closed, still starting, opening another set, or blocked by a dialog — not
+# that the call was wrong. Agents used to retry blindly or give up; the hint
+# names the one call that tells them which, and that no restart is needed
+# (the transport reconnects on the next call by itself).
+_UNREACHABLE_MARKERS = ("Could not connect to Ableton", "Connection to Ableton lost",
+                        "Not connected to Ableton")
+UNREACHABLE_HINT = (" (Live may be closed, starting up, opening a set or showing a "
+                    "dialog; get_live_status shows which. The next call reconnects "
+                    "automatically.)")
+
+
 def error_text(tool_name: str, e: Exception) -> str:
     """The exact string tool ``tool_name`` returns when ``e`` escapes it."""
     renderer = ERROR_RENDERERS.get(tool_name)
     if renderer is not None:
-        return renderer(e)
-    return f"Error {ERROR_PHRASES[tool_name]}: {e}"
+        text = renderer(e)
+    else:
+        text = f"Error {ERROR_PHRASES[tool_name]}: {e}"
+    if any(marker in str(e) for marker in _UNREACHABLE_MARKERS):
+        text += UNREACHABLE_HINT
+    return text
