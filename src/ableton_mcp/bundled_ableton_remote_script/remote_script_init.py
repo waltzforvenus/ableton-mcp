@@ -27,7 +27,7 @@ HOST = "127.0.0.1"
 
 # Bumped whenever the TCP command surface changes; the MCP server compares
 # this to EXPECTED_REMOTE_SCRIPT_VERSION.
-SCRIPT_VERSION = "1.15.0"
+SCRIPT_VERSION = "1.16.0"
 PROTOCOL_VERSION = 1
 
 # The trim eraser (see _trim_arrangement_clip): a temporary Session clip
@@ -48,6 +48,15 @@ TRIM_ERASER_WAV_SECONDS = 0.05
 # in a production session was 76 placements, so this leaves headroom without
 # letting a mistyped range block Live for minutes.
 MAX_STAMP_PLACEMENTS = 128
+
+# Device.class_name of a hosted plugin: "PluginDevice" is a VST/VST3,
+# "AuPluginDevice" an Audio Unit. Live exposes NOTHING of an unconfigured
+# VST3 or AU through Device.parameters — TAL-NoiseMaker, Dexed and the u-he
+# synths all list only "Device On" (verified on 12.4.3) — so the preset list
+# the LOM does expose on these classes (Live.PluginDevice.PluginDevice.presets
+# and the writable selected_preset_index) is the only way a script can change
+# what such a plugin sounds like. See _get_plugin_presets / _set_plugin_preset.
+PLUGIN_DEVICE_CLASS_NAMES = ("PluginDevice", "AuPluginDevice")
 
 # Wire-command dispatch table: every command _process_command accepts, in one
 # place. Each row is
@@ -85,6 +94,7 @@ COMMANDS = {
     "get_track_info":             ("_get_track_info",             False, None, True),
     "get_track_routing":          ("_get_track_routing",          False, None, True),
     "get_device_parameters":      ("_get_device_parameters",      False, None, True),
+    "get_plugin_presets":         ("_get_plugin_presets",         False, None, True),
     "get_arrangement_clips":      ("_get_arrangement_clips",      False, None, True),
     "get_clip_notes":             ("_get_clip_notes",             False, None, True),
     "get_session_snapshot":       ("_get_session_snapshot",       False, None, True),
@@ -110,6 +120,7 @@ COMMANDS = {
     "delete_device":              ("_delete_device",              True,  None, True),
     "set_device_parameter":       ("_set_device_parameter",       True,  None, True),
     "set_device_parameters":      ("_set_device_parameters",      True,  None, True),
+    "set_plugin_preset":          ("_set_plugin_preset",          True,  None, True),
     "set_track_volume":           ("_set_track_volume",           True,  None, True),
     "set_track_pan":              ("_set_track_pan",              True,  None, True),
     "set_track_mute":             ("_set_track_mute",             True,  None, True),
@@ -957,6 +968,222 @@ class AbletonMCP(ControlSurface):
             }
         except Exception as e:
             self.log_message("Error setting device parameters: " + str(e))
+            raise
+
+    # ── Plugin presets ────────────────────────────────────────────────────
+    # The one lever the LOM offers on a hosted VST3/AU whose parameters Live
+    # does not expose (see PLUGIN_DEVICE_CLASS_NAMES).
+
+    def _is_plugin_device(self, device):
+        """Is this a hosted VST/VST3/AU rather than one of Live's own devices?
+
+        class_name is the documented signal; the hasattr probe is the
+        fallback for a Live build that names the class differently. No
+        native device has a `presets` attribute, so its presence is as good
+        as the class name.
+        """
+        class_name = self._safe_attr(device, "class_name", None, "")
+        if class_name in PLUGIN_DEVICE_CLASS_NAMES:
+            return True
+        return hasattr(device, "presets")
+
+    def _plugin_preset_names(self, device):
+        """The plugin's preset names as a list — empty when it publishes none.
+
+        Live hands back a tuple of text; a plugin with no factory bank (or
+        a format that does not export its list) gives an empty tuple, and a
+        device that is not a plugin has no attribute at all. All three read
+        as [] here so every caller branches on one shape. Names are kept as
+        the text Live gave — no str() coercion, which on Live 10.1's Python
+        2 raises on a non-ASCII unicode name (the trap
+        _resolve_device_parameter documents).
+        """
+        try:
+            presets = getattr(device, "presets", None)
+            if presets is None:
+                return []
+            return [p if hasattr(p, "strip") else str(p) for p in presets]
+        except Exception:
+            return []
+
+    def _selected_preset(self, device, presets):
+        """(index, name) of the plugin's current selection, read defensively.
+
+        The name is None when the index falls outside the list — Live
+        reports -1 while nothing is selected.
+        """
+        index = self._safe_attr(device, "selected_preset_index", int, None)
+        name = None
+        if index is not None and 0 <= index < len(presets):
+            name = presets[index]
+        return index, name
+
+    def _preset_choices(self, presets, indices, limit=25):
+        """"3 'Init', 7 'Warm Pad', ..." for an error message, capped so a
+        250-preset bank does not turn one refusal into a page."""
+        indices = list(indices)
+        shown = ", ".join("%d '%s'" % (i, presets[i]) for i in indices[:limit])
+        if len(indices) > limit:
+            shown += (", ... and %d more (get_plugin_presets lists them all)"
+                      % (len(indices) - limit))
+        return shown
+
+    def _get_plugin_presets(self, track_index=0, device_index=0, track_type="regular"):
+        """List a hosted plugin's factory presets and which one is selected.
+
+        Read-only, so it runs on the socket thread like
+        _get_device_parameters. A device that is not a plugin answers with
+        is_plugin=False and an empty list rather than an error: reading the
+        wrong device is a wrong answer, not a wrong edit, and the shape
+        tells the caller what it found.
+        """
+        try:
+            track, device = self._resolve_device(track_index, device_index, track_type)
+            is_plugin = self._is_plugin_device(device)
+            presets = self._plugin_preset_names(device) if is_plugin else []
+            if is_plugin:
+                selected_index, selected_name = self._selected_preset(device, presets)
+            else:
+                selected_index, selected_name = None, None
+            return {
+                "track_index": track_index,
+                "track_name": track.name,
+                "device_index": device_index,
+                "device": device.name,
+                "class_name": self._safe_attr(device, "class_name", None, ""),
+                "is_plugin": is_plugin,
+                "preset_count": len(presets),
+                "selected_preset_index": selected_index,
+                "selected_preset_name": selected_name,
+                "presets": presets,
+            }
+        except Exception as e:
+            self.log_message("Error getting plugin presets: " + str(e))
+            raise
+
+    def _resolve_plugin_preset(self, presets, preset_index=None, preset_name=None):
+        """The index to select, from an index, a name, or both agreeing.
+
+        Names match exactly first (case-insensitive, stripped), then as a
+        substring — but only when exactly one preset contains it. A
+        fragment that fits several is refused with the candidates listed,
+        never resolved to the first: plugin banks are full of "Pad 1" /
+        "Pad 12" / "Pad Warm" families where the first hit is the wrong one
+        as often as not, and a wrong preset is a wrong sound under a
+        success message.
+        """
+        count = len(presets)
+        index = None
+        if preset_index is not None:
+            if isinstance(preset_index, bool):
+                raise ValueError("preset_index must be an integer, not a bool")
+            index = int(preset_index)
+            if index < 0 or index >= count:
+                raise IndexError(
+                    "Preset index %d is out of range: the plugin has %d "
+                    "presets (0 to %d). Call get_plugin_presets for the list."
+                    % (index, count, count - 1))
+        if preset_name is not None and preset_name != "":
+            # No str() coercion on the text the wire handed us (see
+            # _plugin_preset_names).
+            wanted = preset_name if hasattr(preset_name, "strip") else str(preset_name)
+            wanted = wanted.strip().lower()
+            if not wanted:
+                raise ValueError(
+                    "preset_name is blank; give a preset name or a preset_index")
+            exact = [i for i, p in enumerate(presets)
+                     if p.strip().lower() == wanted]
+            if len(exact) == 1:
+                by_name = exact[0]
+            elif len(exact) > 1:
+                raise ValueError(
+                    "Preset name '%s' is ambiguous: %s share it. Pass "
+                    "preset_index to pick one."
+                    % (preset_name, self._preset_choices(presets, exact)))
+            else:
+                partial = [i for i, p in enumerate(presets)
+                           if wanted in p.strip().lower()]
+                if len(partial) == 1:
+                    by_name = partial[0]
+                elif len(partial) > 1:
+                    raise ValueError(
+                        "Preset name '%s' matches %d presets: %s. Give more "
+                        "of the name, or pass preset_index."
+                        % (preset_name, len(partial),
+                           self._preset_choices(presets, partial)))
+                else:
+                    raise ValueError(
+                        "No preset named '%s' (nor one containing it). The "
+                        "plugin has %d presets: %s"
+                        % (preset_name, count,
+                           self._preset_choices(presets, range(count))))
+            if index is not None and index != by_name:
+                raise ValueError(
+                    "preset_index=%d is '%s' but preset_name '%s' is index %d; "
+                    "the two disagree, so nothing was changed. Pass one of them."
+                    % (index, presets[index], preset_name, by_name))
+            index = by_name
+        if index is None:
+            raise ValueError(
+                "Give preset_index or preset_name to select (the plugin has "
+                "%d presets; call get_plugin_presets for the list)." % count)
+        return index
+
+    def _set_plugin_preset(self, track_index=0, device_index=0, preset_index=None,
+                           preset_name=None, track_type="regular",
+                           expect_track_name=None):
+        """Select a hosted plugin's factory preset, then read back what stuck.
+
+        The write is selected_preset_index — the only lever the LOM offers
+        on a VST3 whose parameters Live does not expose. The read-back is
+        the same tick as the write, so verified=False means "Live did not
+        report the new index yet", which a stale in-tick read produces as
+        readily as a select the plugin refused (the same dead end
+        _set_current_song_time measured). No in-tick retry: a re-read in
+        the same tick returns the same stale value by construction, so
+        only the caller's next call — a later tick — can confirm.
+        """
+        try:
+            track, device = self._resolve_device(
+                track_index, device_index, track_type,
+                expect_track_name=expect_track_name)
+            if not self._is_plugin_device(device):
+                raise ValueError(
+                    "Device %d on track %d is '%s' (%s), not a hosted "
+                    "VST/VST3/AU plugin, and Live's own devices have no preset "
+                    "list; nothing was changed. Use set_device_parameters on it "
+                    "instead."
+                    % (device_index, track_index, device.name,
+                       self._safe_attr(device, "class_name", None, "unknown class")))
+            presets = self._plugin_preset_names(device)
+            if not presets:
+                raise ValueError(
+                    "Plugin '%s' publishes no presets through Live's API (its "
+                    "preset list is empty), so there is nothing to select; "
+                    "nothing was changed. Choose the sound in the plugin's own "
+                    "window instead." % device.name)
+            previous_index, previous_name = self._selected_preset(device, presets)
+            target = self._resolve_plugin_preset(presets, preset_index, preset_name)
+
+            device.selected_preset_index = target
+
+            selected_index, selected_name = self._selected_preset(device, presets)
+            return {
+                "track_index": track_index,
+                "track_name": track.name,
+                "device_index": device_index,
+                "device": device.name,
+                "preset_count": len(presets),
+                "previous_index": previous_index,
+                "previous_name": previous_name,
+                "requested_index": target,
+                "requested_name": presets[target],
+                "selected_index": selected_index,
+                "selected_name": selected_name,
+                "verified": selected_index == target,
+            }
+        except Exception as e:
+            self.log_message("Error setting plugin preset: " + str(e))
             raise
 
     def _delete_device(self, track_index=0, device_index=0, track_type="regular",

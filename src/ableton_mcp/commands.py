@@ -62,6 +62,11 @@ COMMANDS: dict[str, CommandSpec] = {
     # 1.7.0 scripts advertise the device-parameter pair but serve broken
     # handlers (duplicate class-body definitions), hence the version floor.
     "get_device_parameters": CommandSpec(gated=True, min_script_version="1.8.0"),
+    # New in 1.16.0, and deliberately WITHOUT a version floor: a brand-new
+    # command is never advertised by an older script, so the ordinary
+    # capability gate already turns it into the installer message. A floor
+    # exists only for names an old script advertises but serves wrongly.
+    "get_plugin_presets": CommandSpec(gated=True),
     "get_arrangement_clips": CommandSpec(gated=True),
     # 1.15.0 taught it to read arrangement clips (arrangement=True). An
     # older script advertises the name but its handler has no such keyword,
@@ -123,6 +128,8 @@ COMMANDS: dict[str, CommandSpec] = {
         modifying=True, gated=True, min_script_version="1.8.0"
     ),
     "set_device_parameters": CommandSpec(modifying=True, gated=True),
+    # 1.16.0; no floor, same reasoning as get_plugin_presets above.
+    "set_plugin_preset": CommandSpec(modifying=True, gated=True),
     "set_track_volume": CommandSpec(modifying=True, gated=True),
     "set_track_pan": CommandSpec(modifying=True, gated=True),
     "set_track_mute": CommandSpec(modifying=True, gated=True),

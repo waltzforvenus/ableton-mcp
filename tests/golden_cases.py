@@ -1,4 +1,4 @@
-"""Golden-case definitions for all 55 MCP tools (docs/REFACTOR_PLAN.md
+"""Golden-case definitions for all 57 MCP tools (docs/REFACTOR_PLAN.md
 section 5 Level 1, section 6 PR3).
 
 Each case names a tool, the arguments to call it with, and the exact ordered
@@ -466,6 +466,88 @@ BASE_CASES = [
                   "value": 1.0, "display_value": "100 %", "clamped": True,
                   "min": 0.0, "max": 1.0, "found": True},
              ]}),
+    ]),
+
+    # ── get_plugin_presets ────────────────────────────────────────────────
+    # A hosted VST3 whose parameters Live does not expose: the preset list
+    # is the whole interface, so the JSON goes through as-is.
+    _case("get_plugin_presets", "success",
+          {"track_index": 0, "device_index": 1}, [
+        _ok("get_plugin_presets",
+            {"track_index": 0, "device_index": 1, "track_type": "regular"},
+            {"track_index": 0, "track_name": "Lead", "device_index": 1,
+             "device": "TAL-NoiseMaker", "class_name": "PluginDevice",
+             "is_plugin": True, "preset_count": 3,
+             "selected_preset_index": 0, "selected_preset_name": "Init",
+             "presets": ["Init", "Warm Pad", "Bass Growl"]}),
+    ]),
+    # One of Live's own devices, on a return track: answered rather than
+    # refused, with is_plugin=false and nothing to select.
+    _case("get_plugin_presets", "success_not_a_plugin",
+          {"track_index": 0, "device_index": 0, "track_type": "return"}, [
+        _ok("get_plugin_presets",
+            {"track_index": 0, "device_index": 0, "track_type": "return"},
+            {"track_index": 0, "track_name": "A Reverb", "device_index": 0,
+             "device": "Reverb", "class_name": "Reverb", "is_plugin": False,
+             "preset_count": 0, "selected_preset_index": None,
+             "selected_preset_name": None, "presets": []}),
+    ]),
+
+    # ── set_plugin_preset ─────────────────────────────────────────────────
+    # Only the criterion given goes on the wire (presence-driven, like
+    # jump_to_locator); the reply names what Live read back.
+    _case("set_plugin_preset", "success_by_index",
+          {"track_index": 0, "device_index": 1, "preset_index": 2}, [
+        _ok("set_plugin_preset",
+            {"track_index": 0, "device_index": 1, "track_type": "regular",
+             "preset_index": 2},
+            {"track_index": 0, "track_name": "Lead", "device_index": 1,
+             "device": "TAL-NoiseMaker", "preset_count": 3,
+             "previous_index": 0, "previous_name": "Init",
+             "requested_index": 2, "requested_name": "Bass Growl",
+             "selected_index": 2, "selected_name": "Bass Growl",
+             "verified": True}),
+    ]),
+    _case("set_plugin_preset", "success_by_name",
+          {"track_index": 0, "device_index": 1, "preset_name": "warm"}, [
+        _ok("set_plugin_preset",
+            {"track_index": 0, "device_index": 1, "track_type": "regular",
+             "preset_name": "warm"},
+            {"track_index": 0, "track_name": "Lead", "device_index": 1,
+             "device": "TAL-NoiseMaker", "preset_count": 3,
+             "previous_index": 0, "previous_name": "Init",
+             "requested_index": 1, "requested_name": "Warm Pad",
+             "selected_index": 1, "selected_name": "Warm Pad",
+             "verified": True}),
+    ]),
+    # Live reports -1 while nothing is selected: the previous label has no
+    # name to quote. The guard rides along on the wire when given.
+    _case("set_plugin_preset", "success_from_no_selection",
+          {"track_index": 0, "device_index": 1, "preset_index": 0,
+           "expect_track_name": "Lead"}, [
+        _ok("set_plugin_preset",
+            {"track_index": 0, "device_index": 1, "track_type": "regular",
+             "preset_index": 0, "expect_track_name": "Lead"},
+            {"track_index": 0, "track_name": "Lead", "device_index": 1,
+             "device": "TAL-NoiseMaker", "preset_count": 3,
+             "previous_index": -1, "previous_name": None,
+             "requested_index": 0, "requested_name": "Init",
+             "selected_index": 0, "selected_name": "Init",
+             "verified": True}),
+    ]),
+    # The write returned but the same-tick read-back still shows the old
+    # index: reported as unverified, never retried.
+    _case("set_plugin_preset", "not_verified",
+          {"track_index": 0, "device_index": 1, "preset_index": 2}, [
+        _ok("set_plugin_preset",
+            {"track_index": 0, "device_index": 1, "track_type": "regular",
+             "preset_index": 2},
+            {"track_index": 0, "track_name": "Lead", "device_index": 1,
+             "device": "TAL-NoiseMaker", "preset_count": 3,
+             "previous_index": 0, "previous_name": "Init",
+             "requested_index": 2, "requested_name": "Bass Growl",
+             "selected_index": 0, "selected_name": "Init",
+             "verified": False}),
     ]),
 
     # ── delete_device ─────────────────────────────────────────────────────

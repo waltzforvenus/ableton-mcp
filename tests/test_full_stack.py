@@ -29,7 +29,7 @@ from ableton_mcp.app import Deps, build_app
 from ableton_mcp.commands import COMMANDS
 from ableton_mcp.handshake import ScriptHandshake
 from ableton_mcp.services import AbletonService
-from fake_ableton import make_harness
+from fake_ableton import FakePluginDevice, make_harness
 
 
 class FakeAbletonClient:
@@ -105,7 +105,7 @@ def test_in_memory_session_matches_direct_calls():
     assert payload["note_count"] == 3
 
 
-def test_in_memory_session_lists_all_55_tools():
+def test_in_memory_session_lists_all_57_tools():
     deps, _harness = _make_deps()
     app = build_app(deps=deps)
 
@@ -114,7 +114,7 @@ def test_in_memory_session_lists_all_55_tools():
             return await session.list_tools()
 
     listed = asyncio.run(run())
-    assert len(listed.tools) == 55
+    assert len(listed.tools) == 57
 
 
 # --------------------------------------------------------------------------
@@ -193,6 +193,44 @@ def test_scenario_set_device_parameter_by_name_reports_clamping():
     # The fake parameter was really assigned the clamped maximum.
     param = harness.song.tracks[0].devices[0].parameters[1]
     assert param.value == 127.0
+
+
+def test_scenario_select_a_plugin_preset_by_name():
+    """The plugin-preset pair end to end. The fake hosts a VST3 whose only
+    parameter is "Device On" — exactly what Live shows for an unconfigured
+    TAL-NoiseMaker — so the preset list is the whole interface:
+    get_plugin_presets lists the bank and set_plugin_preset by an
+    unambiguous fragment lands and verifies, through the real gate, the
+    real dispatch and the real handlers."""
+    deps, harness = _make_deps()
+    ctx = _ctx(deps)
+    track = harness.song.tracks[0]
+    track.devices.append(FakePluginDevice(
+        "TAL-NoiseMaker", presets=["Init", "Warm Pad", "Bass Growl"]))
+
+    listed = json.loads(tools.get_plugin_presets(ctx, track_index=0,
+                                                 device_index=1))
+    assert listed["is_plugin"] is True
+    assert listed["presets"] == ["Init", "Warm Pad", "Bass Growl"]
+    assert listed["selected_preset_index"] == 0
+    # The parameter surface really is just the switch.
+    params = json.loads(tools.get_device_parameters(ctx, track_index=0,
+                                                    device_index=1))
+    assert [p["name"] for p in params["parameters"]] == ["Device On"]
+
+    out = tools.set_plugin_preset(ctx, track_index=0, device_index=1,
+                                  preset_name="growl")
+    assert out == ("Selected preset 2 'Bass Growl' on TAL-NoiseMaker "
+                   "(track 0 'Lead'); was 0 'Init'")
+    assert track.devices[1].selected_preset_index == 2
+
+    # A refusal comes through the real envelope with the script's wording.
+    out = tools.set_plugin_preset(ctx, track_index=0, device_index=0,
+                                  preset_index=0)
+    assert out.startswith(
+        "Error setting plugin preset: Communication error with Ableton: "
+        "Device 0 on track 0 is 'Operator' (Operator), not a hosted "
+        "VST/VST3/AU plugin")
 
 
 def test_scenario_error_text_comes_through_the_real_envelope():

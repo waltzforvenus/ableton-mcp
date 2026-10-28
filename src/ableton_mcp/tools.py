@@ -667,6 +667,85 @@ def set_device_parameters(ctx: Context, track_index: int, device_index: int,
 
 
 @tool
+def get_plugin_presets(ctx: Context, track_index: int, device_index: int,
+                       track_type: str = "regular") -> str:
+    """
+    List a hosted VST/VST3/AU plugin's factory presets and which one is
+    selected — the way in to a third-party plugin that get_device_parameters
+    shows as nothing but "Device On".
+
+    Live exposes no parameters of an unconfigured VST3 or AU through its API
+    (TAL-NoiseMaker, Dexed and the u-he synths all list only "Device On"), so
+    set_device_parameter cannot reach them. What Live does expose is the
+    plugin's preset list, and selecting a preset is the one way to change
+    what such a plugin sounds like from here. Call this first, then
+    set_plugin_preset by index or by name.
+
+    The reply carries is_plugin, the presets in index order (that index is
+    what set_plugin_preset takes), preset_count, and the current
+    selected_preset_index with its name. Some plugins publish no presets at
+    all through Live — an empty list on a device that is_plugin — and those
+    can only be dialled in from the plugin's own window. On one of Live's
+    own devices is_plugin is false and the list is empty; use
+    get_device_parameters for those.
+
+    Parameters:
+    - track_index: The index of the track containing the device
+    - device_index: The index of the device in that track's chain (0 = first)
+    - track_type: "regular" (default) or "return"
+    """
+    result = _deps(ctx).service.get_plugin_presets(track_index, device_index,
+                                                   track_type)
+    return presenters.get_plugin_presets(result)
+
+
+@tool
+def set_plugin_preset(ctx: Context, track_index: int, device_index: int,
+                      preset_index: Optional[int] = None,
+                      preset_name: Optional[str] = None,
+                      track_type: str = "regular",
+                      expect_track_name: Optional[str] = None) -> str:
+    """
+    Select a factory preset on a hosted VST/VST3/AU plugin, by index or by
+    name — the only way to change the sound of a third-party plugin whose
+    parameters Live does not expose (see get_plugin_presets).
+
+    Give preset_index (from get_plugin_presets' list) or preset_name. A name
+    matches exactly first, case-insensitively; failing that, as a fragment —
+    but only when exactly one preset contains it. A fragment that fits
+    several presets is refused with the candidates listed rather than
+    resolved to the first, because "Pad" in a bank of forty pads is not a
+    choice. Giving both index and name is fine when they agree, and refused
+    when they do not.
+
+    Refused, with nothing changed: a device that is not a plugin (Live's own
+    devices have no preset list — use set_device_parameters), a plugin that
+    publishes no presets, an index out of range, an ambiguous or unknown
+    name.
+
+    The reply says what Live reads back after the write and whether that
+    matched (verified). A read in the same tick as the write can lag, so an
+    unverified select is not proof of failure — re-read with
+    get_plugin_presets before selecting again.
+
+    Parameters:
+    - track_index: The index of the track containing the device
+    - device_index: The index of the device in that track's chain (0 = first)
+    - preset_index: The preset's position in get_plugin_presets' list (0 = first)
+    - preset_name: The preset's name, exact or an unambiguous fragment
+    - track_type: "regular" (default) or "return"
+    - expect_track_name: Optional safety net — refuse and change nothing
+      unless the track at track_index is really named this. Track indices
+      renumber whenever a track is added or deleted, and an index that is
+      still in range but now points elsewhere fails silently otherwise
+    """
+    result = _deps(ctx).service.set_plugin_preset(
+        track_index, device_index, preset_index, preset_name, track_type,
+        expect_track_name)
+    return presenters.set_plugin_preset(result)
+
+
+@tool
 def delete_device(ctx: Context, track_index: int, device_index: int,
                   track_type: str = "regular",
                   expect_track_name: Optional[str] = None) -> str:

@@ -1,0 +1,88 @@
+{
+  "cases": [
+    {
+      "args": {
+        "device_index": 1,
+        "track_index": 0
+      },
+      "expect": "{\n  \"class_name\": \"PluginDevice\",\n  \"device\": \"TAL-NoiseMaker\",\n  \"device_index\": 1,\n  \"is_plugin\": true,\n  \"preset_count\": 3,\n  \"presets\": [\n    \"Init\",\n    \"Warm Pad\",\n    \"Bass Growl\"\n  ],\n  \"selected_preset_index\": 0,\n  \"selected_preset_name\": \"Init\",\n  \"track_index\": 0,\n  \"track_name\": \"Lead\"\n}",
+      "name": "success",
+      "wire": [
+        {
+          "command": "get_plugin_presets",
+          "params": {
+            "device_index": 1,
+            "track_index": 0,
+            "track_type": "regular"
+          },
+          "response": {
+            "class_name": "PluginDevice",
+            "device": "TAL-NoiseMaker",
+            "device_index": 1,
+            "is_plugin": true,
+            "preset_count": 3,
+            "presets": [
+              "Init",
+              "Warm Pad",
+              "Bass Growl"
+            ],
+            "selected_preset_index": 0,
+            "selected_preset_name": "Init",
+            "track_index": 0,
+            "track_name": "Lead"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "device_index": 0,
+        "track_index": 0,
+        "track_type": "return"
+      },
+      "expect": "{\n  \"class_name\": \"Reverb\",\n  \"device\": \"Reverb\",\n  \"device_index\": 0,\n  \"is_plugin\": false,\n  \"preset_count\": 0,\n  \"presets\": [],\n  \"selected_preset_index\": null,\n  \"selected_preset_name\": null,\n  \"track_index\": 0,\n  \"track_name\": \"A Reverb\"\n}",
+      "name": "success_not_a_plugin",
+      "wire": [
+        {
+          "command": "get_plugin_presets",
+          "params": {
+            "device_index": 0,
+            "track_index": 0,
+            "track_type": "return"
+          },
+          "response": {
+            "class_name": "Reverb",
+            "device": "Reverb",
+            "device_index": 0,
+            "is_plugin": false,
+            "preset_count": 0,
+            "presets": [],
+            "selected_preset_index": null,
+            "selected_preset_name": null,
+            "track_index": 0,
+            "track_name": "A Reverb"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "device_index": 1,
+        "track_index": 0
+      },
+      "expect": "Error getting plugin presets: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "get_plugin_presets",
+          "params": {
+            "device_index": 1,
+            "track_index": 0,
+            "track_type": "regular"
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

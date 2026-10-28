@@ -21,6 +21,7 @@ get_browser_items_at_path
 get_browser_tree
 get_clip_notes
 get_device_parameters
+get_plugin_presets
 get_remote_script_info
 get_session_info
 get_session_snapshot
@@ -39,6 +40,7 @@ set_clip_warp
 set_count_in
 set_device_parameter
 set_device_parameters
+set_plugin_preset
 set_tempo
 set_track_arm
 set_track_monitoring
