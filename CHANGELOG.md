@@ -155,6 +155,12 @@ counts, is `docs/IMPROVEMENTS.md`.
   their traceback. From upstream PR #141 (open), adapted: its
   `set_device_parameter` range check was not taken, since this fork's
   handler already clamps into range.
+- The device and mixer tools now say in their own descriptions that
+  `track_type="master"` reaches the master track (`track_index` ignored),
+  so the model knows it can put a limiter on the master bus. The Remote
+  Script has resolved `"master"` / `"main"` all along; only the
+  descriptions said "regular or return". This covers what upstream PR
+  #129 (open, `track_index=-1` sentinel) adds, without a new convention.
 
 ### Changed (user-facing)
 

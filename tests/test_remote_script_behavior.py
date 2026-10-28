@@ -1593,6 +1593,63 @@ def test_load_browser_item_loads_onto_the_selected_track():
 
 
 # --------------------------------------------------------------------------
+# The master track via track_type="master" -- the fork's answer to upstream
+# #127/#129 (which used a track_index=-1 sentinel instead)
+# --------------------------------------------------------------------------
+
+def test_master_track_device_round_trip():
+    """Load an effect onto the master, read and set its parameters, then
+    delete it -- every device command reaches the master bus, and
+    track_index is ignored there."""
+    harness = make_harness()
+    master = harness.song.master_track
+
+    result = _ok(harness.process(_cmd("load_browser_item", track_index=99,
+                                      item_uri="query:AudioFx#Reverb",
+                                      track_type="master")))
+    assert result["track_name"] == "Master"
+    assert result["new_devices"] == ["Reverb"]
+    assert [d.name for d in master.devices] == ["Reverb"]
+    assert harness.app.browser.loads[0][1] is master
+
+    params = _ok(harness.process(_cmd("get_device_parameters", track_index=0,
+                                      device_index=0, track_type="master")))
+    assert "Dry/Wet" in [p["name"] for p in params["parameters"]]
+
+    _ok(harness.process(_cmd("set_device_parameter", track_index=0,
+                             device_index=0, parameter="Dry/Wet", value=0.2,
+                             track_type="master")))
+    dry_wet = [p for p in master.devices[0].parameters
+               if p.name == "Dry/Wet"][0]
+    assert dry_wet.value == 0.2
+
+    result = _ok(harness.process(_cmd("delete_device", track_index=0,
+                                      device_index=0, track_type="master")))
+    assert master.devices == []
+    # No regular track was touched along the way.
+    assert [d.name for d in harness.song.tracks[0].devices] == ["Operator"]
+
+
+def test_master_track_accepts_main_as_an_alias_and_mixes():
+    harness = make_harness()
+    _ok(harness.process(_cmd("set_track_volume", track_index=0, value=0.5,
+                             track_type="main")))
+    assert harness.song.master_track.mixer_device.volume.value == 0.5
+    assert harness.song.tracks[0].mixer_device.volume.value == 0.85
+
+
+def test_master_track_plugin_presets():
+    harness = make_harness()
+    harness.song.master_track.devices.append(FakePluginDevice(
+        "Limiter Plugin", presets=["Gentle", "Brickwall"]))
+    result = _ok(harness.process(_cmd("set_plugin_preset", track_index=0,
+                                      device_index=0, preset_name="brick",
+                                      track_type="master")))
+    assert result["selected_name"] == "Brickwall"
+    assert harness.song.master_track.devices[0].selected_preset_index == 1
+
+
+# --------------------------------------------------------------------------
 # Envelope contract
 # --------------------------------------------------------------------------
 
