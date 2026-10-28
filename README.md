@@ -191,7 +191,7 @@ available on `main` or in a released package.
 
 ### Added tools
 
-Upstream exposes 37 MCP tools; this fork exposes 69. The mixer, device control
+Upstream exposes 37 MCP tools; this fork exposes 71. The mixer, device control
 and routing tools are new here:
 
 | Area | Tools |
@@ -412,7 +412,7 @@ who holds it.
 
 ### Tool reference
 
-All 69 tools the server exposes. Tools marked **†** are added by this fork and
+All 71 tools the server exposes. Tools marked **†** are added by this fork and
 are not present upstream.
 
 #### Session & info
@@ -473,6 +473,8 @@ are not present upstream.
 | `set_plugin_preset` † | `track_index`, `device_index`, `preset_index`?, `preset_name`?, `track_type`? | Select a plugin's factory preset by index or by name (exact, then an unambiguous fragment); refuses ambiguous names, out-of-range indices and devices without presets |
 | `delete_device` † | `track_index`, `device_index`, `track_type`? | Remove a device from a track's chain |
 | `load_devices` † | `track_index`, `uris`, `track_type`?, `expect_track_name`? | Load several browser items onto one track in order (a whole chain); stops at the first failure and returns the final device list |
+| `load_device_from_path` † | `track_index`, `path`, `track_type`?, `expect_track_name`? | Load a preset file (.adv/.adg/.vstpreset/.aupreset) from the User Library or a Places folder by absolute path — how a configured plugin (amp capture, IR, patch) comes back exactly |
+| `get_plugin_state` † | `source_path`, `track`?, `plugin`?, `include_strings`? | Offline: decode hosted plugins' saved state from a .als/.adv/.adg/.vstpreset — size, sha256, file paths and readable strings — to verify which model/IR/patch a plugin holds |
 | `load_instrument_or_effect` | `track_index`, `uri`, `track_type`? | Load an instrument or effect onto a track using its URI |
 | `load_drum_kit` | `track_index`, `rack_uri`, `kit_path` | Load a drum rack and then load a specific drum kit into it |
 

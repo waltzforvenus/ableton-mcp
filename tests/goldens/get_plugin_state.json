@@ -1,0 +1,20 @@
+{
+  "cases": [
+    {
+      "args": {
+        "source_path": "/nonexistent/song.als"
+      },
+      "expect": "Error reading plugin state: no such file: '/nonexistent/song.als'",
+      "name": "missing_file",
+      "wire": []
+    },
+    {
+      "args": {
+        "source_path": "/nonexistent/song.als"
+      },
+      "expect": "Error reading plugin state: no such file: '/nonexistent/song.als'",
+      "name": "error",
+      "wire": []
+    }
+  ]
+}

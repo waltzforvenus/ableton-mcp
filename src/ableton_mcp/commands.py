@@ -176,6 +176,8 @@ COMMANDS: dict[str, CommandSpec] = {
     # script dispatches it (advertised only from 1.8.0), so it sits in the
     # LEGACY floor and stays ungated like the rest of the floor.
     "load_browser_item": CommandSpec(modifying=True),
+    # 1.22.0; a new name, so the capability gate alone answers old scripts.
+    "load_browser_item_by_path": CommandSpec(modifying=True, gated=True),
     # Dispatchable on the Remote Script but never sent by any current tool
     # (the tool of that name sends load_browser_item); kept for third-party
     # clients (plan §9) and for the cross-half modifying-set equality.

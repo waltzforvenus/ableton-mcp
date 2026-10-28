@@ -23,7 +23,7 @@ import shutil
 import time
 from typing import Any, Dict, List, Optional, Union
 
-from . import warp_vision
+from . import plugin_state, warp_vision
 from .commands import COMMANDS
 from .handshake import CapabilityError, ScriptHandshake
 from .live_lock import LiveLock, LockError
@@ -801,6 +801,28 @@ class AbletonService:
             params["track_type"] = track_type
         return self._send("load_browser_item",
                           _guarded(params, expect_track_name))
+
+    def load_device_from_path(self, track_index: int, path: str,
+                              track_type: str = "regular",
+                              expect_track_name: Optional[str] = None
+                              ) -> Dict[str, Any]:
+        return self._send("load_browser_item_by_path", _guarded({
+            "track_index": track_index,
+            "path": os.path.expanduser(path),
+            "track_type": track_type,
+        }, expect_track_name))
+
+    def get_plugin_state(self, source_path: str, track: Optional[str] = None,
+                         plugin: Optional[str] = None,
+                         include_strings: bool = True) -> Dict[str, Any]:
+        """Offline: decode hosted plugins' saved state from a .als/.adv/.adg
+        or .vstpreset (plugin_state.py). Never talks to Live."""
+        result = plugin_state.read_plugin_states(source_path, track, plugin)
+        if not include_strings:
+            for entry in result.get("plugins", []):
+                for state in (entry.get("states") or {}).values():
+                    state.pop("strings", None)
+        return result
 
     def load_devices(self, track_index: int, uris: List[str],
                      track_type: str = "regular",

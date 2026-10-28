@@ -390,6 +390,17 @@ def set_device_parameters(result: Dict[str, Any]) -> str:
     return head + body + tail
 
 
+def load_device_from_path(result: Dict[str, Any]) -> str:
+    new = result.get("new_devices") or []
+    added = f"added {', '.join(new)}" if new else "no new device appeared"
+    chain = ", ".join(f"{i} {n}" for i, n in enumerate(result.get("devices_after") or []))
+    return (f"Loaded '{result.get('item_name')}' from {result.get('path')} onto "
+            f"'{result.get('track_name')}': {added}. Devices now: {chain}")
+
+
+get_plugin_state = as_json
+
+
 def load_devices(result: Dict[str, Any]) -> str:
     chain = ", ".join(f"{d.get('index')} {d.get('name')}"
                       for d in result.get("devices") or [])
@@ -1024,6 +1035,8 @@ ERROR_PHRASES: Dict[str, str] = {
     "release_live_lock": "releasing the Live lock",
     "checkpoint_set": "checkpointing the set",
     "load_devices": "loading devices",
+    "load_device_from_path": "loading the preset file",
+    "get_plugin_state": "reading plugin state",
     "get_clip_notes": "getting clip notes",
     "get_session_snapshot": "getting session snapshot",
     "create_midi_track": "creating MIDI track",

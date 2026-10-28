@@ -1,0 +1,55 @@
+{
+  "cases": [
+    {
+      "args": {
+        "path": "/Users/x/Music/Ableton/User Library/Presets/Audio Effects/Amp A.adv",
+        "track_index": 1
+      },
+      "expect": "Loaded 'Amp A' from /Users/x/Music/Ableton/User Library/Presets/Audio Effects/Amp A.adv onto 'GTR': added Amp A. Devices now: 0 Tuner, 1 Amp A",
+      "name": "success",
+      "wire": [
+        {
+          "command": "load_browser_item_by_path",
+          "params": {
+            "path": "/Users/x/Music/Ableton/User Library/Presets/Audio Effects/Amp A.adv",
+            "track_index": 1,
+            "track_type": "regular"
+          },
+          "response": {
+            "devices_after": [
+              "Tuner",
+              "Amp A"
+            ],
+            "item_name": "Amp A",
+            "loaded": true,
+            "new_devices": [
+              "Amp A"
+            ],
+            "path": "/Users/x/Music/Ableton/User Library/Presets/Audio Effects/Amp A.adv",
+            "track_name": "GTR",
+            "uri": "userlibrary:Amp A"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "path": "/Users/x/Music/Ableton/User Library/Presets/Audio Effects/Amp A.adv",
+        "track_index": 1
+      },
+      "expect": "Error loading the preset file: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "load_browser_item_by_path",
+          "params": {
+            "path": "/Users/x/Music/Ableton/User Library/Presets/Audio Effects/Amp A.adv",
+            "track_index": 1,
+            "track_type": "regular"
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}
