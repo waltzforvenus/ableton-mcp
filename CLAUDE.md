@@ -11,7 +11,7 @@ An MCP server that drives Ableton Live. Two halves that must stay in step:
   - `app.py` — composition root: `Settings`, `Deps`, `build_app()`, `main()`.
     The only module that reads the environment, configures logging, or wires
     objects together.
-  - `tools.py` — **controllers**: all 64 `@tool` functions, kept in upstream's
+  - `tools.py` — **controllers**: all 67 `@tool` functions, kept in upstream's
     order; coerce arguments, call the service, hand the result to a presenter.
   - `services.py` — **model** (domain): `AbletonService`, one method per wire
     command; its `_send` consults the registry, so gating happens in one place.
@@ -107,7 +107,7 @@ one silently wins. The same trap exists inside the Remote Script's class
 body: Python keeps the later `def`, which is how the 2026-08 merge shipped
 broken device-parameter handlers while its commit message said ours were
 kept. Both are now caught mechanically — `tests/test_tool_surface.py` pins
-`list_tools()` against the `tests/data/tool_names.txt` snapshot (64 unique
+`list_tools()` against the `tests/data/tool_names.txt` snapshot (67 unique
 names), and `tests/test_remote_script_ast.py` rejects any method defined
 twice in any class. If you deliberately add or rename a tool, update the
 snapshot (and the README) in the same commit.
@@ -147,6 +147,10 @@ fails if you skip it (`docs/UPSTREAM.md` §3 is the long form):
    headroom over the script's queue timeout — `test_cross_half_contract`
    checks), and `gated=True` unless the command is in the
    `LEGACY_CAPABILITIES` floor (ungated non-floor rows are rejected).
+   A modifying row is also checked against the shared Live lock
+   (`live_lock.py`) by `_send`; leave `lock="write"` (the default) unless
+   the command must never stamp an edit (`"check"`, as `save_set`) or must
+   never be refused (`"exempt"`, as `stop_playback`).
 5. Remote Script: a `_your_command` handler with every parameter defaulted
    (dispatch calls `**params`), plus a `COMMANDS` table row
    `(method, main_thread, queue_timeout, advertise)`. State changes must run

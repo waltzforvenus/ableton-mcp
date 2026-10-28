@@ -35,7 +35,7 @@ EXPECTED_COMMAND_ERRORS = (ValueError, IndexError, KeyError)
 
 # Bumped whenever the TCP command surface changes; the MCP server compares
 # this to EXPECTED_REMOTE_SCRIPT_VERSION.
-SCRIPT_VERSION = "1.18.0"
+SCRIPT_VERSION = "1.19.0"
 PROTOCOL_VERSION = 1
 
 # The trim eraser (see _trim_arrangement_clip): a temporary Session clip
@@ -112,6 +112,7 @@ COMMANDS = {
     # Read-only commands — run directly on the socket client thread.
     "get_script_info":            ("_get_script_info",            False, None, True),
     "get_session_info":           ("_get_session_info",           False, None, True),
+    "get_live_status":            ("_get_live_status",            False, None, True),
     "get_track_info":             ("_get_track_info",             False, None, True),
     "get_track_routing":          ("_get_track_routing",          False, None, True),
     "get_device_parameters":      ("_get_device_parameters",      False, None, True),
@@ -631,6 +632,88 @@ class AbletonMCP(ControlSurface):
             return bool(track.arm)
         except (AttributeError, RuntimeError):
             return False
+
+    def _get_live_status(self):
+        """Preflight in one read: is it safe to touch Live right now?
+
+        Everything an agent checks before an export, a bounce or a batch of
+        edits — transport and record state, and which tracks are soloed,
+        muted or armed (an accidental solo once made a whole render
+        silent) — without a full snapshot. Every field is read defensively:
+        a missing member on some Live build reports None rather than
+        failing the preflight that exists to be cheap and safe.
+        """
+        song = self._song
+        status = {
+            "is_playing":        self._safe_song_property("is_playing",        bool,  False),
+            "record_mode":       self._safe_song_property("record_mode",       bool,  False),
+            "session_record":    self._safe_song_property("session_record",    bool,  False),
+            "tempo":             self._safe_song_property("tempo",             float, None),
+            "signature_numerator":   self._safe_song_property("signature_numerator",   int, None),
+            "signature_denominator": self._safe_song_property("signature_denominator", int, None),
+            "song_length":       self._safe_song_property("song_length",       float, None),
+            "current_song_time": self._safe_song_property("current_song_time", float, None),
+            # Live 12: "the last set event ... without extra display beats" —
+            # the honest end of the arrangement for an export range.
+            "last_event_time":   self._safe_song_property("last_event_time",   float, None),
+            "exclusive_solo":    None,
+            "live_version":      None,
+            "track_count":       0,
+            "return_track_count": 0,
+            "soloed": [], "muted": [], "armed": [],
+            "selected_track": None,
+        }
+        app = self.application()
+        if app is not None:
+            try:
+                if hasattr(app, "get_version_string"):
+                    status["live_version"] = str(app.get_version_string())
+                else:
+                    status["live_version"] = "%s.%s.%s" % (
+                        app.get_major_version(), app.get_minor_version(),
+                        app.get_bugfix_version())
+            except Exception:
+                pass
+        try:
+            status["exclusive_solo"] = bool(self._song.exclusive_solo)
+        except Exception:
+            pass
+
+        def scan(tracks, kind):
+            for index, track in enumerate(tracks):
+                entry = {"index": index, "name": track.name, "track_type": kind}
+                try:
+                    if track.solo:
+                        status["soloed"].append(entry)
+                except Exception:
+                    pass
+                try:
+                    if track.mute:
+                        status["muted"].append(entry)
+                except Exception:
+                    pass
+                if kind == "track" and self._safe_arm(track):
+                    status["armed"].append(entry)
+
+        try:
+            tracks = list(song.tracks)
+            status["track_count"] = len(tracks)
+            scan(tracks, "track")
+        except Exception:
+            pass
+        try:
+            returns = list(song.return_tracks)
+            status["return_track_count"] = len(returns)
+            scan(returns, "return")
+        except Exception:
+            pass
+        try:
+            selected = song.view.selected_track
+            if selected is not None:
+                status["selected_track"] = selected.name
+        except Exception:
+            pass
+        return status
 
     def _create_midi_track(self, index=-1):
         """Create a new MIDI track at the specified index"""

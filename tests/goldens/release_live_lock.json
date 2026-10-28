@@ -1,0 +1,22 @@
+{
+  "cases": [
+    {
+      "args": {
+        "holder": "session-a",
+        "set_path": "/nonexistent/song.als"
+      },
+      "expect": "The Live lock is not configured in this server process.",
+      "name": "lock_not_configured",
+      "wire": []
+    },
+    {
+      "args": {
+        "holder": "session-a",
+        "set_path": "/nonexistent/song.als"
+      },
+      "expect": "The Live lock is not configured in this server process.",
+      "name": "error",
+      "wire": []
+    }
+  ]
+}

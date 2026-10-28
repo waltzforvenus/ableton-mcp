@@ -353,6 +353,7 @@ def test_script_version_matches_expected_version():
 # advertise flag and this snapshot, and bump SCRIPT_VERSION.
 PR5_SCRIPT_CAPABILITIES = [
     "get_session_info",
+    "get_live_status",
     "get_track_info",
     "get_script_info",
     "get_clip_notes",
@@ -413,11 +414,12 @@ PR5_SCRIPT_CAPABILITIES = [
 def test_derived_capabilities_equal_the_pr5_snapshot():
     table = _commands_table()
     derived = sorted(name for name, row in table.items() if row[3])
-    assert len(PR5_SCRIPT_CAPABILITIES) == 55  # pinned (PR5 + locator jump + arrangement editing + clip warp
+    assert len(PR5_SCRIPT_CAPABILITIES) == 56  # pinned (PR5 + locator jump + arrangement editing + clip warp
     # + 1.15.0's duplicate_track, set_device_parameters, delete_locator
     # + 1.16.0's get_plugin_presets, set_plugin_preset
     # + 1.17.0's get_clip_warp_markers, edit_clip_warp_markers
     # + 1.18.0's set_track_solo, get_song_scale, set_song_scale)
+    # + 1.19.0's get_live_status (the Live-lock preflight)
     assert derived == sorted(PR5_SCRIPT_CAPABILITIES), (
         f"advertised-command drift — "
         f"gained: {sorted(set(derived) - set(PR5_SCRIPT_CAPABILITIES))}, "

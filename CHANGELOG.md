@@ -15,7 +15,7 @@ separately, and a script change means **re-run
   shipped additions, upstream ports, pending Live validation and planned work.
 - Corrected the README tool count and installation examples to use this fork.
 
-Ships Remote Script **1.18.0**. **Re-run `ableton-mcp-install-script` and
+Ships Remote Script **1.19.0**. **Re-run `ableton-mcp-install-script` and
 restart Live after upgrading** — the new commands live in the script half,
 and Live caches an already-imported script module, so re-selecting the
 control surface is not enough. This release is larger than usual on the
@@ -28,6 +28,28 @@ drove a complete track; the backlog it was mined from, with the measured
 counts, is `docs/IMPROVEMENTS.md`.
 
 ### Added (user-facing)
+
+- **The shared Live lock — state-changing tools now need it by default.**
+  `acquire_live_lock(holder, task)` †, `release_live_lock(holder, set_path)` †
+  and `get_live_status` †. Every state-changing tool is checked against a
+  lock file before anything is sent: held by someone else → refused, naming
+  the holder and their task; held by nobody → refused until this server
+  acquires it, **unless `ABLETON_MCP_REQUIRE_LOCK=0`** (the opt-out for
+  single-user setups; someone else's lock is still honoured). The lock never
+  expires; release succeeds only when the saved `.als` is at least as new as
+  the holder's last edit and, on macOS, Live's window title shows that set
+  without an unsaved `*` or an open Save/Export dialog. `stop_playback` is
+  never refused, and `save_set` is checked but does not count as an edit.
+  The file (`ABLETON_MCP_LOCK_FILE`, default `~/.ableton-mcp/live.lock`,
+  JSON with an flock'd `.mutex`) is shared with command-line helpers; taking
+  it there and calling `acquire_live_lock` with the same name adopts it.
+  `get_live_status` is a one-call preflight: reachable, Live and script
+  versions, transport and record state, soloed/muted/armed tracks,
+  `last_event_time`, the lock, and on macOS — read passively from window
+  titles and IOKit, never by driving the UI — the set name, unsaved marker,
+  any modal dialog, and seconds since the user's last input.
+  Remote Script **1.19.0** (new `get_live_status` command).
+  **Re-run `ableton-mcp-install-script` and restart Live.**
 
 - `get_song_scale` † and `set_song_scale` †: read and set the Live Set's
   key and scale (Live 12+) — `root_note` (0–11, 0 = C), `scale_name`, the

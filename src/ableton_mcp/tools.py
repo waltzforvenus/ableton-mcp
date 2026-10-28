@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Dict, Any, List, Optional, Union
 
 from . import presenters
 from .handshake import CapabilityError
+from .live_lock import LockError
 
 if TYPE_CHECKING:  # annotation-only: app.py imports this module at runtime
     from .app import Deps
@@ -54,6 +55,10 @@ def tool(fn):
             return fn(ctx, *args, **kwargs)
         except CapabilityError as e:
             return str(e)
+        except LockError as e:
+            # A lock refusal is an answer, not a failure: worded by the View
+            # (naming the holder), not wrapped in the tool's "Error ..." text.
+            return presenters.lock_refusal(e)
         except Exception as e:
             text = presenters.error_text(fn.__name__, e)
             logger.error(text)
@@ -166,6 +171,73 @@ def get_track_info(ctx: Context, track_index: int) -> str:
     """
     result = _deps(ctx).service.get_track_info(track_index)
     return presenters.get_track_info(result)
+
+
+@tool
+def get_live_status(ctx: Context) -> str:
+    """
+    One-call preflight: is it safe to work in Live right now, and who owns it?
+
+    Call this before any batch of edits, an export or a bounce, and whenever
+    a write was refused because of the Live lock. It reports, in one JSON
+    object: whether Live is reachable, the Live and Remote Script versions,
+    transport and record state (is_playing, record_mode, session_record),
+    which tracks are soloed / muted / armed (an accidental solo silences a
+    whole render), the end of the arrangement (last_event_time), the shared
+    Live lock (holder, task, since when, and whether THIS server holds it),
+    and — on macOS, read from the window title without touching the UI —
+    the open set's name, its unsaved marker, any modal dialog blocking Live,
+    and how many seconds since the user last used the keyboard or mouse.
+
+    Fields that cannot be read are null ("unknown"), never a guess: a null
+    modal_dialog with ui.readable=false does NOT mean no dialog is open.
+    Cheaper than get_session_snapshot and safe to call at any time.
+    """
+    result = _deps(ctx).service.get_live_status()
+    return presenters.get_live_status(result)
+
+
+@tool
+def acquire_live_lock(ctx: Context, holder: str, task: str = "") -> str:
+    """
+    Take the shared Live lock so this session may change Live's state.
+
+    Live is shared between agents and its user, so every state-changing tool
+    is refused unless this server holds the lock (unless the server runs
+    with ABLETON_MCP_REQUIRE_LOCK=0, in which case only a lock someone else
+    holds refuses). Call this once before the first edit.
+
+    Parameters:
+    - holder: a stable name for who you are — your session key or task
+      name. If you already took the lock under this same name with the
+      shared command-line helper, this adopts it rather than refusing.
+    - task: a short description of what you are doing, shown to anyone who
+      finds Live locked.
+
+    Refused, naming the current holder and their task, if anyone else holds
+    it. The lock NEVER expires: release it with release_live_lock after
+    saving, and never take it over — ask the holder (or the user) instead.
+    """
+    result = _deps(ctx).service.acquire_live_lock(holder, task)
+    return presenters.acquire_live_lock(result)
+
+
+@tool
+def release_live_lock(ctx: Context, holder: str, set_path: str) -> str:
+    """
+    Release the shared Live lock — only after the set is verifiably saved.
+
+    Parameters:
+    - holder: the name you acquired the lock with.
+    - set_path: absolute path of the saved .als.
+
+    Refused (and the lock stays held) unless the .als on disk is at least as
+    new as your last edit through this server, and — where Live's window
+    titles can be read — Live shows that set with no unsaved marker and no
+    Save or Export dialog open. Save first (save_set), then release.
+    """
+    result = _deps(ctx).service.release_live_lock(holder, set_path)
+    return presenters.release_live_lock(result)
 
 
 @tool
