@@ -191,7 +191,7 @@ available on `main` or in a released package.
 
 ### Added tools
 
-Upstream exposes 37 MCP tools; this fork exposes 80. The mixer, device control
+Upstream exposes 37 MCP tools; this fork exposes 86. The mixer, device control
 and routing tools are new here:
 
 | Area | Tools |
@@ -421,7 +421,7 @@ who holds it.
 
 ### Tool reference
 
-All 80 tools the server exposes. Tools marked **†** are added by this fork and
+All 86 tools the server exposes. Tools marked **†** are added by this fork and
 are not present upstream.
 
 #### Session & info
@@ -487,6 +487,12 @@ are not present upstream.
 | `bounce_track` † | `track_index`, `mode`?, `allow_ui_automation`, `expect_track_name`?, `confirm_destructive`? | Freeze / Bounce to New Track / Bounce Track in Place through the Edit menu, verified through the LOM (frozen flag, track count, the new clip's file) |
 | `analyze_audio` † | `path`, `start_s`?, `end_s`? | Measure a file offline: duration, rate, LUFS-I, LRA, true peak, sample peak, RMS, clipping, L/R balance/correlation, silence, cut tail (ffmpeg) |
 | `verify_audio` † | `path`, `expected_duration_s`?, `tolerance_s`?, `sample_rate`?, `bit_depth`?, `max_true_peak_dbtp`?, `min_lufs`?, `max_lufs`?, `allow_tail_cut`? | analyze_audio plus pass/fail checks; fails on silence, clipping, a cut tail, or any limit |
+| `insert_device` † | `track_index`, `device_name`, `index`?, `track_type`? | Insert a native device at a position in the chain (Live 12 `Track.insert_device`) |
+| `move_device` † | `track_index`, `device_index`, `to_index`, `to_track_index`? | Reorder a chain or move a device to another track (`Song.move_device`) |
+| `get_device_sidechain` † | `track_index`, `device_index` | A device's sidechain source/channel, the choices Live offers, and the S/C switch |
+| `set_device_sidechain` † | `track_index`, `device_index`, `source`, `channel`?, `enable`? | Key a Compressor/Gate/… from another track and switch sidechain on; read back |
+| `create_arrangement_audio_clip` † | `track_index`, `path`, `start_time`, `allow_overlap`?, `name`? | Place an audio file straight onto the arrangement at a beat (Live 12) — no Session slot |
+| `create_arrangement_midi_clip` † | `track_index`, `start_time`, `length`?, `notes`?, `allow_overlap`? | Create (and fill) a MIDI clip directly on the arrangement (Live 12) |
 | `get_rack_chains` † | `track_index`, `device_index`, `track_type`? | A rack's chains: name, volume/pan (value + display), mute, solo, Drum Rack `in_note`, devices |
 | `insert_rack_chain` † | `track_index`, `device_index`, `index`?, `name`? | Add a chain to a rack (Live 12 `RackDevice.insert_chain`) — parallel blends |
 | `insert_chain_device` † | `track_index`, `device_index`, `chain_index`, `device_name`, `index`? | Put a native device into one chain at a position (`Chain.insert_device`) |

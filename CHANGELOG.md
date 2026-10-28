@@ -15,7 +15,7 @@ separately, and a script change means **re-run
   shipped additions, upstream ports, pending Live validation and planned work.
 - Corrected the README tool count and installation examples to use this fork.
 
-Ships Remote Script **1.25.0**. **Re-run `ableton-mcp-install-script` and
+Ships Remote Script **1.26.0**. **Re-run `ableton-mcp-install-script` and
 restart Live after upgrading** — the new commands live in the script half,
 and Live caches an already-imported script module, so re-selecting the
 control surface is not enough. This release is larger than usual on the
@@ -28,6 +28,25 @@ drove a complete track; the backlog it was mined from, with the measured
 counts, is `docs/IMPROVEMENTS.md`.
 
 ### Added (user-facing)
+
+- **Device placement and sidechain** (Remote Script **1.26.0**):
+  `insert_device(track, device_name, index)` † (Live 12's
+  `Track.insert_device` — a native device at a position, where browser loads
+  always append), `move_device(track, device_index, to_index,
+  to_track_index?)` † (`Song.move_device`, reorder or move across tracks),
+  `get_device_sidechain` † / `set_device_sidechain(source, channel?)` † (a
+  device's `input_routing_type` / `input_routing_channel` — key a bass
+  compressor from the kick — matched by name or unique fragment, with the
+  device's "S/C On" switch turned on). All verified by read-back; refused on
+  a Live without the members.
+- **Arrangement-native clips**: `create_arrangement_audio_clip(track, path,
+  start_time)` † (Live 12's `Track.create_audio_clip(path, time)`) and
+  `create_arrangement_midi_clip(track, start_time, length, notes?)` †
+  (`Track.create_midi_clip`, notes written through the existing arrangement
+  note path). No Session slot, no stamp, no delete. A start inside (audio)
+  or a region overlapping (MIDI) an existing clip is refused unless
+  `allow_overlap=true`, and whatever Live then cropped or replaced is
+  reported.
 
 - **Sound needs authorization — on by default.** `start_playback`,
   `fire_clip` and `set_track_arm(armed=true)` are refused, before anything

@@ -1,0 +1,60 @@
+{
+  "cases": [
+    {
+      "args": {
+        "device_index": 0,
+        "track_index": 2
+      },
+      "expect": "{\n  \"available_channels\": [\n    \"Post FX\",\n    \"Pre FX\"\n  ],\n  \"available_sources\": [\n    \"No Input\",\n    \"1-Kick\"\n  ],\n  \"channel\": \"Post FX\",\n  \"device_index\": 0,\n  \"device_name\": \"Compressor\",\n  \"enable_parameter\": \"S/C On\",\n  \"enabled\": false,\n  \"source\": \"No Input\",\n  \"supported\": true,\n  \"track_index\": 2,\n  \"track_name\": \"BASS\"\n}",
+      "name": "success",
+      "wire": [
+        {
+          "command": "get_device_sidechain",
+          "params": {
+            "device_index": 0,
+            "track_index": 2,
+            "track_type": "regular"
+          },
+          "response": {
+            "available_channels": [
+              "Post FX",
+              "Pre FX"
+            ],
+            "available_sources": [
+              "No Input",
+              "1-Kick"
+            ],
+            "channel": "Post FX",
+            "device_index": 0,
+            "device_name": "Compressor",
+            "enable_parameter": "S/C On",
+            "enabled": false,
+            "source": "No Input",
+            "supported": true,
+            "track_index": 2,
+            "track_name": "BASS"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "device_index": 0,
+        "track_index": 2
+      },
+      "expect": "Error reading the sidechain: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "get_device_sidechain",
+          "params": {
+            "device_index": 0,
+            "track_index": 2,
+            "track_type": "regular"
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

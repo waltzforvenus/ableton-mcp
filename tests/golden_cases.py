@@ -1,4 +1,4 @@
-"""Golden-case definitions for all 80 MCP tools (docs/REFACTOR_PLAN.md
+"""Golden-case definitions for all 86 MCP tools (docs/REFACTOR_PLAN.md
 section 5 Level 1, section 6 PR3).
 
 Each case names a tool, the arguments to call it with, and the exact ordered
@@ -1019,6 +1019,65 @@ BASE_CASES = [
            "allow_ui_automation": True}, []),
     _case("bounce_track", "no_ui",
           {"track_index": 2, "mode": "freeze", "allow_ui_automation": True}, []),
+    # ── device placement / sidechain, arrangement-native clips ───────────
+    _case("insert_device", "success",
+          {"track_index": 1, "device_name": "EQ Eight", "index": 0}, [
+        _ok("insert_device", {"track_index": 1, "device_name": "EQ Eight",
+                              "index": 0, "track_type": "regular"},
+            {"track_index": 1, "track_name": "GTR", "device_index": 0,
+             "device_name": "EQ Eight", "devices_after": ["EQ Eight", "Amp"]}),
+    ]),
+    _case("move_device", "success",
+          {"track_index": 1, "device_index": 2, "to_index": 0}, [
+        _ok("move_device", {"track_index": 1, "device_index": 2, "to_index": 0,
+                            "track_type": "regular"},
+            {"device_name": "Tuner", "from_track": "GTR", "from_index": 2,
+             "to_track": "GTR", "to_index": 0,
+             "devices_after": ["Tuner", "Amp", "Cabinet"],
+             "source_devices_after": ["Tuner", "Amp", "Cabinet"]}),
+    ]),
+    _case("get_device_sidechain", "success", {"track_index": 2, "device_index": 0}, [
+        _ok("get_device_sidechain", {"track_index": 2, "device_index": 0,
+                                     "track_type": "regular"},
+            {"supported": True, "source": "No Input", "channel": "Post FX",
+             "available_sources": ["No Input", "1-Kick"],
+             "available_channels": ["Post FX", "Pre FX"],
+             "enable_parameter": "S/C On", "enabled": False,
+             "track_index": 2, "track_name": "BASS", "device_index": 0,
+             "device_name": "Compressor"}),
+    ]),
+    _case("set_device_sidechain", "success",
+          {"track_index": 2, "device_index": 0, "source": "Kick"}, [
+        _ok("set_device_sidechain", {"track_index": 2, "device_index": 0,
+                                     "source": "Kick", "enable": True,
+                                     "track_type": "regular"},
+            {"supported": True, "source": "1-Kick", "channel": "Post FX",
+             "enable_parameter": "S/C On", "enabled": True,
+             "track_index": 2, "track_name": "BASS", "device_index": 0,
+             "device_name": "Compressor", "requested_source": "Kick",
+             "requested_channel": None}),
+    ]),
+    _case("create_arrangement_audio_clip", "success",
+          {"track_index": 3, "path": "/Users/x/Audio/take.wav", "start_time": 64.0}, [
+        _ok("create_arrangement_audio_clip",
+            {"track_index": 3, "path": "/Users/x/Audio/take.wav",
+             "start_time": 64.0, "allow_overlap": False},
+            {"track_index": 3, "track_name": "VOCALS", "clip_index": 2,
+             "clip_name": "take", "start_time": 64.0, "end_time": 80.0,
+             "file_path": "/Users/x/Audio/take.wav", "warping": False,
+             "cropped_or_replaced": []}),
+    ]),
+    _case("create_arrangement_midi_clip", "with_notes",
+          {"track_index": 0, "start_time": 16.0, "length": 4.0,
+           "notes": [{"pitch": 60, "start_time": 0.0, "duration": 1.0}]}, [
+        _ok("create_arrangement_midi_clip",
+            {"track_index": 0, "start_time": 16.0, "length": 4.0,
+             "allow_overlap": False,
+             "notes": [{"pitch": 60, "start_time": 0.0, "duration": 1.0}]},
+            {"track_index": 0, "track_name": "KEYS", "clip_index": 1,
+             "clip_name": "MIDI Clip", "start_time": 16.0, "end_time": 20.0,
+             "notes_added": 1, "clip_note_count": 1}),
+    ]),
     # ── rack chains ───────────────────────────────────────────────────────
     _case("get_rack_chains", "success", {"track_index": 1, "device_index": 0}, [
         _ok("get_rack_chains", {"track_index": 1, "device_index": 0,

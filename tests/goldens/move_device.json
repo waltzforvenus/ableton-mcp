@@ -1,0 +1,62 @@
+{
+  "cases": [
+    {
+      "args": {
+        "device_index": 2,
+        "to_index": 0,
+        "track_index": 1
+      },
+      "expect": "Moved 'Tuner' to position 0 on 'GTR'. Devices now: 0 Tuner, 1 Amp, 2 Cabinet",
+      "name": "success",
+      "wire": [
+        {
+          "command": "move_device",
+          "params": {
+            "device_index": 2,
+            "to_index": 0,
+            "track_index": 1,
+            "track_type": "regular"
+          },
+          "response": {
+            "device_name": "Tuner",
+            "devices_after": [
+              "Tuner",
+              "Amp",
+              "Cabinet"
+            ],
+            "from_index": 2,
+            "from_track": "GTR",
+            "source_devices_after": [
+              "Tuner",
+              "Amp",
+              "Cabinet"
+            ],
+            "to_index": 0,
+            "to_track": "GTR"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "device_index": 2,
+        "to_index": 0,
+        "track_index": 1
+      },
+      "expect": "Error moving the device: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "move_device",
+          "params": {
+            "device_index": 2,
+            "to_index": 0,
+            "track_index": 1,
+            "track_type": "regular"
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

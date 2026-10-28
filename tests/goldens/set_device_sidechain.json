@@ -1,0 +1,60 @@
+{
+  "cases": [
+    {
+      "args": {
+        "device_index": 0,
+        "source": "Kick",
+        "track_index": 2
+      },
+      "expect": "Sidechain of 'Compressor' on 'BASS' now reads 1-Kick (Post FX); S/C On on",
+      "name": "success",
+      "wire": [
+        {
+          "command": "set_device_sidechain",
+          "params": {
+            "device_index": 0,
+            "enable": true,
+            "source": "Kick",
+            "track_index": 2,
+            "track_type": "regular"
+          },
+          "response": {
+            "channel": "Post FX",
+            "device_index": 0,
+            "device_name": "Compressor",
+            "enable_parameter": "S/C On",
+            "enabled": true,
+            "requested_channel": null,
+            "requested_source": "Kick",
+            "source": "1-Kick",
+            "supported": true,
+            "track_index": 2,
+            "track_name": "BASS"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "device_index": 0,
+        "source": "Kick",
+        "track_index": 2
+      },
+      "expect": "Error setting the sidechain: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "set_device_sidechain",
+          "params": {
+            "device_index": 0,
+            "enable": true,
+            "source": "Kick",
+            "track_index": 2,
+            "track_type": "regular"
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

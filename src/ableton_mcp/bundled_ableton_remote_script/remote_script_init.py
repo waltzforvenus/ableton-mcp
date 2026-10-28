@@ -37,7 +37,7 @@ EXPECTED_COMMAND_ERRORS = (ValueError, IndexError, KeyError)
 
 # Bumped whenever the TCP command surface changes; the MCP server compares
 # this to EXPECTED_REMOTE_SCRIPT_VERSION.
-SCRIPT_VERSION = "1.25.0"
+SCRIPT_VERSION = "1.26.0"
 PROTOCOL_VERSION = 1
 
 # The trim eraser (see _trim_arrangement_clip): a temporary Session clip
@@ -156,6 +156,7 @@ COMMANDS = {
     "get_clip_warp_markers":      ("_get_clip_warp_markers",      False, None, True),
     "get_session_snapshot":       ("_get_session_snapshot",       False, None, True),
     "get_rack_chains":            ("_get_rack_chains",            False, None, True),
+    "get_device_sidechain":       ("_get_device_sidechain",       False, None, True),
     "get_track_render_state":     ("_get_track_render_state",     False, None, True),
     "get_song_scale":             ("_get_song_scale",             False, None, True),
     "get_browser_item":           ("_get_browser_item",           False, None, False),
@@ -203,6 +204,11 @@ COMMANDS = {
     "load_browser_item_by_path":  ("_load_browser_item_by_path",  True,  None, True),
     "insert_rack_chain":          ("_insert_rack_chain",          True,  None, True),
     "select_track":               ("_select_track",               True,  None, True),
+    "insert_device":              ("_insert_device",              True,  None, True),
+    "move_device":                ("_move_device",                True,  None, True),
+    "set_device_sidechain":       ("_set_device_sidechain",       True,  None, True),
+    "create_arrangement_audio_clip": ("_create_arrangement_audio_clip", True, 60.0, True),
+    "create_arrangement_midi_clip": ("_create_arrangement_midi_clip", True, None, True),
     "insert_chain_device":        ("_insert_chain_device",        True,  None, True),
     "set_chain_mixer":            ("_set_chain_mixer",            True,  None, True),
     "load_instrument_or_effect":  ("_load_instrument_or_effect",  True,  None, True),
@@ -1452,6 +1458,243 @@ class AbletonMCP(ControlSurface):
         except Exception:
             state["selected_track"] = None
         return state
+
+    # ── Device placement and sidechain (Live 12: Track.insert_device,
+    # Song.move_device, a device's input routing). The fork's dead-ends list
+    # called reordering devices and the compressor's sidechain source
+    # impossible; on 12.4.7 the members exist — untested in Live until now,
+    # hence every write here is verified by reading back.
+
+    def _insert_device(self, track_index=0, device_name="", index=-1,
+                       track_type="regular", expect_track_name=None):
+        """A native device at a chosen position (Track.insert_device)."""
+        track = self._resolve_track(track_index, track_type,
+                                    expect_track_name=expect_track_name)
+        insert = getattr(track, "insert_device", None)
+        if not callable(insert):
+            raise Exception("This Live build has no Track.insert_device (Live 12 "
+                            "API); use load_instrument_or_effect, which appends")
+        if not device_name:
+            raise ValueError("device_name must name a Live device, e.g. 'EQ Eight'")
+        before = len(track.devices)
+        insert(device_name, -1 if index is None else index)
+        names = [d.name for d in track.devices]
+        if len(names) != before + 1:
+            raise Exception("insert_device('%s') returned but the track still has "
+                            "%d devices — Live may accept only native device "
+                            "names here" % (device_name, len(names)))
+        at = index if (index is not None and 0 <= index <= before) else before
+        return {"track_index": track_index, "track_name": track.name,
+                "device_index": at, "device_name": names[at] if at < len(names) else None,
+                "devices_after": names}
+
+    def _move_device(self, track_index=0, device_index=0, to_index=0,
+                     to_track_index=None, track_type="regular",
+                     to_track_type=None, expect_track_name=None):
+        """Reorder a device in its chain, or move it to another track
+        (Song.move_device(device, target, position))."""
+        track, device = self._resolve_device(track_index, device_index, track_type,
+                                             expect_track_name=expect_track_name)
+        move = getattr(self._song, "move_device", None)
+        if not callable(move):
+            raise Exception("This Live build has no Song.move_device (Live 12 API)")
+        target = track if to_track_index is None else self._resolve_track(
+            to_track_index, to_track_type or track_type)
+        name = device.name
+        move(device, target, int(to_index))
+        names = [d.name for d in target.devices]
+        landed = None
+        for i, d in enumerate(target.devices):
+            if d is device or (d == device):
+                landed = i
+                break
+        if landed is None:
+            raise Exception("move_device returned but '%s' is not on '%s' "
+                            "(devices: %s)" % (name, target.name, names))
+        return {"device_name": name, "from_track": track.name,
+                "from_index": device_index, "to_track": target.name,
+                "to_index": landed, "devices_after": names,
+                "source_devices_after": [d.name for d in track.devices]}
+
+    def _routing_names(self, options):
+        out = []
+        for o in options or []:
+            try:
+                out.append(str(o.display_name))
+            except Exception:
+                pass
+        return out
+
+    def _sidechain_state(self, device):
+        state = {"supported": hasattr(device, "available_input_routing_types")}
+        if not state["supported"]:
+            return state
+        for key, attr in (("source", "input_routing_type"),
+                          ("channel", "input_routing_channel")):
+            try:
+                state[key] = str(getattr(device, attr).display_name)
+            except Exception:
+                state[key] = None
+        state["available_sources"] = self._routing_names(
+            getattr(device, "available_input_routing_types", None))
+        state["available_channels"] = self._routing_names(
+            getattr(device, "available_input_routing_channels", None))
+        for p in getattr(device, "parameters", []) or []:
+            if p.name in ("S/C On", "Sidechain", "Sidechain On", "S/C"):
+                state["enable_parameter"] = p.name
+                state["enabled"] = float(p.value) >= 0.5
+                break
+        return state
+
+    def _get_device_sidechain(self, track_index=0, device_index=0,
+                              track_type="regular"):
+        """A device's sidechain input: current source/channel and choices."""
+        track, device = self._resolve_device(track_index, device_index, track_type)
+        state = self._sidechain_state(device)
+        state.update({"track_index": track_index, "track_name": track.name,
+                      "device_index": device_index, "device_name": device.name})
+        return state
+
+    def _pick_routing(self, options, wanted, what):
+        names = self._routing_names(options)
+        low = wanted.strip().lower()
+        exact = [o for o, n in zip(options, names) if n.lower() == low]
+        if exact:
+            return exact[0]
+        partial = [o for o, n in zip(options, names) if low in n.lower()]
+        if len(partial) == 1:
+            return partial[0]
+        if partial:
+            raise ValueError("'%s' matches several %s: %s" % (
+                wanted, what, ", ".join(n for n in names if low in n.lower())))
+        raise ValueError("No %s named '%s'. Available: %s" % (what, wanted, ", ".join(names)))
+
+    def _set_device_sidechain(self, track_index=0, device_index=0, source="",
+                              channel=None, enable=True, track_type="regular",
+                              expect_track_name=None):
+        """Point a device's sidechain at a source (e.g. the kick track) and
+        optionally a channel ("Post FX"), switching sidechain on."""
+        track, device = self._resolve_device(track_index, device_index, track_type,
+                                             expect_track_name=expect_track_name)
+        if not hasattr(device, "available_input_routing_types"):
+            raise ValueError("'%s' has no sidechain input routing" % device.name)
+        device.input_routing_type = self._pick_routing(
+            list(device.available_input_routing_types), source, "sidechain sources")
+        if channel:
+            device.input_routing_channel = self._pick_routing(
+                list(device.available_input_routing_channels), channel,
+                "sidechain channels")
+        state = self._sidechain_state(device)
+        if enable and state.get("enable_parameter"):
+            for p in device.parameters:
+                if p.name == state["enable_parameter"]:
+                    p.value = p.max
+            state = self._sidechain_state(device)
+        state.update({"track_index": track_index, "track_name": track.name,
+                      "device_index": device_index, "device_name": device.name,
+                      "requested_source": source, "requested_channel": channel})
+        return state
+
+    # ── Arrangement-native clips (Live 12: Track.create_audio_clip(path,
+    # time), Track.create_midi_clip(start, length)). Before these, a clip
+    # reached the timeline only by the Session-slot → stamp → delete dance
+    # (529 stamp calls in one session) or by editing the set's XML.
+
+    def _arrangement_overlaps(self, track, start, end):
+        hits = []
+        for i, clip in enumerate(track.arrangement_clips):
+            s, e = float(clip.start_time), float(clip.end_time)
+            if s < end and e > start:
+                hits.append({"index": i, "name": clip.name, "start_time": s,
+                             "end_time": e})
+        return hits
+
+    def _arrangement_snapshot(self, track):
+        return [(c.name, float(c.start_time), float(c.end_time))
+                for c in track.arrangement_clips]
+
+    def _find_new_arrangement_clip(self, track, before, start):
+        current = list(track.arrangement_clips)
+        for i, clip in enumerate(current):
+            key = (clip.name, float(clip.start_time), float(clip.end_time))
+            if abs(float(clip.start_time) - start) < 1e-6 and key not in before:
+                return i, clip
+        for i, clip in enumerate(current):
+            if abs(float(clip.start_time) - start) < 1e-6:
+                return i, clip
+        return None, None
+
+    def _create_arrangement_audio_clip(self, track_index=0, path="",
+                                       start_time=0.0, allow_overlap=False,
+                                       name=None, expect_track_name=None):
+        """Place an audio file on the timeline at a beat, directly."""
+        track = self._resolve_track(track_index, expect_track_name=expect_track_name)
+        create = getattr(track, "create_audio_clip", None)
+        if not callable(create):
+            raise Exception("This Live build has no Track.create_audio_clip(path, "
+                            "time) (Live 12 API); use create_audio_clip + "
+                            "duplicate_to_arrangement")
+        if not path or not os.path.isabs(path) or not os.path.isfile(path):
+            raise ValueError("path must be an existing absolute audio file path")
+        start = float(start_time)
+        covering = self._arrangement_overlaps(track, start, start + 1e-6)
+        if covering and not allow_overlap:
+            raise ValueError("Refusing: beat %.3f is inside an existing clip %s; "
+                             "pass allow_overlap=true to let Live crop it"
+                             % (start, covering))
+        before = self._arrangement_snapshot(track)
+        create(path, start)
+        index, clip = self._find_new_arrangement_clip(track, before, start)
+        if clip is None:
+            raise Exception("create_audio_clip returned but no clip starts at "
+                            "beat %.3f" % start)
+        if name:
+            clip.name = name
+        changed = [c for c in before if c not in self._arrangement_snapshot(track)]
+        return {"track_index": track_index, "track_name": track.name,
+                "clip_index": index, "clip_name": clip.name,
+                "start_time": float(clip.start_time), "end_time": float(clip.end_time),
+                "file_path": getattr(clip, "file_path", path),
+                "warping": bool(getattr(clip, "warping", False)),
+                "cropped_or_replaced": [{"name": n, "start_time": s, "end_time": e}
+                                        for n, s, e in changed]}
+
+    def _create_arrangement_midi_clip(self, track_index=0, start_time=0.0,
+                                      length=4.0, notes=None, name=None,
+                                      allow_overlap=False, expect_track_name=None):
+        """An empty (or filled) MIDI clip on the timeline at a beat."""
+        track = self._resolve_track(track_index, expect_track_name=expect_track_name)
+        create = getattr(track, "create_midi_clip", None)
+        if not callable(create):
+            raise Exception("This Live build has no Track.create_midi_clip(start, "
+                            "length) (Live 12 API); use create_clip + "
+                            "duplicate_to_arrangement")
+        start, length = float(start_time), float(length)
+        if length <= 0:
+            raise ValueError("length must be positive (beats)")
+        overlaps = self._arrangement_overlaps(track, start, start + length)
+        if overlaps and not allow_overlap:
+            raise ValueError("Refusing: beats %.3f-%.3f overlap existing clips %s; "
+                             "pass allow_overlap=true to let Live crop them"
+                             % (start, start + length, overlaps))
+        before = self._arrangement_snapshot(track)
+        create(start, length)
+        index, clip = self._find_new_arrangement_clip(track, before, start)
+        if clip is None:
+            raise Exception("create_midi_clip returned but no clip starts at "
+                            "beat %.3f" % start)
+        if name:
+            clip.name = name
+        result = {"track_index": track_index, "track_name": track.name,
+                  "clip_index": index, "clip_name": clip.name,
+                  "start_time": float(clip.start_time), "end_time": float(clip.end_time)}
+        if notes:
+            added = self._add_notes_to_clip(track_index, index, notes,
+                                            arrangement=True,
+                                            expect_track_name=expect_track_name)
+            result["notes_added"] = added.get("added")
+            result["clip_note_count"] = added.get("clip_note_count")
+        return result
 
     # ── Rack chains ───────────────────────────────────────────────────────
     # Parallel blends (two amp chains in one rack, one phase-inverted) were

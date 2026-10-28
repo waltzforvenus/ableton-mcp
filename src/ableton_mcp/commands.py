@@ -103,6 +103,8 @@ COMMANDS: dict[str, CommandSpec] = {
     "get_rack_chains": CommandSpec(gated=True),
     # 1.25.0: the compact mixer view (T1).
     "get_mix_state": CommandSpec(gated=True),
+    # 1.26.0: device placement / sidechain and arrangement-native clips.
+    "get_device_sidechain": CommandSpec(gated=True),
     # 1.24.0 render support; new names, no floor.
     "get_track_render_state": CommandSpec(gated=True),
     "get_browser_tree": CommandSpec(),  # LEGACY floor — gate is a no-op
@@ -193,6 +195,14 @@ COMMANDS: dict[str, CommandSpec] = {
     # Selection is not an edit of the set (no stamp), but it still needs
     # the lock: it is what the next menu click acts on.
     "select_track": CommandSpec(modifying=True, gated=True, lock="check"),
+    "insert_device": CommandSpec(modifying=True, gated=True),
+    "move_device": CommandSpec(modifying=True, gated=True),
+    "set_device_sidechain": CommandSpec(modifying=True, gated=True),
+    # Importing a file happens on the main thread, like create_audio_clip:
+    # the script waits 60 s, the socket must outlast it by 5 s.
+    "create_arrangement_audio_clip": CommandSpec(modifying=True, timeout=65.0,
+                                                 gated=True),
+    "create_arrangement_midi_clip": CommandSpec(modifying=True, gated=True),
     "insert_chain_device": CommandSpec(modifying=True, gated=True),
     "set_chain_mixer": CommandSpec(modifying=True, gated=True),
     # Dispatchable on the Remote Script but never sent by any current tool
