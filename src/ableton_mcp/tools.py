@@ -1054,6 +1054,44 @@ def set_track_mute(ctx: Context, track_index: int, mute: bool,
 
 
 @tool
+def set_track_solo(ctx: Context, track_index: int, solo: bool,
+                   track_type: str = "regular",
+                   expect_track_name: Optional[str] = None) -> str:
+    """
+    Solo or unsolo a track — for auditioning one part IN CONTEXT: hear the
+    bass against the kick, or a vocal alone through its reverb return,
+    without touching anyone's mute or fader. Unsolo it again to bring the
+    whole mix back.
+
+    Prefer set_track_mute when you want to take a part OUT of the mix
+    (dropping a track for a section, A/B-ing with and without it), or when
+    the state should persist: solo is a temporary listening aid, and a
+    forgotten solo silences every other track.
+
+    Solos add up — soloing a second track keeps the first soloed — unless
+    Live's Exclusive Solo preference is on, which can clear the others. The
+    reply therefore names EVERY track that is soloed after the change, and
+    exclusive_solo says how the preference is set (null when this Live build
+    does not expose it). Unsolo what you no longer need.
+
+    Parameters:
+    - track_index: The index of the track
+    - solo: True to solo, False to unsolo
+    - track_type: "regular" (default) or "return" (track_index is then the
+      return's index). The master cannot be soloed in Live and is refused
+    - expect_track_name: Optional safety net — refuse and change nothing
+      unless the track at track_index is really named this. Track indices
+      renumber whenever a track is added or deleted, and an index that is
+      still in range but now points elsewhere fails silently otherwise
+    """
+    if (track_type or "").strip().lower() in ("master", "main"):
+        raise ValueError(presenters.master_cannot_be_soloed())
+    result = _deps(ctx).service.set_track_solo(track_index, solo, track_type,
+                                               expect_track_name)
+    return presenters.set_track_solo(result, track_index, solo)
+
+
+@tool
 def delete_track(ctx: Context, track_index: int,
                  expect_track_name: Optional[str] = None) -> str:
     """

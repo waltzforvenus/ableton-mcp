@@ -1,0 +1,145 @@
+{
+  "cases": [
+    {
+      "args": {
+        "solo": true,
+        "track_index": 0
+      },
+      "expect": "Track 0 ('Drums') soloed. Soloed now: Drums, Bass (Exclusive Solo is off in Live's preferences, so solos add up)",
+      "name": "success_soloed_alongside_another",
+      "wire": [
+        {
+          "command": "set_track_solo",
+          "params": {
+            "track_index": 0,
+            "track_type": "regular",
+            "value": true
+          },
+          "response": {
+            "exclusive_solo": false,
+            "solo": true,
+            "soloed_tracks": [
+              "Drums",
+              "Bass"
+            ],
+            "track_index": 0,
+            "track_name": "Drums",
+            "track_type": "regular"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "expect_track_name": "Drums",
+        "solo": false,
+        "track_index": 0
+      },
+      "expect": "Track 0 ('Drums') unsoloed. Nothing is soloed now",
+      "name": "success_unsoloed_exclusive_unknown",
+      "wire": [
+        {
+          "command": "set_track_solo",
+          "params": {
+            "expect_track_name": "Drums",
+            "track_index": 0,
+            "track_type": "regular",
+            "value": false
+          },
+          "response": {
+            "exclusive_solo": null,
+            "solo": false,
+            "soloed_tracks": [],
+            "track_index": 0,
+            "track_name": "Drums",
+            "track_type": "regular"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "solo": true,
+        "track_index": 0,
+        "track_type": "return"
+      },
+      "expect": "Return track 0 ('A Reverb') soloed. Soloed now: A Reverb (Live's Exclusive Solo preference is on)",
+      "name": "success_return_exclusive_on",
+      "wire": [
+        {
+          "command": "set_track_solo",
+          "params": {
+            "track_index": 0,
+            "track_type": "return",
+            "value": true
+          },
+          "response": {
+            "exclusive_solo": true,
+            "solo": true,
+            "soloed_tracks": [
+              "A Reverb"
+            ],
+            "track_index": 0,
+            "track_name": "A Reverb",
+            "track_type": "return"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "solo": true,
+        "track_index": 0
+      },
+      "expect": "Asked to solo track 0 ('Drums'), but Live reads it back as not soloed. Nothing is soloed now (Exclusive Solo is off in Live's preferences, so solos add up)",
+      "name": "did_not_read_back",
+      "wire": [
+        {
+          "command": "set_track_solo",
+          "params": {
+            "track_index": 0,
+            "track_type": "regular",
+            "value": true
+          },
+          "response": {
+            "exclusive_solo": false,
+            "solo": false,
+            "soloed_tracks": [],
+            "track_index": 0,
+            "track_name": "Drums",
+            "track_type": "regular"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "solo": true,
+        "track_index": 0,
+        "track_type": "master"
+      },
+      "expect": "Error setting track solo: The master track cannot be soloed in Live \u2014 it has no solo button. Solo a regular or return track instead; nothing was sent to Ableton.",
+      "name": "master_refused",
+      "wire": []
+    },
+    {
+      "args": {
+        "solo": true,
+        "track_index": 0
+      },
+      "expect": "Error setting track solo: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "set_track_solo",
+          "params": {
+            "track_index": 0,
+            "track_type": "regular",
+            "value": true
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

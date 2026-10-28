@@ -26,7 +26,7 @@ from ableton_mcp.app import build_app
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SNAPSHOT = REPO_ROOT / "tests" / "data" / "tool_names.txt"
-EXPECTED_TOOL_COUNT = 61
+EXPECTED_TOOL_COUNT = 62
 
 
 def _registered_tools():

@@ -1,4 +1,4 @@
-"""Golden-case definitions for all 61 MCP tools (docs/REFACTOR_PLAN.md
+"""Golden-case definitions for all 62 MCP tools (docs/REFACTOR_PLAN.md
 section 5 Level 1, section 6 PR3).
 
 Each case names a tool, the arguments to call it with, and the exact ordered
@@ -710,6 +710,45 @@ BASE_CASES = [
         _ok("set_track_mute", {"track_index": 0, "value": False},
             {"track_name": "Drums", "mute": False}),
     ]),
+
+    # ── set_track_solo ────────────────────────────────────────────────────
+    # The reply names every soloed track, because an earlier solo left on
+    # is still masking the mix; here Bass was already soloed.
+    _case("set_track_solo", "success_soloed_alongside_another",
+          {"track_index": 0, "solo": True}, [
+        _ok("set_track_solo",
+            {"track_index": 0, "value": True, "track_type": "regular"},
+            {"track_index": 0, "track_type": "regular", "track_name": "Drums",
+             "solo": True, "exclusive_solo": False,
+             "soloed_tracks": ["Drums", "Bass"]}),
+    ]),
+    _case("set_track_solo", "success_unsoloed_exclusive_unknown",
+          {"track_index": 0, "solo": False, "expect_track_name": "Drums"}, [
+        _ok("set_track_solo",
+            {"track_index": 0, "value": False, "track_type": "regular",
+             "expect_track_name": "Drums"},
+            {"track_index": 0, "track_type": "regular", "track_name": "Drums",
+             "solo": False, "exclusive_solo": None, "soloed_tracks": []}),
+    ]),
+    _case("set_track_solo", "success_return_exclusive_on",
+          {"track_index": 0, "solo": True, "track_type": "return"}, [
+        _ok("set_track_solo",
+            {"track_index": 0, "value": True, "track_type": "return"},
+            {"track_index": 0, "track_type": "return",
+             "track_name": "A Reverb", "solo": True, "exclusive_solo": True,
+             "soloed_tracks": ["A Reverb"]}),
+    ]),
+    # Live read the button back the other way: reported, not papered over.
+    _case("set_track_solo", "did_not_read_back",
+          {"track_index": 0, "solo": True}, [
+        _ok("set_track_solo",
+            {"track_index": 0, "value": True, "track_type": "regular"},
+            {"track_index": 0, "track_type": "regular", "track_name": "Drums",
+             "solo": False, "exclusive_solo": False, "soloed_tracks": []}),
+    ]),
+    # The master has no solo button: refused before anything is sent.
+    _case("set_track_solo", "master_refused",
+          {"track_index": 0, "solo": True, "track_type": "master"}, []),
 
     # ── delete_track ──────────────────────────────────────────────────────
     _case("delete_track", "success", {"track_index": 2}, [

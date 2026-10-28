@@ -387,6 +387,7 @@ PR5_SCRIPT_CAPABILITIES = [
     "set_track_volume",
     "set_track_pan",
     "set_track_mute",
+    "set_track_solo",
     "create_return_track",
     "set_track_arm",
     "set_track_monitoring",
@@ -410,10 +411,11 @@ PR5_SCRIPT_CAPABILITIES = [
 def test_derived_capabilities_equal_the_pr5_snapshot():
     table = _commands_table()
     derived = sorted(name for name, row in table.items() if row[3])
-    assert len(PR5_SCRIPT_CAPABILITIES) == 52  # pinned (PR5 + locator jump + arrangement editing + clip warp
+    assert len(PR5_SCRIPT_CAPABILITIES) == 53  # pinned (PR5 + locator jump + arrangement editing + clip warp
     # + 1.15.0's duplicate_track, set_device_parameters, delete_locator
     # + 1.16.0's get_plugin_presets, set_plugin_preset
-    # + 1.17.0's get_clip_warp_markers, edit_clip_warp_markers)
+    # + 1.17.0's get_clip_warp_markers, edit_clip_warp_markers
+    # + set_track_solo, landing ahead of the cycle's next script-version bump)
     assert derived == sorted(PR5_SCRIPT_CAPABILITIES), (
         f"advertised-command drift — "
         f"gained: {sorted(set(derived) - set(PR5_SCRIPT_CAPABILITIES))}, "

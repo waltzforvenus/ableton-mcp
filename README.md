@@ -185,12 +185,12 @@ On top of that:
 
 ### Added tools
 
-Upstream exposes 37 MCP tools; this fork exposes 61. The mixer, device control
+Upstream exposes 37 MCP tools; this fork exposes 62. The mixer, device control
 and routing tools are new here:
 
 | Area | Tools |
 |---|---|
-| **Mixer** | `set_track_volume`, `set_track_pan`, `set_track_mute`, `set_track_arm`, `set_track_monitoring` |
+| **Mixer** | `set_track_volume`, `set_track_pan`, `set_track_mute`, `set_track_solo`, `set_track_arm`, `set_track_monitoring` |
 | **Devices** | `delete_device`, `set_device_parameters` (the batch form), `get_plugin_presets` / `set_plugin_preset` (factory presets on hosted VST/VST3/AU plugins, whose parameters Live does not expose) — plus `get_device_parameters` / `set_device_parameter` extended to address parameters *by name* and to reach return tracks and the master track via `track_type` (`"return"` / `"master"`) |
 | **Sends & buses** | `create_return_track`, `set_track_send` — one shared reverb instead of a copy per track |
 | **Routing** | `set_track_routing`, `get_track_routing` |
@@ -381,7 +381,7 @@ A few notes that apply to every install method:
 
 ### Tool reference
 
-All 57 tools the server exposes. Tools marked **†** are added by this fork and
+All 58 tools the server exposes. Tools marked **†** are added by this fork and
 are not present upstream.
 
 #### Session & info
@@ -413,6 +413,7 @@ are not present upstream.
 | `set_track_volume` † | `track_index`, `value`, `track_type`? | Set a track's mixer volume |
 | `set_track_pan` † | `track_index`, `value`, `track_type`? | Set a track's stereo panning |
 | `set_track_mute` † | `track_index`, `mute` | Mute or unmute a track. Useful for auditioning parts in isolation |
+| `set_track_solo` † | `track_index`, `solo`, `track_type`? | Solo or unsolo a regular or return track, to audition a part in context; the reply names every soloed track and Live's Exclusive Solo setting. The master cannot be soloed |
 | `set_track_arm` † | `track_index`, `armed`? | Arm or disarm a track for recording |
 | `set_track_monitoring` † | `track_index`, `state`? | Set a track's input monitoring, so the performer can hear themselves |
 | `set_track_send` † | `track_index`, `send_index`, `value` | Set how much of a track is sent to a return track |

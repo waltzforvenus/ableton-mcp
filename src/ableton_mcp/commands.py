@@ -139,6 +139,8 @@ COMMANDS: dict[str, CommandSpec] = {
     "set_track_volume": CommandSpec(modifying=True, gated=True),
     "set_track_pan": CommandSpec(modifying=True, gated=True),
     "set_track_mute": CommandSpec(modifying=True, gated=True),
+    # Brand new, so no floor — same reasoning as get_plugin_presets above.
+    "set_track_solo": CommandSpec(modifying=True, gated=True),
     "create_return_track": CommandSpec(modifying=True, gated=True),
     "set_track_arm": CommandSpec(modifying=True, gated=True),
     "set_track_monitoring": CommandSpec(modifying=True, gated=True),

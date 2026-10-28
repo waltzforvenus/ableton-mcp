@@ -52,6 +52,7 @@ set_track_name
 set_track_pan
 set_track_routing
 set_track_send
+set_track_solo
 set_track_volume
 start_playback
 stop_clip

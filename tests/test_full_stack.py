@@ -105,7 +105,7 @@ def test_in_memory_session_matches_direct_calls():
     assert payload["note_count"] == 3
 
 
-def test_in_memory_session_lists_all_61_tools():
+def test_in_memory_session_lists_all_62_tools():
     deps, _harness = _make_deps()
     app = build_app(deps=deps)
 
@@ -114,7 +114,7 @@ def test_in_memory_session_lists_all_61_tools():
             return await session.list_tools()
 
     listed = asyncio.run(run())
-    assert len(listed.tools) == 61
+    assert len(listed.tools) == 62
 
 
 # --------------------------------------------------------------------------
@@ -231,6 +231,35 @@ def test_scenario_select_a_plugin_preset_by_name():
         "Error setting plugin preset: Communication error with Ableton: "
         "Device 0 on track 0 is 'Operator' (Operator), not a hosted "
         "VST/VST3/AU plugin")
+
+
+def test_scenario_audition_a_part_with_solo():
+    """set_track_solo end to end: solos accumulate and the reply says so,
+    unsolo clears the picture, and the master is refused before the wire."""
+    deps, harness = _make_deps()
+    ctx = _ctx(deps)
+
+    out = tools.set_track_solo(ctx, track_index=0, solo=True)
+    assert out == ("Track 0 ('Lead') soloed. Soloed now: Lead (Exclusive "
+                   "Solo is off in Live's preferences, so solos add up)")
+    out = tools.set_track_solo(ctx, track_index=0, solo=True,
+                               track_type="return")
+    assert out.startswith("Return track 0 ('A Reverb') soloed. Soloed now: "
+                          "Lead, A Reverb")
+    assert harness.song.return_tracks[0].solo is True
+
+    tools.set_track_solo(ctx, track_index=0, solo=False, track_type="return")
+    out = tools.set_track_solo(ctx, track_index=0, solo=False,
+                               expect_track_name="Lead")
+    assert out.startswith("Track 0 ('Lead') unsoloed. Nothing is soloed now")
+    assert [t.solo for t in harness.song.tracks] == [False, False, False]
+
+    sent_before = len(deps.client.sent)
+    out = tools.set_track_solo(ctx, track_index=0, solo=True,
+                               track_type="master")
+    assert out.startswith("Error setting track solo: The master track cannot "
+                          "be soloed in Live")
+    assert len(deps.client.sent) == sent_before
 
 
 def test_scenario_error_text_comes_through_the_real_envelope():
