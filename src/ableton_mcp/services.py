@@ -350,6 +350,15 @@ class AbletonService:
             "value": mute
         }, expect_track_name))
 
+    def set_track_solo(self, track_index: int, solo: bool, track_type: str,
+                       expect_track_name: Optional[str] = None
+                       ) -> Dict[str, Any]:
+        return self._send("set_track_solo", _guarded({
+            "track_index": track_index,
+            "value": solo,
+            "track_type": track_type
+        }, expect_track_name))
+
     def delete_track(self, track_index: int,
                      expect_track_name: Optional[str] = None
                      ) -> Dict[str, Any]:

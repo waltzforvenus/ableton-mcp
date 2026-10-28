@@ -19,6 +19,8 @@ that have only ever executed inside Live can be tested on both sides:
 - ``warp_markers`` — audio clips carry warp markers.
 - ``extended_note_fields`` — extended-read note objects carry the optional
   per-field-hasattr attributes (probability, note_id, ...).
+- ``exclusive_solo`` — ``Song.exclusive_solo`` (Live's Exclusive Solo
+  preference) reads True / False, or is absent altogether (None).
 
 Arrangement physics follow what was verified on real Live 12.4.3: writing a
 clip's content markers never moves its Arrangement footprint, while
@@ -59,7 +61,8 @@ class FakeLiveConfig(object):
                  create_audio_clip_api=True, count_in_read_only=False,
                  save_owner="song", warp_markers=False,
                  extended_note_fields=False, track_delete_clip_api=True,
-                 transport_write_lag=False, device_delete_lands=True):
+                 transport_write_lag=False, device_delete_lands=True,
+                 exclusive_solo=False):
         if note_api not in _NOTE_API_GENERATIONS:
             raise ValueError("note_api must be one of %r" % (_NOTE_API_GENERATIONS,))
         if save_owner not in _SAVE_OWNERS:
@@ -87,6 +90,13 @@ class FakeLiveConfig(object):
         # identical from here, which is the point. False = the call is a
         # silent no-op.
         self.device_delete_lands = device_delete_lands
+        # Song.exclusive_solo: True / False is the preference as Live reports
+        # it; None means the build does not expose the property, which is
+        # what _set_track_solo's probe branches on. The fake only REPORTS
+        # the preference — a Track.solo write never clears other solos here,
+        # because whether a scripted solo honours the preference is exactly
+        # the unverified part the handler reads back instead of assuming.
+        self.exclusive_solo = exclusive_solo
 
 
 # ── Parameters, devices, mixer ───────────────────────────────────────────────
@@ -661,6 +671,8 @@ class FakeSong(object):
         self.loop_length = 16.0
         self.back_to_arranger = True
         self.metronome = False
+        if self.config.exclusive_solo is not None:
+            self.exclusive_solo = bool(self.config.exclusive_solo)
         self._count_in_duration = 1
         self.cue_points = []
         self.scenes = []

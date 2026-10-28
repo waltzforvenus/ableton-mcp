@@ -226,6 +226,30 @@ def set_track_mute(result: Dict[str, Any], track_index: int) -> str:
     return f"Track {track_index} ('{result.get('track_name')}') {state}"
 
 
+def set_track_solo(result: Dict[str, Any], track_index: int,
+                   solo: bool) -> str:
+    kind = "return track" if result.get("track_type") == "return" else "track"
+    where = f"{kind} {track_index} ('{result.get('track_name')}')"
+    if bool(result.get("solo")) != bool(solo):
+        # Read back after the write, so this is Live's answer, not ours.
+        wanted = "solo" if solo else "unsolo"
+        now = "soloed" if result.get("solo") else "not soloed"
+        text = f"Asked to {wanted} {where}, but Live reads it back as {now}"
+    else:
+        text = f"{where[0].upper()}{where[1:]} {'soloed' if solo else 'unsoloed'}"
+    soloed = result.get("soloed_tracks") or []
+    if soloed:
+        text += f". Soloed now: {', '.join(soloed)}"
+    else:
+        text += ". Nothing is soloed now"
+    exclusive = result.get("exclusive_solo")
+    if exclusive is True:
+        text += " (Live's Exclusive Solo preference is on)"
+    elif exclusive is False:
+        text += " (Exclusive Solo is off in Live's preferences, so solos add up)"
+    return text
+
+
 def delete_track(result: Dict[str, Any], track_index: int) -> str:
     deleted_name = result.get("deleted_track_name", "")
     remaining = result.get("remaining_track_count", "unknown")
@@ -637,6 +661,13 @@ def duplicate_arrangement_clip(result: Dict[str, Any], track_index: int,
 
 # ── Boundary refusals (raised by controllers, worded here) ───────────────────
 
+def master_cannot_be_soloed() -> str:
+    """set_track_solo aimed at the master, which has no solo button."""
+    return ("The master track cannot be soloed in Live — it has no solo "
+            "button. Solo a regular or return track instead; nothing was "
+            "sent to Ableton.")
+
+
 def alias_conflict(first_name: str, first_value: Any,
                    second_name: str, second_value: Any) -> str:
     """Two spellings of one argument, given two different values."""
@@ -710,6 +741,7 @@ ERROR_PHRASES: Dict[str, str] = {
     "set_track_volume": "setting track volume",
     "set_track_pan": "setting track pan",
     "set_track_mute": "setting track mute",
+    "set_track_solo": "setting track solo",
     "delete_track": "deleting track",
     "create_audio_clip": "creating audio clip",
     "add_notes_to_clip": "adding notes to clip",

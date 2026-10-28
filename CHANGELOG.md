@@ -23,6 +23,16 @@ counts, is `docs/IMPROVEMENTS.md`.
 
 ### Added (user-facing)
 
+- `set_track_solo` †: solo or unsolo a regular or return track, for
+  auditioning a part in context without touching mutes or faders. Solos
+  accumulate, and Live's Exclusive Solo preference may clear others, so
+  the reply reads back and names *every* soloed track after the change,
+  plus `exclusive_solo` as Live reports it (`null` on a build that does not
+  expose `Song.exclusive_solo`). The master has no solo button in Live and
+  is refused before anything is sent (`"master"` / `"main"`). Idea from
+  upstream PRs #99 and #84 (MIT), written fresh on the fork's track
+  resolver and name guard.
+
 - `get_plugin_presets` † and `set_plugin_preset` †: list and select the
   factory presets of a hosted VST/VST3/AU plugin. Live exposes *no*
   parameters of an unconfigured VST3 or AU through its API — verified on
@@ -215,6 +225,16 @@ counts, is `docs/IMPROVEMENTS.md`.
   caller who did not pass `expect_track_name` can still diff afterwards.
 
 ### Internal
+
+- `set_track_solo` adds one advertised, gated, main-thread command with no
+  `min_script_version` floor: an older script never advertises the name,
+  so the capability gate already answers with the installer message.
+  `SCRIPT_VERSION` is deliberately not bumped here; the cycle takes one
+  bump for all its new commands. Tool surface 57 → 58;
+  `tests/data/tool_names.txt`, the pinned counts, `PR5_SCRIPT_CAPABILITIES`
+  (50 → 51) and `GATED_POST_1_7_0` updated. `FakeLiveConfig` gained
+  `exclusive_solo` (True / False / None = property absent) so both sides
+  of the probe are tested.
 
 - `scripts/push_notes.py`: a standard-library-only CLI that pushes MIDI
   notes from JSON files — a note list, or a manifest of files → track/clip

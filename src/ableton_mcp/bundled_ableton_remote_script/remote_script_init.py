@@ -132,6 +132,7 @@ COMMANDS = {
     "set_track_volume":           ("_set_track_volume",           True,  None, True),
     "set_track_pan":              ("_set_track_pan",              True,  None, True),
     "set_track_mute":             ("_set_track_mute",             True,  None, True),
+    "set_track_solo":             ("_set_track_solo",             True,  None, True),
     "create_return_track":        ("_create_return_track",        True,  None, True),
     "set_track_arm":              ("_set_track_arm",              True,  None, True),
     "set_track_monitoring":       ("_set_track_monitoring",       True,  None, True),
@@ -1646,6 +1647,57 @@ class AbletonMCP(ControlSurface):
             }
         except Exception as e:
             self.log_message("Error setting track mute: " + str(e))
+            raise
+
+    def _set_track_solo(self, track_index=0, value=False, track_type="regular",
+                        expect_track_name=None):
+        """Solo or unsolo a regular or return track, then report the whole
+        solo picture rather than just this one button.
+
+        The master has no solo button in Live, so it is refused by name
+        before anything is resolved (the shared resolver would otherwise hand
+        back the master track and the write would raise from inside Live).
+
+        Two things make the one-track answer insufficient, and both are why
+        the reply carries every soloed track's name: solos accumulate — an
+        earlier audition left on still masks everything else — and Live has
+        an Exclusive Solo preference (Song.exclusive_solo, read-only through
+        the API, absent on some builds) under which soloing one track can
+        clear the others. Whether a scripted Track.solo write honours that
+        preference is a property of Live, not of this handler, so nothing is
+        assumed: the list is read back after the write.
+        """
+        try:
+            kind = (track_type or "regular").strip().lower()
+            if kind in ("master", "main"):
+                raise ValueError(
+                    "The master track cannot be soloed in Live; solo a "
+                    "regular or return track instead. Nothing was changed.")
+            track = self._resolve_track(track_index, track_type,
+                                        expect_track_name=expect_track_name)
+            track.solo = bool(value)
+
+            # None, not False, when this build does not expose it: "off" and
+            # "unknown" lead the caller to different conclusions.
+            exclusive = self._safe_attr(self._song, "exclusive_solo", bool, None)
+
+            soloed = []
+            for candidate in (list(self._song.tracks)
+                              + list(self._song.return_tracks)):
+                if self._safe_attr(candidate, "solo", bool, False):
+                    soloed.append(str(candidate.name))
+
+            return {
+                "track_index": track_index,
+                "track_type": ("return" if kind in ("return", "send")
+                               else "regular"),
+                "track_name": track.name,
+                "solo": bool(track.solo),
+                "exclusive_solo": exclusive,
+                "soloed_tracks": soloed,
+            }
+        except Exception as e:
+            self.log_message("Error setting track solo: " + str(e))
             raise
 
     def _delete_track(self, track_index=0, expect_track_name=None):

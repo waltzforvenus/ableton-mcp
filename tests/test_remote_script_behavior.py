@@ -649,6 +649,73 @@ def test_set_track_mute():
     assert harness.song.tracks[0].mute is True
 
 
+def test_set_track_solo_names_every_soloed_track_after_the_write():
+    # Solos accumulate: the earlier audition on Drums is still on, and the
+    # reply has to say so, or the caller believes it hears Lead alone.
+    harness = make_harness()
+    harness.song.tracks[1].solo = True
+    result = _ok(harness.process(_cmd("set_track_solo", track_index=0,
+                                      value=True)))
+    assert result == {"track_index": 0, "track_type": "regular",
+                      "track_name": "Lead", "solo": True,
+                      "exclusive_solo": False,
+                      "soloed_tracks": ["Lead", "Drums"]}
+    assert harness.song.tracks[0].solo is True
+    assert harness.song.tracks[1].solo is True
+
+
+def test_set_track_solo_unsolo_leaves_nothing_soloed():
+    harness = make_harness()
+    harness.song.tracks[2].solo = True
+    result = _ok(harness.process(_cmd("set_track_solo", track_index=2,
+                                      value=False)))
+    assert result["solo"] is False
+    assert result["soloed_tracks"] == []
+    assert harness.song.tracks[2].solo is False
+
+
+def test_set_track_solo_on_a_return_track():
+    harness = make_harness()
+    result = _ok(harness.process(_cmd("set_track_solo", track_index=0,
+                                      value=True, track_type="return")))
+    assert result["track_type"] == "return"
+    assert result["track_name"] == "A Reverb"
+    assert result["soloed_tracks"] == ["A Reverb"]
+    assert harness.song.return_tracks[0].solo is True
+    assert [t.solo for t in harness.song.tracks] == [False, False, False]
+
+
+@pytest.mark.parametrize("track_type", ["master", "main", " Master "])
+def test_set_track_solo_refuses_the_master(track_type):
+    harness = make_harness()
+    message = _err(harness.process(_cmd("set_track_solo", track_index=0,
+                                        value=True, track_type=track_type)))
+    assert "master track cannot be soloed" in message
+    assert harness.song.master_track.solo is False
+    assert [t.solo for t in harness.song.tracks] == [False, False, False]
+
+
+@pytest.mark.parametrize("exclusive", [True, False, None])
+def test_set_track_solo_reports_the_exclusive_solo_preference(exclusive):
+    # None is the build without Song.exclusive_solo: reported as unknown,
+    # never guessed as "off".
+    harness = make_harness(config=FakeLiveConfig(exclusive_solo=exclusive))
+    assert hasattr(harness.song, "exclusive_solo") is (exclusive is not None)
+    result = _ok(harness.process(_cmd("set_track_solo", track_index=1,
+                                      value=True)))
+    assert result["exclusive_solo"] is exclusive
+    assert result["soloed_tracks"] == ["Drums"]
+
+
+def test_set_track_solo_honours_expect_track_name():
+    harness = make_harness()
+    message = _err(harness.process(_cmd("set_track_solo", track_index=0,
+                                        value=True,
+                                        expect_track_name="Drums")))
+    assert "'Lead', not the expected 'Drums'" in message
+    assert harness.song.tracks[0].solo is False
+
+
 def test_set_track_send_reports_display_value():
     harness = make_harness()
     result = _ok(harness.process(_cmd("set_track_send", track_index=0,
