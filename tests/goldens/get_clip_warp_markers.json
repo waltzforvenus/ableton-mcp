@@ -1,0 +1,152 @@
+{
+  "cases": [
+    {
+      "args": {
+        "clip_index": 0,
+        "track_index": 1
+      },
+      "expect": "{\n  \"arrangement\": true,\n  \"clip_index\": 0,\n  \"clip_name\": \"Drum Take\",\n  \"end_marker\": 16.0,\n  \"end_time\": 48.0,\n  \"file_path\": \"/Users/me/Music/Drum Take.wav\",\n  \"is_audio_clip\": true,\n  \"length\": 16.0,\n  \"loop_end\": 16.0,\n  \"loop_start\": 0.0,\n  \"looping\": false,\n  \"marker_units\": \"beats\",\n  \"sample_length\": 352800,\n  \"sample_rate\": 44100.0,\n  \"sample_seconds\": 8.0,\n  \"signature_numerator\": 4,\n  \"song_tempo\": 120.0,\n  \"start_marker\": 0.0,\n  \"start_time\": 32.0,\n  \"track_index\": 1,\n  \"track_name\": \"Drums\",\n  \"warp_marker_api\": {\n    \"add_warp_marker\": true,\n    \"move_warp_marker\": true,\n    \"remove_warp_marker\": true\n  },\n  \"warp_marker_count\": 3,\n  \"warp_markers\": [\n    {\n      \"beat_time\": 0.0,\n      \"sample_time\": 0.0\n    },\n    {\n      \"beat_time\": 4.0,\n      \"sample_time\": 2.0\n    },\n    {\n      \"beat_time\": 16.0,\n      \"sample_time\": 8.0\n    }\n  ],\n  \"warp_mode\": 0,\n  \"warping\": true\n}",
+      "name": "warped_arrangement_clip",
+      "wire": [
+        {
+          "command": "get_clip_warp_markers",
+          "params": {
+            "arrangement": true,
+            "clip_index": 0,
+            "track_index": 1
+          },
+          "response": {
+            "arrangement": true,
+            "clip_index": 0,
+            "clip_name": "Drum Take",
+            "end_marker": 16.0,
+            "end_time": 48.0,
+            "file_path": "/Users/me/Music/Drum Take.wav",
+            "is_audio_clip": true,
+            "length": 16.0,
+            "loop_end": 16.0,
+            "loop_start": 0.0,
+            "looping": false,
+            "marker_units": "beats",
+            "sample_length": 352800,
+            "sample_rate": 44100.0,
+            "sample_seconds": 8.0,
+            "signature_numerator": 4,
+            "song_tempo": 120.0,
+            "start_marker": 0.0,
+            "start_time": 32.0,
+            "track_index": 1,
+            "track_name": "Drums",
+            "warp_marker_api": {
+              "add_warp_marker": true,
+              "move_warp_marker": true,
+              "remove_warp_marker": true
+            },
+            "warp_marker_count": 3,
+            "warp_markers": [
+              {
+                "beat_time": 0.0,
+                "sample_time": 0.0
+              },
+              {
+                "beat_time": 4.0,
+                "sample_time": 2.0
+              },
+              {
+                "beat_time": 16.0,
+                "sample_time": 8.0
+              }
+            ],
+            "warp_mode": 0,
+            "warping": true
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "arrangement": false,
+        "clip_index": 2,
+        "expect_track_name": "Drums",
+        "track_index": 1
+      },
+      "expect": "{\n  \"arrangement\": false,\n  \"clip_index\": 2,\n  \"clip_name\": \"Drum Take\",\n  \"end_marker\": 16.0,\n  \"end_time\": 48.0,\n  \"file_path\": \"/Users/me/Music/Drum Take.wav\",\n  \"is_audio_clip\": true,\n  \"length\": 16.0,\n  \"loop_end\": 16.0,\n  \"loop_start\": 0.0,\n  \"looping\": false,\n  \"marker_units\": \"beats\",\n  \"sample_length\": 352800,\n  \"sample_rate\": 44100.0,\n  \"sample_seconds\": 8.0,\n  \"signature_numerator\": 4,\n  \"song_tempo\": 120.0,\n  \"start_marker\": 0.0,\n  \"start_time\": 32.0,\n  \"track_index\": 1,\n  \"track_name\": \"Drums\",\n  \"warp_marker_api\": {\n    \"add_warp_marker\": true,\n    \"move_warp_marker\": true,\n    \"remove_warp_marker\": true\n  },\n  \"warp_marker_count\": 3,\n  \"warp_markers\": [\n    {\n      \"beat_time\": 0.0,\n      \"sample_time\": 0.0\n    },\n    {\n      \"beat_time\": 4.0,\n      \"sample_time\": 2.0\n    },\n    {\n      \"beat_time\": 16.0,\n      \"sample_time\": 8.0\n    }\n  ],\n  \"warp_mode\": 0,\n  \"warping\": true\n}",
+      "name": "session_clip_with_guard",
+      "wire": [
+        {
+          "command": "get_clip_warp_markers",
+          "params": {
+            "arrangement": false,
+            "clip_index": 2,
+            "expect_track_name": "Drums",
+            "track_index": 1
+          },
+          "response": {
+            "arrangement": false,
+            "clip_index": 2,
+            "clip_name": "Drum Take",
+            "end_marker": 16.0,
+            "end_time": 48.0,
+            "file_path": "/Users/me/Music/Drum Take.wav",
+            "is_audio_clip": true,
+            "length": 16.0,
+            "loop_end": 16.0,
+            "loop_start": 0.0,
+            "looping": false,
+            "marker_units": "beats",
+            "sample_length": 352800,
+            "sample_rate": 44100.0,
+            "sample_seconds": 8.0,
+            "signature_numerator": 4,
+            "song_tempo": 120.0,
+            "start_marker": 0.0,
+            "start_time": 32.0,
+            "track_index": 1,
+            "track_name": "Drums",
+            "warp_marker_api": {
+              "add_warp_marker": true,
+              "move_warp_marker": true,
+              "remove_warp_marker": true
+            },
+            "warp_marker_count": 3,
+            "warp_markers": [
+              {
+                "beat_time": 0.0,
+                "sample_time": 0.0
+              },
+              {
+                "beat_time": 4.0,
+                "sample_time": 2.0
+              },
+              {
+                "beat_time": 16.0,
+                "sample_time": 8.0
+              }
+            ],
+            "warp_mode": 0,
+            "warping": true
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "clip_index": 0,
+        "track_index": 1
+      },
+      "expect": "Error reading warp markers: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "get_clip_warp_markers",
+          "params": {
+            "arrangement": true,
+            "clip_index": 0,
+            "track_index": 1
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

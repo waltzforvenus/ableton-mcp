@@ -185,7 +185,7 @@ On top of that:
 
 ### Added tools
 
-Upstream exposes 37 MCP tools; this fork exposes 58. The mixer, device control
+Upstream exposes 37 MCP tools; this fork exposes 62. The mixer, device control
 and routing tools are new here:
 
 | Area | Tools |
@@ -195,6 +195,7 @@ and routing tools are new here:
 | **Sends & buses** | `create_return_track`, `set_track_send` — one shared reverb instead of a copy per track |
 | **Routing** | `set_track_routing`, `get_track_routing` |
 | **Clips & tracks** | `set_clip_gain`, `set_clip_warp`, `duplicate_track`, `delete_track` |
+| **Warp vision** | `analyze_clip_audio` (spectrogram + waveform image with the clip's warp markers, transients and the song grid, plus JSON), `suggest_warp_markers` (dry-run proposals with a before/after image; `apply=True` executes and verifies), `edit_clip_warp_markers` (batch add/move/remove, read back and verified), `get_clip_warp_markers` — needs the optional `analysis` extra for the two audio tools |
 | **Transport & session** | `back_to_arrangement`, `set_count_in`, `save_set` |
 
 ### Security fix
@@ -457,6 +458,22 @@ are not present upstream.
 | `get_clip_notes` | `track_index`, `clip_index`, `arrangement`? | Read all MIDI notes from a clip, in either view |
 | `add_notes_to_clip` | `track_index`, `clip_index`, `notes`, `expect_count`?, `arrangement`? | Add MIDI notes to a clip in either view; reports what Live actually took, and `expect_count` refuses a truncated list |
 | `clear_notes_from_clip` | `track_index`, `clip_index`, `arrangement`? | Remove all MIDI notes from a clip, in either view |
+
+#### Warp vision
+
+Look at an audio clip, fix its warping, verify. The two audio tools read the
+clip's file on this machine (nothing is uploaded) and need the optional
+extra: `uv pip install 'ableton-mcp[analysis]'` (numpy, soundfile, Pillow).
+Workflow: `analyze_clip_audio` → `suggest_warp_markers` (dry run) → apply →
+`analyze_clip_audio` again; `grid_alignment` (median/p90 ms off the grid) is
+the before/after number. Warp-marker editing needs Live 11.0.5 or later.
+
+| Tool | Arguments | Description |
+|---|---|---|
+| `analyze_clip_audio` † | `track_index`, `clip_index`, `arrangement`?, `start_beat`?, `end_beat`?, `start_seconds`?, `end_seconds`?, `include_image`?, `image_width`?, `sensitivity`?, `max_transients`? | Image (waveform + log-frequency spectrogram with warp markers, transients, song bars/beats, estimated source beats, low/mid/high energy strip) plus JSON: transients, tempo estimate, band energy, grid alignment |
+| `suggest_warp_markers` † | `track_index`, `clip_index`, `arrangement`?, `mode`?, `subdivision`?, `tolerance`?, `min_strength`?, `max_edits`?, window args?, `apply`?, `include_image`? | Propose marker edits that put hits on the grid (`transients` local fix, `rewarp` drift tracking, `tempo` constant tempo); dry run with a before/after image by default, `apply=True` sends and verifies |
+| `edit_clip_warp_markers` † | `track_index`, `clip_index`, `edits`, `arrangement`?, `stop_on_error`? | Batch add/move/remove warp markers in one main-thread task; reads them back and reports `verified` |
+| `get_clip_warp_markers` † | `track_index`, `clip_index`, `arrangement`? | Raw warp markers (beat_time, sample_time in file seconds) with file path, sample rate, start/end/loop markers, warp mode and song tempo |
 
 #### Arrangement
 

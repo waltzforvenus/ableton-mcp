@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Union
 
+from . import warp_vision
 from .commands import COMMANDS
 from .handshake import ScriptHandshake
 from .remote_script_install import EXPECTED_REMOTE_SCRIPT_VERSION
@@ -193,6 +194,59 @@ class AbletonService:
             "warp_mode": warp_mode,
             "arrangement": arrangement
         }, expect_track_name))
+
+    def get_clip_warp_markers(self, track_index: int, clip_index: int,
+                              arrangement: bool,
+                              expect_track_name: Optional[str] = None
+                              ) -> Dict[str, Any]:
+        return self._send("get_clip_warp_markers", _guarded({
+            "track_index": track_index,
+            "clip_index": clip_index,
+            "arrangement": arrangement
+        }, expect_track_name))
+
+    def edit_clip_warp_markers(self, track_index: int, clip_index: int,
+                               edits: List[Dict[str, Any]], arrangement: bool,
+                               stop_on_error: bool = True,
+                               expect_track_name: Optional[str] = None
+                               ) -> Dict[str, Any]:
+        return self._send("edit_clip_warp_markers", _guarded({
+            "track_index": track_index,
+            "clip_index": clip_index,
+            "edits": edits,
+            "arrangement": arrangement,
+            "stop_on_error": stop_on_error
+        }, expect_track_name))
+
+    # Warp vision: one wire read, then analysis of the clip's audio file in
+    # this process (warp_vision / audio_analysis). Orchestration, so Model.
+
+    def analyze_clip_audio(self, track_index: int, clip_index: int,
+                           arrangement: bool,
+                           expect_track_name: Optional[str] = None,
+                           **options: Any) -> Dict[str, Any]:
+        state = self.get_clip_warp_markers(track_index, clip_index,
+                                           arrangement, expect_track_name)
+        return warp_vision.analyze(state, **options)
+
+    def suggest_warp_markers(self, track_index: int, clip_index: int,
+                             arrangement: bool, apply: bool = False,
+                             include_image: bool = True,
+                             image_width: int = warp_vision.DEFAULT_IMAGE_WIDTH,
+                             expect_track_name: Optional[str] = None,
+                             **options: Any) -> Dict[str, Any]:
+        """Analyse, propose, and — only when ``apply`` — send the batch and
+        measure the result on the markers Live reads back."""
+        state = self.get_clip_warp_markers(track_index, clip_index,
+                                           arrangement, expect_track_name)
+        proposal = warp_vision.propose(state, **options)
+        applied = None
+        if apply and proposal.edits:
+            applied = self.edit_clip_warp_markers(
+                track_index, clip_index, warp_vision.wire_edits(proposal),
+                arrangement, True, expect_track_name)
+        return warp_vision.proposal_result(proposal, include_image,
+                                           image_width, applied)
 
     def back_to_arrangement(self) -> Dict[str, Any]:
         return self._send("back_to_arrangement", {})
