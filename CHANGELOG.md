@@ -23,6 +23,25 @@ counts, is `docs/IMPROVEMENTS.md`.
 
 ### Added (user-facing)
 
+- `get_song_scale` † and `set_song_scale` †: read and set the Live Set's
+  key and scale (Live 12+) — `root_note` (0–11, 0 = C), `scale_name`, the
+  Scale Mode toggle `scale_mode`, and the read-only `scale_intervals` where
+  Live reports them — so generated parts can follow the key the Set is in.
+  `root_note` also takes a note name (`"C"`, `"F#"`, `"Bb"`, `"c#"`;
+  case-insensitive, sharps or flats, enharmonics wrap), coerced before the
+  wire; anything else is refused with nothing sent. Only the fields given
+  are written, all validation happens before the first write, and the
+  scale name is written first so a name Live rejects leaves the key alone.
+  Live's API offers no list of valid scale names, so the reply reports what
+  Live reads back and whether it matched (`verified`, case-insensitive)
+  rather than trusting the write. On a Live without `Song.root_note` /
+  `Song.scale_name` both tools refuse with a "needs Live 12" message; a
+  build without `Song.scale_mode` reports it as `null` and refuses only a
+  Scale Mode write. `get_session_snapshot`'s `session` block now carries
+  `root_note`, `scale_name` and `scale_mode` too (`null` without the API);
+  the keys are additive, so the snapshot schema stays
+  `ableton_mcp_snapshot_v3`. Idea from upstream PR #146 (MIT), written
+  fresh.
 - `set_track_solo` †: solo or unsolo a regular or return track, for
   auditioning a part in context without touching mutes or faders. Solos
   accumulate, and Live's Exclusive Solo preference may clear others, so
@@ -260,6 +279,15 @@ counts, is `docs/IMPROVEMENTS.md`.
   (50 → 51) and `GATED_POST_1_7_0` updated. `FakeLiveConfig` gained
   `exclusive_solo` (True / False / None = property absent) so both sides
   of the probe are tested.
+- `get_song_scale` (read-only, socket thread) and `set_song_scale`
+  (main thread) are advertised, gated rows with no version floor, on the
+  same reasoning; still no `SCRIPT_VERSION` bump. Tool surface 58 → 60,
+  `PR5_SCRIPT_CAPABILITIES` 51 → 53, `GATED_POST_1_7_0` and the pinned
+  counts updated. `FakeSong` gained the Live 12 key/scale properties
+  behind `FakeLiveConfig.song_scale_api` and `song_scale_mode_api` (their
+  getters raise `AttributeError` when off, so `hasattr` is false as on an
+  older Live), plus `unknown_scale_name` ("ignore" / "raise" / "accept")
+  for what a write of a name Live may not know does.
 
 - Remote Script 1.17.0 (`EXPECTED_REMOTE_SCRIPT_VERSION` moved with it):
   `get_clip_warp_markers` (read-only) and `edit_clip_warp_markers`

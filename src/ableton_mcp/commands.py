@@ -80,6 +80,8 @@ COMMANDS: dict[str, CommandSpec] = {
     # markers and rack chains unconditionally — the same call returns a
     # materially different payload, which is the second half of the floor.
     "get_session_snapshot": CommandSpec(gated=True, min_script_version="1.15.0"),
+    # Live 12's song key/scale; brand new, so no floor (see get_plugin_presets).
+    "get_song_scale": CommandSpec(gated=True),
     # New in 1.17.0 (warp vision); no floor — a brand-new name is never
     # advertised by an older script, so the capability gate already answers.
     "get_clip_warp_markers": CommandSpec(gated=True),
@@ -119,6 +121,7 @@ COMMANDS: dict[str, CommandSpec] = {
     "set_clip_name": CommandSpec(modifying=True),  # LEGACY floor — gate is a no-op
     "set_arrangement_clip_name": CommandSpec(modifying=True, gated=True),
     "set_tempo": CommandSpec(modifying=True),  # LEGACY floor — gate is a no-op
+    "set_song_scale": CommandSpec(modifying=True, gated=True),
     "fire_clip": CommandSpec(modifying=True),  # LEGACY floor — gate is a no-op
     "stop_clip": CommandSpec(modifying=True),  # LEGACY floor — gate is a no-op
     "delete_clip": CommandSpec(modifying=True, gated=True),

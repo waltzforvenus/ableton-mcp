@@ -447,6 +447,43 @@ def set_tempo(tempo: float) -> str:
     return f"Set tempo to {tempo} BPM"
 
 
+get_song_scale = as_json
+
+
+def _scale_label(state: Dict[str, Any]) -> str:
+    """"D Dorian, Scale Mode on" — Scale Mode only when Live reports it."""
+    label = f"{state.get('root_name')} {state.get('scale_name')}"
+    mode = state.get("scale_mode")
+    if mode is not None:
+        label += f", Scale Mode {'on' if mode else 'off'}"
+    return label
+
+
+def set_song_scale(result: Dict[str, Any]) -> str:
+    now = _scale_label(result)
+    was = _scale_label(result.get("previous") or {})
+    if result.get("verified"):
+        return f"Song scale is now {now}; was {was}"
+    requested = result.get("requested") or {}
+    asked = []
+    if "root_name" in requested:
+        asked.append(f"root {requested['root_name']}")
+    if "scale_name" in requested:
+        asked.append(f"scale '{requested['scale_name']}'")
+    if "scale_mode" in requested:
+        asked.append(f"Scale Mode {'on' if requested['scale_mode'] else 'off'}")
+    mismatched = ", ".join(result.get("mismatched") or [])
+    text = (f"Asked for {', '.join(asked)}, but Live reads back {now} "
+            f"(was {was}) — {mismatched} did not take")
+    if "scale_name" in (result.get("mismatched") or []):
+        # Live's API has no list of scale names to validate against, so a
+        # name it does not know is only visible here, on the read-back.
+        text += (". Live most likely does not know that scale name; use it "
+                 "exactly as get_song_scale or Live's Scale chooser spells "
+                 "it (e.g. 'Major', 'Minor', 'Dorian')")
+    return text
+
+
 def load_instrument_or_effect(result: Dict[str, Any], track_index: int,
                               uri: str) -> str:
     # Check if the instrument was loaded successfully
@@ -756,6 +793,25 @@ def duplicate_arrangement_clip(result: Dict[str, Any], track_index: int,
 
 # ── Boundary refusals (raised by controllers, worded here) ───────────────────
 
+def invalid_root_note(value: Any) -> str:
+    """set_song_scale's root_note was neither 0-11 nor a note name."""
+    return (f"root_note={value!r} is not a key root. Give 0-11 (0 = C, "
+            f"11 = B) or a note name such as 'C', 'F#', 'Bb' or 'c#'; "
+            f"nothing was sent to Ableton.")
+
+
+def song_scale_empty_name() -> str:
+    return ("scale_name is empty — give a scale name as Live spells it "
+            "(e.g. 'Major', 'Minor', 'Dorian'), or leave it out to keep the "
+            "current scale. Nothing was sent to Ableton.")
+
+
+def song_scale_nothing_to_set() -> str:
+    return ("set_song_scale needs at least one of root_note, scale_name or "
+            "scale_mode; nothing was sent to Ableton. Use get_song_scale to "
+            "read the current key and scale.")
+
+
 def master_cannot_be_soloed() -> str:
     """set_track_solo aimed at the master, which has no solo button."""
     return ("The master track cannot be soloed in Live — it has no solo "
@@ -848,6 +904,8 @@ ERROR_PHRASES: Dict[str, str] = {
     "set_clip_name": "setting clip name",
     "set_arrangement_clip_name": "setting arrangement clip name",
     "set_tempo": "setting tempo",
+    "get_song_scale": "getting song scale",
+    "set_song_scale": "setting song scale",
     "load_instrument_or_effect": "loading instrument by URI",
     "fire_clip": "firing clip",
     "stop_clip": "stopping clip",

@@ -616,6 +616,124 @@ def test_set_tempo():
 
 
 # --------------------------------------------------------------------------
+# Song key and scale (Live 12) — both sides of every probe
+# --------------------------------------------------------------------------
+
+def test_get_song_scale_on_live_12():
+    harness = make_harness()
+    assert _ok(harness.process(_cmd("get_song_scale"))) == {
+        "root_note": 0, "root_name": "C", "scale_name": "Major",
+        "scale_mode": False, "scale_intervals": [0, 2, 4, 5, 7, 9, 11]}
+
+
+def test_get_song_scale_without_scale_mode_reports_it_as_unknown():
+    harness = make_harness(config=FakeLiveConfig(song_scale_mode_api=False))
+    result = _ok(harness.process(_cmd("get_song_scale")))
+    assert result["scale_mode"] is None
+    assert result["scale_name"] == "Major"
+
+
+@pytest.mark.parametrize("command,params", [
+    ("get_song_scale", {}),
+    ("set_song_scale", {"root_note": 2}),
+])
+def test_song_scale_refuses_on_a_live_without_the_api(command, params):
+    harness = make_harness(config=FakeLiveConfig(song_scale_api=False))
+    message = _err(harness.process(_cmd(command, **params)))
+    assert "needs Ableton Live 12" in message
+
+
+def test_set_song_scale_writes_everything_and_verifies():
+    harness = make_harness()
+    result = _ok(harness.process(_cmd("set_song_scale", root_note=2,
+                                      scale_name="Dorian", scale_mode=True)))
+    assert result["root_note"] == 2
+    assert result["root_name"] == "D"
+    assert result["scale_name"] == "Dorian"
+    assert result["scale_mode"] is True
+    # The read-only intervals follow the scale Live now reports.
+    assert result["scale_intervals"] == [0, 2, 3, 5, 7, 9, 10]
+    assert result["previous"] == {"root_note": 0, "root_name": "C",
+                                  "scale_name": "Major", "scale_mode": False}
+    assert result["requested"] == {"root_note": 2, "root_name": "D",
+                                   "scale_name": "Dorian", "scale_mode": True}
+    assert result["verified"] is True
+    assert result["mismatched"] == []
+    song = harness.song
+    assert (song.root_note, song.scale_name, song.scale_mode) == (
+        2, "Dorian", True)
+
+
+def test_set_song_scale_leaves_what_was_not_given_alone():
+    harness = make_harness()
+    harness.song.scale_name = "Minor"
+    result = _ok(harness.process(_cmd("set_song_scale", root_note=9)))
+    assert result["requested"] == {"root_note": 9, "root_name": "A"}
+    assert (harness.song.root_note, harness.song.scale_name,
+            harness.song.scale_mode) == (9, "Minor", False)
+    assert result["verified"] is True
+
+
+def test_set_song_scale_reports_an_unknown_name_as_unverified():
+    # The API has no list of valid names; a name Live ignores is visible
+    # only on the read-back — the root still lands.
+    harness = make_harness(config=FakeLiveConfig(unknown_scale_name="ignore"))
+    result = _ok(harness.process(_cmd("set_song_scale", root_note=4,
+                                      scale_name="Lydian Flat Seven")))
+    assert result["verified"] is False
+    assert result["mismatched"] == ["scale_name"]
+    assert result["scale_name"] == "Major"
+    assert harness.song.root_note == 4
+
+
+def test_set_song_scale_compares_the_name_ignoring_case():
+    harness = make_harness(config=FakeLiveConfig(unknown_scale_name="accept"))
+    result = _ok(harness.process(_cmd("set_song_scale", scale_name="minor ")))
+    assert result["requested"] == {"scale_name": "minor"}
+    assert result["verified"] is True
+
+
+def test_set_song_scale_a_rejected_name_changes_nothing():
+    # scale_name is written first, so Live raising on it leaves the root
+    # and Scale Mode exactly as they were.
+    harness = make_harness(config=FakeLiveConfig(unknown_scale_name="raise"))
+    message = _err(harness.process(_cmd("set_song_scale", root_note=5,
+                                        scale_name="Nope", scale_mode=True)))
+    assert "Live rejected scale_name 'Nope'" in message
+    assert "nothing was changed" in message
+    assert (harness.song.root_note, harness.song.scale_name,
+            harness.song.scale_mode) == (0, "Major", False)
+
+
+@pytest.mark.parametrize("params,fragment", [
+    ({}, "at least one of root_note, scale_name or scale_mode"),
+    ({"root_note": 12}, "root_note must be 0-11"),
+    ({"root_note": -1}, "root_note must be 0-11"),
+    ({"root_note": "C"}, "root_note must be an integer"),
+    ({"root_note": True}, "root_note must be an integer"),
+    ({"scale_name": "   "}, "scale_name must not be empty"),
+])
+def test_set_song_scale_validates_before_any_write(params, fragment):
+    harness = make_harness()
+    message = _err(harness.process(_cmd("set_song_scale",
+                                        **dict(params, scale_mode=None))))
+    assert fragment in message
+    assert (harness.song.root_note, harness.song.scale_name) == (0, "Major")
+
+
+def test_set_song_scale_mode_without_the_toggle_refuses_and_changes_nothing():
+    harness = make_harness(config=FakeLiveConfig(song_scale_mode_api=False))
+    message = _err(harness.process(_cmd("set_song_scale", root_note=3,
+                                        scale_mode=True)))
+    assert "not the Scale Mode toggle" in message
+    assert harness.song.root_note == 0
+    # Without scale_mode the same build sets the key fine.
+    result = _ok(harness.process(_cmd("set_song_scale", root_note=3)))
+    assert result["root_name"] == "D#"
+    assert result["scale_mode"] is None
+
+
+# --------------------------------------------------------------------------
 # Mixer
 # --------------------------------------------------------------------------
 
@@ -1553,6 +1671,25 @@ def test_get_session_snapshot_smoke():
     assert result["master_track"]["volume"] == 0.85
     assert result["cue_points"] == [{"name": "Verse", "time": 8.0}]
     assert len(result["scenes"]) == 4
+
+
+@pytest.mark.parametrize("scale_api", [True, False])
+def test_get_session_snapshot_carries_the_song_scale(scale_api):
+    # Additive session keys (schema stays v3): the Set's key on Live 12,
+    # None on a Live without the API — never a failed snapshot.
+    harness = make_harness(config=FakeLiveConfig(song_scale_api=scale_api))
+    if scale_api:
+        harness.song.root_note = 7
+        harness.song.scale_name = "Minor"
+    session = _ok(harness.process(_cmd("get_session_snapshot")))["session"]
+    if scale_api:
+        assert (session["root_note"], session["scale_name"],
+                session["scale_mode"]) == (7, "Minor", False)
+    else:
+        assert (session["root_note"], session["scale_name"],
+                session["scale_mode"]) == (None, None, None)
+    # get_session_info itself is unchanged (pinned exactly above).
+    assert "root_note" not in _ok(harness.process(_cmd("get_session_info")))
 
 
 def _song_with_a_group_track():

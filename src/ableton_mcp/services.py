@@ -492,6 +492,23 @@ class AbletonService:
     def set_tempo(self, tempo: float) -> Dict[str, Any]:
         return self._send("set_tempo", {"tempo": tempo})
 
+    def get_song_scale(self) -> Dict[str, Any]:
+        return self._send("get_song_scale", {})
+
+    def set_song_scale(self, root_note: Optional[int] = None,
+                       scale_name: Optional[str] = None,
+                       scale_mode: Optional[bool] = None) -> Dict[str, Any]:
+        # Presence-driven: only what the caller asked to change goes on the
+        # wire, so the script writes exactly that and leaves the rest alone.
+        params: Dict[str, Any] = {}
+        if root_note is not None:
+            params["root_note"] = root_note
+        if scale_name is not None:
+            params["scale_name"] = scale_name
+        if scale_mode is not None:
+            params["scale_mode"] = scale_mode
+        return self._send("set_song_scale", params)
+
     def load_browser_item(self, track_index: int, item_uri: str,
                           track_type: Optional[str] = None,
                           expect_track_name: Optional[str] = None

@@ -105,7 +105,7 @@ def test_in_memory_session_matches_direct_calls():
     assert payload["note_count"] == 3
 
 
-def test_in_memory_session_lists_all_62_tools():
+def test_in_memory_session_lists_all_64_tools():
     deps, _harness = _make_deps()
     app = build_app(deps=deps)
 
@@ -114,7 +114,7 @@ def test_in_memory_session_lists_all_62_tools():
             return await session.list_tools()
 
     listed = asyncio.run(run())
-    assert len(listed.tools) == 62
+    assert len(listed.tools) == 64
 
 
 # --------------------------------------------------------------------------
@@ -259,6 +259,30 @@ def test_scenario_audition_a_part_with_solo():
                                track_type="master")
     assert out.startswith("Error setting track solo: The master track cannot "
                           "be soloed in Live")
+    assert len(deps.client.sent) == sent_before
+
+
+def test_scenario_put_the_set_in_a_key():
+    """get_song_scale / set_song_scale end to end, through the real gate,
+    dispatch and handlers: a note name lands as Live's 0-11, the read-back
+    is what is reported, and a bad root never reaches the wire."""
+    deps, harness = _make_deps()
+    ctx = _ctx(deps)
+
+    before = json.loads(tools.get_song_scale(ctx))
+    assert (before["root_name"], before["scale_name"]) == ("C", "Major")
+
+    out = tools.set_song_scale(ctx, root_note="f#", scale_name="Dorian",
+                               scale_mode=True)
+    assert out == ("Song scale is now F# Dorian, Scale Mode on; was C Major, "
+                   "Scale Mode off")
+    assert (harness.song.root_note, harness.song.scale_name,
+            harness.song.scale_mode) == (6, "Dorian", True)
+
+    sent_before = len(deps.client.sent)
+    out = tools.set_song_scale(ctx, root_note="X#")
+    assert out.startswith("Error setting song scale: root_note='X#' is not "
+                          "a key root")
     assert len(deps.client.sent) == sent_before
 
 

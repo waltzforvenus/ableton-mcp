@@ -1,0 +1,167 @@
+{
+  "cases": [
+    {
+      "args": {
+        "root_note": "Bb",
+        "scale_name": " Minor "
+      },
+      "expect": "Song scale is now A# Minor, Scale Mode off; was C Major, Scale Mode off",
+      "name": "success_note_name_and_scale",
+      "wire": [
+        {
+          "command": "set_song_scale",
+          "params": {
+            "root_note": 10,
+            "scale_name": "Minor"
+          },
+          "response": {
+            "mismatched": [],
+            "previous": {
+              "root_name": "C",
+              "root_note": 0,
+              "scale_mode": false,
+              "scale_name": "Major"
+            },
+            "requested": {
+              "root_name": "A#",
+              "root_note": 10,
+              "scale_name": "Minor"
+            },
+            "root_name": "A#",
+            "root_note": 10,
+            "scale_intervals": [
+              0,
+              2,
+              3,
+              5,
+              7,
+              8,
+              10
+            ],
+            "scale_mode": false,
+            "scale_name": "Minor",
+            "verified": true
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "scale_mode": true
+      },
+      "expect": "Song scale is now G Mixolydian, Scale Mode on; was G Mixolydian, Scale Mode off",
+      "name": "success_scale_mode_only_no_intervals",
+      "wire": [
+        {
+          "command": "set_song_scale",
+          "params": {
+            "scale_mode": true
+          },
+          "response": {
+            "mismatched": [],
+            "previous": {
+              "root_name": "G",
+              "root_note": 7,
+              "scale_mode": false,
+              "scale_name": "Mixolydian"
+            },
+            "requested": {
+              "scale_mode": true
+            },
+            "root_name": "G",
+            "root_note": 7,
+            "scale_mode": true,
+            "scale_name": "Mixolydian",
+            "verified": true
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "root_note": 2,
+        "scale_name": "dorian"
+      },
+      "expect": "Asked for root D, scale 'dorian', but Live reads back D Major (was C Major) \u2014 scale_name did not take. Live most likely does not know that scale name; use it exactly as get_song_scale or Live's Scale chooser spells it (e.g. 'Major', 'Minor', 'Dorian')",
+      "name": "scale_name_not_verified",
+      "wire": [
+        {
+          "command": "set_song_scale",
+          "params": {
+            "root_note": 2,
+            "scale_name": "dorian"
+          },
+          "response": {
+            "mismatched": [
+              "scale_name"
+            ],
+            "previous": {
+              "root_name": "C",
+              "root_note": 0,
+              "scale_mode": null,
+              "scale_name": "Major"
+            },
+            "requested": {
+              "root_name": "D",
+              "root_note": 2,
+              "scale_name": "dorian"
+            },
+            "root_name": "D",
+            "root_note": 2,
+            "scale_mode": null,
+            "scale_name": "Major",
+            "verified": false
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "root_note": "H"
+      },
+      "expect": "Error setting song scale: root_note='H' is not a key root. Give 0-11 (0 = C, 11 = B) or a note name such as 'C', 'F#', 'Bb' or 'c#'; nothing was sent to Ableton.",
+      "name": "invalid_root_note",
+      "wire": []
+    },
+    {
+      "args": {
+        "root_note": 12
+      },
+      "expect": "Error setting song scale: root_note=12 is not a key root. Give 0-11 (0 = C, 11 = B) or a note name such as 'C', 'F#', 'Bb' or 'c#'; nothing was sent to Ableton.",
+      "name": "root_note_out_of_range",
+      "wire": []
+    },
+    {
+      "args": {},
+      "expect": "Error setting song scale: set_song_scale needs at least one of root_note, scale_name or scale_mode; nothing was sent to Ableton. Use get_song_scale to read the current key and scale.",
+      "name": "nothing_to_set",
+      "wire": []
+    },
+    {
+      "args": {
+        "scale_name": "  "
+      },
+      "expect": "Error setting song scale: scale_name is empty \u2014 give a scale name as Live spells it (e.g. 'Major', 'Minor', 'Dorian'), or leave it out to keep the current scale. Nothing was sent to Ableton.",
+      "name": "empty_scale_name",
+      "wire": []
+    },
+    {
+      "args": {
+        "root_note": "Bb",
+        "scale_name": " Minor "
+      },
+      "expect": "Error setting song scale: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "set_song_scale",
+          "params": {
+            "root_note": 10,
+            "scale_name": "Minor"
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

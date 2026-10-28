@@ -377,11 +377,13 @@ def test_the_matrix_is_not_vacuous():
         "edit_clip_warp_markers",
         "get_clip_warp_markers",
         "get_plugin_presets",
+        "get_song_scale",
         "jump_to_locator",
         "move_arrangement_clip",
         "set_clip_warp",
         "set_device_parameters",
         "set_plugin_preset",
+        "set_song_scale",
         "set_track_solo",
     ]
     assert FLOOR_UNADVERTISED_IN_1_7_0 == [
