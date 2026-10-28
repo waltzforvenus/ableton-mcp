@@ -267,6 +267,24 @@ def test_registry_lock_modes_are_valid():
     assert {s.lock for s in COMMANDS.values()} <= {"write", "check", "exempt"}
     assert COMMANDS["save_set"].lock == "check"
     assert COMMANDS["stop_playback"].lock == "exempt"
+    # Commands that take over Live but leave nothing to save never stamp.
+    assert sorted(n for n, s in COMMANDS.items() if s.modifying and s.lock == "check") == [
+        "back_to_arrangement", "fire_clip", "jump_to_locator", "save_set",
+        "select_track", "set_current_song_time", "start_playback", "stop_clip",
+        "switch_to_arrangement_view"]
+
+
+def test_transport_moves_do_not_make_a_clean_save_look_stale(lock_path, tmp_path):
+    clock = Clock(1_000.0)
+    lock = _lock(lock_path, clock=clock)
+    lock.acquire("session-a")
+    service, client = _service(lock)
+    service.set_tempo(100.0)                       # a real edit at t=1000
+    path = _saved_set(tmp_path, 1_001.0)           # saved after it
+    clock.t = 2_000.0
+    service.switch_to_arrangement_view()           # view/transport afterwards
+    service.set_current_song_time(16.0)
+    assert lock.release("session-a", path)["released"] is True
 
 
 def test_a_failed_send_still_stamps_the_edit(lock_path):
