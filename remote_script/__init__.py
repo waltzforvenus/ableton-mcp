@@ -35,7 +35,7 @@ EXPECTED_COMMAND_ERRORS = (ValueError, IndexError, KeyError)
 
 # Bumped whenever the TCP command surface changes; the MCP server compares
 # this to EXPECTED_REMOTE_SCRIPT_VERSION.
-SCRIPT_VERSION = "1.16.0"
+SCRIPT_VERSION = "1.17.0"
 PROTOCOL_VERSION = 1
 
 # The trim eraser (see _trim_arrangement_clip): a temporary Session clip
@@ -69,6 +69,15 @@ PLUGIN_DEVICE_CLASS_NAMES = ("PluginDevice", "AuPluginDevice")
 # Song.root_note is an int 0-11 with 0 = C; these are the names the replies
 # use for it (sharps, as Live's own key chooser spells them).
 NOTE_NAMES = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
+
+
+class _PlainWarpMarker(object):
+    """Stand-in for Live.Clip.WarpMarker where the Live module is absent
+    (the test fakes). Inside Live, _new_warp_marker builds the real type."""
+
+    def __init__(self, beat_time, sample_time):
+        self.beat_time = float(beat_time)
+        self.sample_time = float(sample_time)
 
 # Wire-command dispatch table: every command _process_command accepts, in one
 # place. Each row is
@@ -109,6 +118,7 @@ COMMANDS = {
     "get_plugin_presets":         ("_get_plugin_presets",         False, None, True),
     "get_arrangement_clips":      ("_get_arrangement_clips",      False, None, True),
     "get_clip_notes":             ("_get_clip_notes",             False, None, True),
+    "get_clip_warp_markers":      ("_get_clip_warp_markers",      False, None, True),
     "get_session_snapshot":       ("_get_session_snapshot",       False, None, True),
     "get_song_scale":             ("_get_song_scale",             False, None, True),
     "get_browser_item":           ("_get_browser_item",           False, None, False),
@@ -149,6 +159,7 @@ COMMANDS = {
     "set_track_routing":          ("_set_track_routing",          True,  None, True),
     "set_clip_gain":              ("_set_clip_gain",              True,  None, True),
     "set_clip_warp":              ("_set_clip_warp",              True,  None, True),
+    "edit_clip_warp_markers":     ("_edit_clip_warp_markers",     True,  None, True),
     "start_playback":             ("_start_playback",             True,  None, False),
     "stop_playback":              ("_stop_playback",              True,  None, False),
     "load_browser_item":          ("_load_browser_item",          True,  None, True),
@@ -1481,6 +1492,307 @@ class AbletonMCP(ControlSurface):
         except Exception as e:
             self.log_message("Error setting clip warp: " + str(e))
             raise
+
+    # ── Warp markers ──────────────────────────────────────────────────────────
+    #
+    # Live 11.0.5+ exposes the warp grid on Clip (Live 11.0 already reads it):
+    #   warp_markers                        read-only, WarpMarker(beat_time,
+    #                                       sample_time); the LAST one is not
+    #                                       shown in Live's UI and only sets
+    #                                       the final segment's rate
+    #   add_warp_marker(Live.Clip.WarpMarker(beat_time=b, sample_time=s))
+    #   move_warp_marker(beat_time, beat_time_distance)   both in beats
+    #   remove_warp_marker(beat_time)
+    # beat_time is in clip beats, sample_time in SECONDS of the source file
+    # (sample_length, by contrast, is in frames). Every edit call is documented
+    # as "if possible", so a refused edit may be a silent no-op rather than an
+    # exception — which is why the batch command reads the markers back and
+    # verifies instead of trusting the calls.
+
+    def _warp_clip_state(self, track, clip, track_index, clip_index,
+                         arrangement):
+        """Everything a caller needs to map the clip's audio to the grid."""
+        warping = bool(self._safe_attr(clip, "warping", bool, False))
+        markers = self._warp_markers_from_clip(clip)
+        sample_rate = self._safe_attr(clip, "sample_rate", float, None)
+        sample_length = self._safe_attr(clip, "sample_length", int, None)
+        info = {
+            "track_index": track_index,
+            "track_name": track.name,
+            "clip_index": clip_index,
+            "clip_name": clip.name,
+            "arrangement": bool(arrangement),
+            "is_audio_clip": not bool(getattr(clip, "is_midi_clip", False)),
+            "warping": warping,
+            "warp_mode": self._safe_attr(clip, "warp_mode", int, None),
+            # start/end/loop markers are beats while warping, seconds when
+            # not — say which, so nobody has to remember.
+            "marker_units": "beats" if warping else "seconds",
+            "start_marker": self._safe_attr(clip, "start_marker", float, None),
+            "end_marker": self._safe_attr(clip, "end_marker", float, None),
+            "loop_start": self._safe_attr(clip, "loop_start", float, None),
+            "loop_end": self._safe_attr(clip, "loop_end", float, None),
+            "looping": bool(self._safe_attr(clip, "looping", bool, False)),
+            "length": self._safe_attr(clip, "length", float, None),
+            "sample_rate": sample_rate,
+            "sample_length": sample_length,
+            "song_tempo": self._safe_song_property("tempo", float, None),
+            "signature_numerator":
+                self._safe_song_property("signature_numerator", int, 4),
+            "warp_markers": markers,
+            "warp_marker_count": len(markers),
+            "warp_marker_api": dict(
+                (name, hasattr(clip, name))
+                for name in ("add_warp_marker", "move_warp_marker",
+                             "remove_warp_marker")),
+        }
+        if sample_rate and sample_length and sample_length > 0:
+            info["sample_seconds"] = sample_length / float(sample_rate)
+        if arrangement:
+            info["start_time"] = self._safe_attr(clip, "start_time", float, None)
+            info["end_time"] = self._safe_attr(clip, "end_time", float, None)
+        path = self._safe_attr(clip, "file_path", str, None)
+        if path:
+            info["file_path"] = path
+        return dict((k, v) for k, v in info.items() if v is not None)
+
+    def _get_clip_warp_markers(self, track_index=0, clip_index=0,
+                               arrangement=True, expect_track_name=None):
+        """Read an audio clip's warp markers with the context to use them:
+        the source file path and rate, the content/loop markers, warping
+        state and mode, and the song tempo and meter."""
+        try:
+            track, clip = self._resolve_clip_in_view(
+                track_index, clip_index, arrangement=arrangement,
+                expect_track_name=expect_track_name)
+            if getattr(clip, "is_midi_clip", False):
+                raise ValueError(
+                    "Warp markers apply to audio clips only; this is a MIDI clip")
+            return self._warp_clip_state(track, clip, track_index, clip_index,
+                                         arrangement)
+        except Exception as e:
+            self.log_message("Error reading warp markers: " + str(e))
+            raise
+
+    # One batch runs inside a single main-thread task; each edit is a cheap
+    # LOM call, but a runaway list still stalls Live's UI for its duration.
+    MAX_WARP_EDITS = 256
+    # Live stores marker beats as doubles; a caller echoing a value it read
+    # through JSON gets them back exactly, but one typing "16" for a marker
+    # at 15.99999997 should still hit it.
+    _WARP_BEAT_TOLERANCE = 1e-3
+
+    def _find_warp_marker(self, clip, beat_time):
+        """The exact beat_time Live holds for the marker nearest beat_time,
+        or raise — move/remove address markers by their beat, and an
+        off-by-a-hair beat silently matches nothing ("if possible")."""
+        markers = self._warp_markers_from_clip(clip)
+        if not markers:
+            raise ValueError("Clip has no warp markers")
+        target = float(beat_time)
+        nearest = min(markers, key=lambda m: abs(m["beat_time"] - target))
+        if abs(nearest["beat_time"] - target) > self._WARP_BEAT_TOLERANCE:
+            raise ValueError(
+                "No warp marker at beat %g (nearest is at %g)"
+                % (target, nearest["beat_time"]))
+        return nearest
+
+    def _new_warp_marker(self, beat_time, sample_time):
+        """A Live.Clip.WarpMarker — the only argument add_warp_marker takes
+        in Python (the {beat_time, sample_time} dict is Max for Live's
+        wrapper, not the Python API). Outside Live there is no Live module;
+        the plain stand-in keeps the handler drivable by the test fakes."""
+        try:
+            import Live
+            return Live.Clip.WarpMarker(beat_time=float(beat_time),
+                                        sample_time=float(sample_time))
+        except ImportError:
+            return _PlainWarpMarker(beat_time, sample_time)
+
+    def _apply_warp_edit(self, clip, edit):
+        op = edit["op"]
+        if op == "add":
+            beat = float(edit["beat_time"])
+            sample = edit.get("sample_time")
+            if sample is None:
+                # Pin the audio currently playing at that beat: Max for Live
+                # derives the missing half the same way. beat_to_sample_time
+                # returns frames, hence the rate.
+                sample = (float(clip.beat_to_sample_time(beat))
+                          / float(clip.sample_rate))
+            clip.add_warp_marker(self._new_warp_marker(beat, float(sample)))
+            return {"beat_time": beat, "sample_time": float(sample)}
+        marker = self._find_warp_marker(clip, edit["beat_time"])
+        if op == "remove":
+            clip.remove_warp_marker(marker["beat_time"])
+            return {"beat_time": marker["beat_time"]}
+        # move
+        if edit.get("new_beat_time") is not None:
+            distance = float(edit["new_beat_time"]) - marker["beat_time"]
+        else:
+            distance = float(edit["distance"])
+        clip.move_warp_marker(marker["beat_time"], distance)
+        return {"beat_time": marker["beat_time"],
+                "new_beat_time": marker["beat_time"] + distance,
+                "sample_time": marker["sample_time"]}
+
+    def _edit_clip_warp_markers(self, track_index=0, clip_index=0, edits=None,
+                                arrangement=True, expect_track_name=None,
+                                stop_on_error=True):
+        """Apply a batch of warp-marker edits in ONE main-thread task, then
+        read the markers back and verify every edit landed.
+
+        edits is a list of {"op": "add"|"move"|"remove", ...}:
+          add     beat_time, sample_time (seconds; omitted = pin what
+                  currently plays at beat_time)
+          move    beat_time (the marker), new_beat_time OR distance (beats)
+          remove  beat_time
+        Edits run in list order. Every edit is validated before any runs;
+        with stop_on_error (default) the first refusal stops the batch and
+        the response says exactly what did and did not happen —
+        warp_markers_before is returned so a caller can restore by hand.
+        """
+        try:
+            if not isinstance(edits, list) or not edits:
+                raise ValueError("edits must be a non-empty list")
+            if len(edits) > self.MAX_WARP_EDITS:
+                raise ValueError("At most %d warp edits per batch (got %d)"
+                                 % (self.MAX_WARP_EDITS, len(edits)))
+            track, clip = self._resolve_clip_in_view(
+                track_index, clip_index, arrangement=arrangement,
+                expect_track_name=expect_track_name)
+            if getattr(clip, "is_midi_clip", False):
+                raise ValueError(
+                    "Warp markers apply to audio clips only; this is a MIDI clip")
+            if not bool(getattr(clip, "warping", False)):
+                raise ValueError(
+                    "Clip is not warped — warp markers only exist while "
+                    "warping is on (turn it on with set_clip_warp first)")
+
+            normalized = []
+            needed = set()
+            for i, raw in enumerate(edits):
+                if not isinstance(raw, dict):
+                    raise ValueError("edit %d is not an object" % i)
+                op = str(raw.get("op", "")).lower()
+                if op not in ("add", "move", "remove"):
+                    raise ValueError(
+                        "edit %d: op must be add, move or remove (got %r)"
+                        % (i, raw.get("op")))
+                if raw.get("beat_time") is None:
+                    raise ValueError("edit %d (%s): beat_time is required"
+                                     % (i, op))
+                edit = {"op": op, "beat_time": float(raw["beat_time"])}
+                if op == "add" and raw.get("sample_time") is not None:
+                    edit["sample_time"] = float(raw["sample_time"])
+                if op == "move":
+                    if raw.get("new_beat_time") is not None:
+                        edit["new_beat_time"] = float(raw["new_beat_time"])
+                    elif raw.get("distance") is not None:
+                        edit["distance"] = float(raw["distance"])
+                    else:
+                        raise ValueError(
+                            "edit %d (move): give new_beat_time or distance" % i)
+                normalized.append(edit)
+                needed.add(op + "_warp_marker")
+            missing = sorted(n for n in needed if not hasattr(clip, n))
+            if missing:
+                raise RuntimeError(
+                    "This Live version has no Clip.%s (warp-marker editing "
+                    "needs Live 11.0.5 or later)" % ", Clip.".join(missing))
+
+            before = self._warp_markers_from_clip(clip)
+            results = []
+            for i, edit in enumerate(normalized):
+                try:
+                    outcome = self._apply_warp_edit(clip, edit)
+                    entry = {"index": i, "op": edit["op"], "ok": True}
+                    entry.update(outcome)
+                    results.append(entry)
+                except Exception as e:
+                    results.append({"index": i, "op": edit["op"], "ok": False,
+                                    "beat_time": edit["beat_time"],
+                                    "error": str(e)})
+                    self.log_message("Warp edit %d failed: %s" % (i, e))
+                    if stop_on_error:
+                        break
+            after = self._warp_markers_from_clip(clip)
+            mismatches = self._verify_warp_edits(before, after, results)
+            applied = len([r for r in results if r["ok"]])
+            info = self._warp_clip_state(track, clip, track_index, clip_index,
+                                         arrangement)
+            info.pop("warp_markers", None)
+            info.update({
+                "requested": len(normalized),
+                "applied": applied,
+                "failed": len(results) - applied,
+                "not_attempted": len(normalized) - len(results),
+                "results": results,
+                "warp_markers_before": before,
+                "warp_markers_after": after,
+                "verified": not mismatches and applied == len(normalized),
+                "mismatches": mismatches,
+            })
+            return info
+        except Exception as e:
+            self.log_message("Error editing warp markers: " + str(e))
+            raise
+
+    def _verify_warp_edits(self, before, after, results):
+        """Replay the edits that reported success onto `before` and compare
+        the beats they touched with what Live reads back. A call Live
+        quietly declined ("if possible") shows up here and nowhere else."""
+        tol = self._WARP_BEAT_TOLERANCE
+        expected = [dict(m) for m in before]
+
+        def find(beat):
+            for m in expected:
+                if abs(m["beat_time"] - beat) <= tol:
+                    return m
+            return None
+
+        touched = []
+        for r in results:
+            if not r["ok"]:
+                continue
+            if r["op"] == "remove":
+                m = find(r["beat_time"])
+                if m is not None:
+                    expected.remove(m)
+                touched.append(r["beat_time"])
+            elif r["op"] == "move":
+                m = find(r["beat_time"])
+                if m is not None:
+                    m["beat_time"] = r["new_beat_time"]
+                touched.extend([r["beat_time"], r["new_beat_time"]])
+            else:
+                m = find(r["beat_time"])
+                if m is not None:
+                    expected.remove(m)
+                expected.append({"beat_time": r["beat_time"],
+                                 "sample_time": r["sample_time"]})
+                touched.append(r["beat_time"])
+
+        mismatches = []
+        seen = set()
+        for beat in touched:
+            key = round(beat, 6)
+            if key in seen:
+                continue
+            seen.add(key)
+            want = find(beat)
+            got = None
+            for m in after:
+                if abs(m["beat_time"] - beat) <= tol:
+                    got = m
+                    break
+            if want is None and got is None:
+                continue
+            if want is None or got is None or \
+                    abs(want["sample_time"] - got["sample_time"]) > 1e-4:
+                mismatches.append({"beat_time": beat, "expected": want,
+                                   "actual": got})
+        return mismatches
 
     def _back_to_arrangement(self):
         """Hand every overridden track back to the Arrangement.

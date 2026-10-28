@@ -17,6 +17,11 @@ that have only ever executed inside Live can be tested on both sides:
 - ``save_owner`` — which object (song / application / neither) exposes a
   callable save candidate for the ``_save_set`` probe chain.
 - ``warp_markers`` — audio clips carry warp markers.
+- ``warp_marker_edit_api`` — audio clips expose Live 11.0.5's
+  ``add_warp_marker`` / ``move_warp_marker`` / ``remove_warp_marker`` and
+  ``beat_to_sample_time`` (only meaningful with ``warp_markers``).
+- ``warp_edit_lands`` — False makes every warp edit a silent no-op, the
+  "if possible" outcome the LOM documents and the batch verify exists for.
 - ``extended_note_fields`` — extended-read note objects carry the optional
   per-field-hasattr attributes (probability, note_id, ...).
 - ``exclusive_solo`` — ``Song.exclusive_solo`` (Live's Exclusive Solo
@@ -76,6 +81,7 @@ class FakeLiveConfig(object):
                  save_owner="song", warp_markers=False,
                  extended_note_fields=False, track_delete_clip_api=True,
                  transport_write_lag=False, device_delete_lands=True,
+                 warp_marker_edit_api=True, warp_edit_lands=True,
                  exclusive_solo=False, song_scale_api=True,
                  song_scale_mode_api=True, unknown_scale_name="ignore"):
         if note_api not in _NOTE_API_GENERATIONS:
@@ -105,6 +111,8 @@ class FakeLiveConfig(object):
         # identical from here, which is the point. False = the call is a
         # silent no-op.
         self.device_delete_lands = device_delete_lands
+        self.warp_marker_edit_api = warp_marker_edit_api
+        self.warp_edit_lands = warp_edit_lands
         # Song.exclusive_solo: True / False is the preference as Live reports
         # it; None means the build does not expose the property, which is
         # what _set_track_solo's probe branches on. The fake only REPORTS
@@ -364,9 +372,18 @@ class FakeClip(object):
             self.pitch_coarse = 0
             self.pitch_fine = 0
             self.file_path = "/samples/%s.wav" % name.replace(" ", "_").lower()
+            # Source file geometry: at the fake's 120 BPM a warped clip
+            # plays 0.5 s per beat, so the file is length * 0.5 s long.
+            self.sample_rate = 44100.0
+            self.sample_length = int(self.length * 0.5 * self.sample_rate)
             if self._config.warp_markers:
                 self.warp_markers = [FakeWarpMarker(0.0, 0.0),
                                      FakeWarpMarker(4.0, 2.0)]
+                if self._config.warp_marker_edit_api:
+                    self.add_warp_marker = self._add_warp_marker
+                    self.move_warp_marker = self._move_warp_marker
+                    self.remove_warp_marker = self._remove_warp_marker
+                    self.beat_to_sample_time = self._beat_to_sample_time
 
         api = self._config.note_api
         if api in ("legacy", "both"):
@@ -440,6 +457,79 @@ class FakeClip(object):
             if not self._in_range(record, from_pitch, pitch_span, from_time, time_span)
         ]
 
+    # -- warp markers (Live 11.0.5+ Clip API) --------------------------------
+    #
+    # Rules from the LOM docs for add_warp_marker: sample_time within the
+    # file, strictly between its neighbours' sample times, and every
+    # resulting segment's tempo within 5..999 BPM. move/remove are "if
+    # possible": an impossible request is a silent no-op, not an error.
+
+    def _warp_state_ok(self, pairs):
+        pairs = sorted(pairs)
+        seconds = self.sample_length / self.sample_rate
+        for b, s in pairs:
+            if s < 0 or s > seconds + 1e-9:
+                return False
+        for (b0, s0), (b1, s1) in zip(pairs, pairs[1:]):
+            if b1 <= b0 or s1 <= s0:
+                return False
+            bpm = 60.0 * (b1 - b0) / (s1 - s0)
+            if bpm < 5.0 or bpm > 999.0:
+                return False
+        return True
+
+    def _pairs(self):
+        return [(m.beat_time, m.sample_time) for m in self.warp_markers]
+
+    def _add_warp_marker(self, marker):
+        if not self.warping:
+            raise RuntimeError("Warp markers are only available for warped clips")
+        beat, sample = float(marker.beat_time), float(marker.sample_time)
+        pairs = self._pairs()
+        if any(abs(b - beat) < 1e-9 for b, _ in pairs) or \
+                not self._warp_state_ok(pairs + [(beat, sample)]):
+            raise RuntimeError("Invalid warp marker position")
+        if not self._config.warp_edit_lands:
+            return
+        self.warp_markers.append(FakeWarpMarker(beat, sample))
+        self.warp_markers.sort(key=lambda m: m.beat_time)
+
+    def _move_warp_marker(self, beat_time, beat_time_distance):
+        if not self.warping:
+            raise RuntimeError("Warp markers are only available for warped clips")
+        for m in self.warp_markers:
+            if m.beat_time == float(beat_time):
+                trial = [(b, s) for b, s in self._pairs() if b != m.beat_time]
+                trial.append((m.beat_time + float(beat_time_distance),
+                              m.sample_time))
+                if self._warp_state_ok(trial) and self._config.warp_edit_lands:
+                    m.beat_time += float(beat_time_distance)
+                    self.warp_markers.sort(key=lambda w: w.beat_time)
+                return
+
+    def _remove_warp_marker(self, beat_time):
+        if not self.warping:
+            raise RuntimeError("Warp markers are only available for warped clips")
+        if not self._config.warp_edit_lands:
+            return
+        self.warp_markers = [m for m in self.warp_markers
+                             if m.beat_time != float(beat_time)]
+
+    def _beat_to_sample_time(self, beat):
+        """Frames, as Live returns them (seconds * sample_rate)."""
+        if not self.warping:
+            raise RuntimeError("beat_to_sample_time needs a warped clip")
+        pairs = sorted(self._pairs())
+        if len(pairs) == 1:
+            seconds = pairs[0][1] + (beat - pairs[0][0]) * 0.5
+        else:
+            i = 0
+            while i < len(pairs) - 2 and beat > pairs[i + 1][0]:
+                i += 1
+            (b0, s0), (b1, s1) = pairs[i], pairs[i + 1]
+            seconds = s0 + (beat - b0) * (s1 - s0) / (b1 - b0)
+        return seconds * self.sample_rate
+
     # -- arrangement geometry (markers, position) ---------------------------
 
     def _marker_units_per_beat(self):
@@ -467,10 +557,13 @@ class FakeClip(object):
         if self.is_audio_clip:
             for attr in ("gain", "gain_display_string", "warping", "warp_mode",
                          "pitch_coarse", "pitch_fine", "file_path",
-                         "unwarped_seconds_per_beat"):
+                         "unwarped_seconds_per_beat", "sample_rate",
+                         "sample_length"):
                 setattr(duplicate, attr, getattr(self, attr))
             if hasattr(self, "warp_markers"):
-                duplicate.warp_markers = list(self.warp_markers)
+                duplicate.warp_markers = [
+                    FakeWarpMarker(m.beat_time, m.sample_time)
+                    for m in self.warp_markers]
         return duplicate
 
 

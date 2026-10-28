@@ -21,8 +21,21 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Warp vision (analyze_clip_audio / suggest_warp_markers): read the clip's
+# audio file in THIS process and render a spectrogram the model can look at.
+# Kept deliberately small and network-free — numpy (BSD-3), soundfile
+# (BSD-3, wraps libsndfile LGPL-2.1, dynamically linked) and Pillow
+# (MIT-CMU/HPND), all GPL/AGPL-compatible. librosa was rejected: it drags in
+# numba/scipy/scikit-learn and pooch, an HTTP client that downloads example
+# data, which the no-telemetry rule forbids.
+analysis = [
+    "numpy>=1.24",
+    "soundfile>=0.12",
+    "pillow>=10.0",
+]
 dev = [
     "pytest>=8.0",
+    "ableton-mcp[analysis]",
 ]
 
 [project.scripts]

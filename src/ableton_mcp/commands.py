@@ -82,6 +82,9 @@ COMMANDS: dict[str, CommandSpec] = {
     "get_session_snapshot": CommandSpec(gated=True, min_script_version="1.15.0"),
     # Live 12's song key/scale; brand new, so no floor (see get_plugin_presets).
     "get_song_scale": CommandSpec(gated=True),
+    # New in 1.17.0 (warp vision); no floor — a brand-new name is never
+    # advertised by an older script, so the capability gate already answers.
+    "get_clip_warp_markers": CommandSpec(gated=True),
     "get_browser_tree": CommandSpec(),  # LEGACY floor — gate is a no-op
     "get_browser_items_at_path": CommandSpec(),  # LEGACY floor — gate is a no-op
     # ── State-modifying commands (15 s default socket timeout) ───────────
@@ -151,6 +154,9 @@ COMMANDS: dict[str, CommandSpec] = {
     "set_track_routing": CommandSpec(modifying=True, gated=True),
     "set_clip_gain": CommandSpec(modifying=True, gated=True),
     "set_clip_warp": CommandSpec(modifying=True, gated=True),
+    # 1.17.0; the whole batch runs in one main-thread task, capped at 256
+    # edits script-side, so the default modifying budget covers it.
+    "edit_clip_warp_markers": CommandSpec(modifying=True, gated=True),
     "start_playback": CommandSpec(modifying=True),  # LEGACY floor — gate is a no-op
     "stop_playback": CommandSpec(modifying=True),  # LEGACY floor — gate is a no-op
     # The load_* tools actually send load_browser_item; without a modifying

@@ -1,4 +1,4 @@
-"""Golden-case definitions for all 60 MCP tools (docs/REFACTOR_PLAN.md
+"""Golden-case definitions for all 64 MCP tools (docs/REFACTOR_PLAN.md
 section 5 Level 1, section 6 PR3).
 
 Each case names a tool, the arguments to call it with, and the exact ordered
@@ -52,6 +52,30 @@ def _ok(command, params, response):
 def _boom(command, params, message="boom"):
     return {"command": command, "params": params, "raise": message}
 
+
+# A warped Arrangement clip's state as get_clip_warp_markers returns it.
+WARP_STATE = {
+    "track_index": 1, "track_name": "Drums", "clip_index": 0,
+    "clip_name": "Drum Take", "arrangement": True, "is_audio_clip": True,
+    "warping": True, "warp_mode": 0, "marker_units": "beats",
+    "start_marker": 0.0, "end_marker": 16.0, "loop_start": 0.0,
+    "loop_end": 16.0, "looping": False, "length": 16.0,
+    "sample_rate": 44100.0, "sample_length": 352800, "sample_seconds": 8.0,
+    "song_tempo": 120.0, "signature_numerator": 4,
+    "start_time": 32.0, "end_time": 48.0,
+    "file_path": "/Users/me/Music/Drum Take.wav",
+    "warp_markers": [{"beat_time": 0.0, "sample_time": 0.0},
+                     {"beat_time": 4.0, "sample_time": 2.0},
+                     {"beat_time": 16.0, "sample_time": 8.0}],
+    "warp_marker_count": 3,
+    "warp_marker_api": {"add_warp_marker": True, "move_warp_marker": True,
+                        "remove_warp_marker": True},
+}
+
+WARP_EDITS = [
+    {"op": "move", "beat_time": 4.0, "new_beat_time": 4.0625},
+    {"op": "add", "beat_time": 8.0, "sample_time": 3.98},
+]
 
 # A small note payload shaped as the Remote Script returns / accepts it.
 NOTES = [
@@ -271,6 +295,87 @@ BASE_CASES = [
              "warp_mode": 4, "arrangement": True},
             {"clip_name": "session_Drums", "track_name": "Drums",
              "warping": True, "warp_mode": 4, "length": 530.16}),
+    ]),
+
+    # ── get_clip_warp_markers ─────────────────────────────────────────────
+    _case("get_clip_warp_markers", "warped_arrangement_clip",
+          {"track_index": 1, "clip_index": 0}, [
+        _ok("get_clip_warp_markers",
+            {"track_index": 1, "clip_index": 0, "arrangement": True},
+            WARP_STATE),
+    ]),
+    _case("get_clip_warp_markers", "session_clip_with_guard",
+          {"track_index": 1, "clip_index": 2, "arrangement": False,
+           "expect_track_name": "Drums"}, [
+        _ok("get_clip_warp_markers",
+            {"track_index": 1, "clip_index": 2, "arrangement": False,
+             "expect_track_name": "Drums"},
+            dict(WARP_STATE, arrangement=False, clip_index=2)),
+    ]),
+
+    # ── edit_clip_warp_markers ────────────────────────────────────────────
+    # Verified batch: the headline says so and the JSON carries the
+    # per-edit outcomes and both marker lists.
+    _case("edit_clip_warp_markers", "verified_batch",
+          {"track_index": 1, "clip_index": 0, "edits": WARP_EDITS}, [
+        _ok("edit_clip_warp_markers",
+            {"track_index": 1, "clip_index": 0, "edits": WARP_EDITS,
+             "arrangement": True, "stop_on_error": True},
+            {"clip_name": "Drum Take", "track_name": "Drums",
+             "requested": 2, "applied": 2, "failed": 0, "not_attempted": 0,
+             "verified": True, "mismatches": [],
+             "results": [
+                 {"index": 0, "op": "move", "ok": True, "beat_time": 4.0,
+                  "new_beat_time": 4.0625, "sample_time": 2.0},
+                 {"index": 1, "op": "add", "ok": True, "beat_time": 8.0,
+                  "sample_time": 3.98}],
+             "warp_markers_before": [
+                 {"beat_time": 0.0, "sample_time": 0.0},
+                 {"beat_time": 4.0, "sample_time": 2.0},
+                 {"beat_time": 16.0, "sample_time": 8.0}],
+             "warp_markers_after": [
+                 {"beat_time": 0.0, "sample_time": 0.0},
+                 {"beat_time": 4.0625, "sample_time": 2.0},
+                 {"beat_time": 8.0, "sample_time": 3.98},
+                 {"beat_time": 16.0, "sample_time": 8.0}]}),
+    ]),
+    # A refused edit stops the batch: the headline must not claim success.
+    _case("edit_clip_warp_markers", "refused_edit_not_verified",
+          {"track_index": 1, "clip_index": 0, "edits": WARP_EDITS,
+           "stop_on_error": True}, [
+        _ok("edit_clip_warp_markers",
+            {"track_index": 1, "clip_index": 0, "edits": WARP_EDITS,
+             "arrangement": True, "stop_on_error": True},
+            {"clip_name": "Drum Take", "track_name": "Drums",
+             "requested": 2, "applied": 0, "failed": 1, "not_attempted": 1,
+             "verified": False, "mismatches": [],
+             "results": [
+                 {"index": 0, "op": "move", "ok": False, "beat_time": 4.0,
+                  "error": "No warp marker at beat 4 (nearest is at 3.5)"}],
+             "warp_markers_before": [
+                 {"beat_time": 0.0, "sample_time": 0.0},
+                 {"beat_time": 3.5, "sample_time": 1.75}],
+             "warp_markers_after": [
+                 {"beat_time": 0.0, "sample_time": 0.0},
+                 {"beat_time": 3.5, "sample_time": 1.75}]}),
+    ]),
+
+    # ── analyze_clip_audio / suggest_warp_markers ─────────────────────────
+    # The analysis itself is covered by tests/test_warp_vision.py on real
+    # synthetic audio (numeric output is not a stable golden across numpy
+    # versions). What the goldens freeze is the wire read and the refusals
+    # that happen before any audio is touched.
+    _case("analyze_clip_audio", "no_file_path_refused",
+          {"track_index": 1, "clip_index": 0, "include_image": False}, [
+        _ok("get_clip_warp_markers",
+            {"track_index": 1, "clip_index": 0, "arrangement": True},
+            dict(WARP_STATE, file_path=None)),
+    ]),
+    _case("suggest_warp_markers", "midi_clip_refused",
+          {"track_index": 1, "clip_index": 0, "include_image": False}, [
+        _ok("get_clip_warp_markers",
+            {"track_index": 1, "clip_index": 0, "arrangement": True},
+            dict(WARP_STATE, is_audio_clip=False)),
     ]),
 
     # ── back_to_arrangement ───────────────────────────────────────────────

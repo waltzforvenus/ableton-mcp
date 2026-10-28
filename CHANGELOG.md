@@ -9,7 +9,7 @@ separately, and a script change means **re-run
 
 ## [Unreleased]
 
-Ships Remote Script **1.16.0**. **Re-run `ableton-mcp-install-script` and
+Ships Remote Script **1.17.0**. **Re-run `ableton-mcp-install-script` and
 restart Live after upgrading** — the new commands live in the script half,
 and Live caches an already-imported script module, so re-selecting the
 control surface is not enough. This release is larger than usual on the
@@ -52,6 +52,31 @@ counts, is `docs/IMPROVEMENTS.md`.
   upstream PRs #99 and #84 (MIT), written fresh on the fork's track
   resolver and name guard.
 
+- **Warp vision** — an agent can now *see* an audio clip against its
+  warping and fix it precisely, then verify. Four tools (all †):
+  - `analyze_clip_audio`: reads the clip's audio file on this machine and
+    returns an image — waveform with the song's bars/beats as the current
+    warp maps them onto the audio, the warp markers, detected transients,
+    a low/mid/high energy strip and a log-frequency spectrogram — plus
+    JSON for text-only models: transients (file time, song beat, ms off the
+    nearest 16th, strength, dominant band), a source tempo/beat-grid
+    estimate, per-band energy over time, and `grid_alignment` (median/p90
+    ms by which strong hits miss the grid — the before/after number).
+  - `suggest_warp_markers`: proposes add/move/remove edits that put hits
+    on the grid — `transients` (local snap), `rewarp` (left-to-right beat
+    tracking for drifting takes or a wrong Auto-Warp tempo), `tempo`
+    (constant-tempo anchors). Dry run by default with a before/after image;
+    `apply=True` sends the batch and reports alignment MEASURED from Live's
+    read-back.
+  - `edit_clip_warp_markers`: batch add/move/remove in one main-thread
+    task, then reads the markers back and reports `verified` per batch
+    (Live's edit calls are "if possible": a refused edit can be silent).
+  - `get_clip_warp_markers`: the raw markers with file path, sample rate,
+    start/end/loop markers, warp mode, song tempo and meter.
+  The two audio tools need the new optional extra: `uv pip install
+  'ableton-mcp[analysis]'` (numpy, soundfile, Pillow — all GPL-compatible,
+  no network clients; librosa was rejected for pulling in `pooch`, an HTTP
+  downloader). Warp-marker editing needs Live 11.0.5 or later.
 - `get_plugin_presets` † and `set_plugin_preset` †: list and select the
   factory presets of a hosted VST/VST3/AU plugin. Live exposes *no*
   parameters of an unconfigured VST3 or AU through its API — verified on
@@ -264,6 +289,25 @@ counts, is `docs/IMPROVEMENTS.md`.
   older Live), plus `unknown_scale_name` ("ignore" / "raise" / "accept")
   for what a write of a name Live may not know does.
 
+- Remote Script 1.17.0 (`EXPECTED_REMOTE_SCRIPT_VERSION` moved with it):
+  `get_clip_warp_markers` (read-only) and `edit_clip_warp_markers`
+  (main-thread, ≤256 edits, validated before any runs, verified by
+  read-back) — both new names, so gated without a version floor. Markers
+  are built as `Live.Clip.WarpMarker(beat_time=, sample_time=)`, the only
+  form the Python API takes (the dict is Max for Live's wrapper); move and
+  remove resolve the caller's beat to the exact one Live holds (1e-3 beat
+  tolerance). The fake LOM models the documented rules (monotonic in beat
+  and sample time, inside the file, 5–999 BPM segments) and two toggles:
+  `warp_marker_edit_api` (Live < 11.0.5) and `warp_edit_lands` (the silent
+  "if possible" no-op). New `audio_analysis.py` / `warp_vision.py` hold the
+  server-side analysis; tests run it on synthetic audio with sample-exact
+  ground truth (clicks, drifting kick/hat takes, band splits, a log sweep)
+  and drive the whole analyze → dry run → apply → verify loop through a
+  real FastMCP session onto the real Remote Script. Image tools are
+  annotated `Any` so FastMCP leaves their text+image content unstructured.
+  Tool surface 57 → 61; goldens: four new files, and
+  get_remote_script_info.json / set_track_volume.json re-recorded for the
+  version string only.
 - `scripts/push_notes.py`: a standard-library-only CLI that pushes MIDI
   notes from JSON files — a note list, or a manifest of files → track/clip
   targets — straight to the Remote Script socket, in chunks of at most 110

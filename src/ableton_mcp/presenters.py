@@ -80,6 +80,101 @@ def set_clip_warp(result: Dict[str, Any]) -> str:
             f"'{result.get('track_name')}'{span_text}")
 
 
+# ── Warp vision ──────────────────────────────────────────────────────────────
+
+get_clip_warp_markers = as_json
+
+_IMAGE_KEY = (
+    "Image key: yellow lines = warp markers (label = clip beat), cyan ticks = "
+    "detected transients (taller = stronger), grey lines = song bars (number "
+    "on top) and beats, green dots on the time axis = the estimated source "
+    "beat grid, magenta = proposed/after markers. Bottom: low/mid/high "
+    "energy strip and a log-frequency spectrogram (kick at the bottom, hats "
+    "at the top)."
+)
+
+
+def _with_image(text: str, result: Dict[str, Any], fmt: str = "png") -> Any:
+    """Text plus, when one was rendered, the image as MCP image content —
+    the JSON alone must still be enough for a text-only model."""
+    image = result.pop("image", None)
+    body = text + "\n" + json.dumps(result, indent=1)
+    if image is None:
+        return body
+    # Imported here so a text-only code path never needs the image type.
+    from mcp.server.fastmcp import Image
+    return [body + "\n\n" + _IMAGE_KEY, Image(data=image, format=fmt)]
+
+
+def _alignment_phrase(a: Dict[str, Any]) -> str:
+    if not a or not a.get("count"):
+        return "no strong on-grid hits to measure"
+    return (f"median {a['median_abs_ms']} ms / p90 {a['p90_abs_ms']} ms off "
+            f"the grid over {a['count']} strong hits")
+
+
+def analyze_clip_audio(result: Dict[str, Any]) -> Any:
+    clip, win = result.get("clip", {}), result.get("window", {})
+    tempo = result.get("source_tempo_estimate")
+    tempo_text = (f"source ≈ {tempo['bpm']} BPM (confidence "
+                  f"{tempo['confidence']}; candidates {tempo['candidates_bpm']})"
+                  if tempo else "no clear source tempo")
+    align = result.get("grid_alignment", {}).get("beat", {})
+    text = (f"Analysed '{clip.get('clip_name')}' on '{clip.get('track_name')}' "
+            f"{win.get('start_seconds')}-{win.get('end_seconds')} s of the file "
+            f"(grid beats {win.get('start_beat')}-{win.get('end_beat')}): "
+            f"{tempo_text}; the current warping plays it at "
+            f"{result.get('warped_bpm_at_window_middle')} BPM here; "
+            f"{result.get('transients_total')} transients; beat-grid alignment: "
+            f"{_alignment_phrase(align)}. Next: suggest_warp_markers (dry run) "
+            f"to see proposed fixes, or zoom with start_beat/end_beat.")
+    return _with_image(text, result)
+
+
+def edit_clip_warp_markers(result: Dict[str, Any]) -> str:
+    applied, requested = result.get("applied"), result.get("requested")
+    who = f"'{result.get('clip_name')}' on '{result.get('track_name')}'"
+    if result.get("verified"):
+        head = (f"Applied {applied}/{requested} warp edits to {who} — every "
+                f"edit verified against Live's read-back; "
+                f"{len(result.get('warp_markers_after') or [])} markers now")
+    else:
+        head = (f"Warp edits on {who} NOT fully verified: {applied}/{requested} "
+                f"reported applied, {result.get('failed')} failed, "
+                f"{result.get('not_attempted')} not attempted, "
+                f"{len(result.get('mismatches') or [])} read-back mismatches. "
+                f"warp_markers_before below is the state to restore if needed")
+    return head + "\n" + json.dumps(result, indent=1)
+
+
+def suggest_warp_markers(result: Dict[str, Any]) -> Any:
+    before = _alignment_phrase(result.get("alignment_before"))
+    after = _alignment_phrase(result.get("alignment_after"))
+    n = result.get("edit_count")
+    mode = result.get("mode")
+    sub = result.get("subdivision_beats")
+    applied = result.get("applied")
+    if applied is not None:
+        state = ("verified" if applied.get("verified")
+                 else "NOT verified — see applied.failures / mismatches")
+        text = (f"Applied {applied.get('applied')}/{applied.get('requested')} "
+                f"warp edits ({mode}, {sub}-beat grid), {state}. Measured on "
+                f"Live's read-back: before {before}; after {after}. Re-run "
+                f"analyze_clip_audio on the same window to look again.")
+    elif not n:
+        text = (f"No edits proposed ({mode}, {sub}-beat grid): {before}. "
+                f"Skipped: {result.get('skipped')}. Try another mode, a "
+                f"finer/coarser subdivision, a larger tolerance, or a "
+                f"narrower window.")
+    else:
+        text = (f"Dry run — nothing changed. {n} edits ({mode}, {sub}-beat "
+                f"grid) would take the clip from {before} to {after} "
+                f"(predicted). Look at the before/after image; to apply, call "
+                f"again with apply=True, or send `edits` (edited as you see "
+                f"fit) to edit_clip_warp_markers.")
+    return _with_image(text, result)
+
+
 def back_to_arrangement() -> str:
     return "All tracks returned to Arrangement playback"
 
@@ -779,6 +874,10 @@ ERROR_PHRASES: Dict[str, str] = {
     "create_clip": "creating clip",
     "set_clip_gain": "setting clip gain",
     "set_clip_warp": "setting clip warp",
+    "get_clip_warp_markers": "reading warp markers",
+    "edit_clip_warp_markers": "editing warp markers",
+    "analyze_clip_audio": "analyzing clip audio",
+    "suggest_warp_markers": "suggesting warp markers",
     "back_to_arrangement": "returning to arrangement",
     "get_track_routing": "getting track routing",
     "set_track_routing": "setting track routing",

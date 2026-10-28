@@ -374,6 +374,8 @@ def test_the_matrix_is_not_vacuous():
     assert GATED_POST_1_7_0 == [
         "delete_locator",
         "duplicate_track",
+        "edit_clip_warp_markers",
+        "get_clip_warp_markers",
         "get_plugin_presets",
         "get_song_scale",
         "jump_to_locator",
