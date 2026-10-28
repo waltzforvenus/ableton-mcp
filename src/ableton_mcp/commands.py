@@ -41,10 +41,13 @@ class CommandSpec:
     - ``lock``: how a ``modifying`` command meets the shared Live lock
       (live_lock.py). ``"write"`` (the default) is checked before sending
       and stamps ``last_edit_ts`` afterwards; ``"check"`` is checked but
-      does not stamp (save_set — a save stamping itself as an edit would
-      make the save it just did look stale to release); ``"exempt"`` is
-      never refused (stop_playback — stopping sound must always work, lock
-      or no lock). Ignored for read-only rows, which never need the lock.
+      does not stamp — save_set (a save stamping itself as an edit would
+      make the save it just did look stale to release) and the transport,
+      view and selection commands, which take over Live but leave nothing
+      to save: Cmd-S on an unchanged set does not touch the file, so a
+      stamp from them made a clean set impossible to release (seen after an
+      export, 10-28). ``"exempt"`` is never refused (stop_playback —
+      stopping sound must always work). Ignored for read-only rows.
     """
 
     modifying: bool = False
@@ -144,8 +147,8 @@ COMMANDS: dict[str, CommandSpec] = {
     "set_arrangement_clip_name": CommandSpec(modifying=True, gated=True),
     "set_tempo": CommandSpec(modifying=True),  # LEGACY floor — gate is a no-op
     "set_song_scale": CommandSpec(modifying=True, gated=True),
-    "fire_clip": CommandSpec(modifying=True, audible=True),  # LEGACY floor
-    "stop_clip": CommandSpec(modifying=True),  # LEGACY floor — gate is a no-op
+    "fire_clip": CommandSpec(modifying=True, audible=True, lock="check"),  # LEGACY floor
+    "stop_clip": CommandSpec(modifying=True, lock="check"),  # LEGACY floor
     "delete_clip": CommandSpec(modifying=True, gated=True),
     "delete_track": CommandSpec(modifying=True, gated=True),
     # Up to 1.14.0 the handler returned len(track.devices) with no
@@ -173,14 +176,14 @@ COMMANDS: dict[str, CommandSpec] = {
     "save_set": CommandSpec(modifying=True, gated=True, lock="check"),
     "set_track_send": CommandSpec(modifying=True, gated=True),
     "set_count_in": CommandSpec(modifying=True, gated=True),
-    "back_to_arrangement": CommandSpec(modifying=True, gated=True),
+    "back_to_arrangement": CommandSpec(modifying=True, gated=True, lock="check"),
     "set_track_routing": CommandSpec(modifying=True, gated=True),
     "set_clip_gain": CommandSpec(modifying=True, gated=True),
     "set_clip_warp": CommandSpec(modifying=True, gated=True),
     # 1.17.0; the whole batch runs in one main-thread task, capped at 256
     # edits script-side, so the default modifying budget covers it.
     "edit_clip_warp_markers": CommandSpec(modifying=True, gated=True),
-    "start_playback": CommandSpec(modifying=True, audible=True),  # LEGACY floor
+    "start_playback": CommandSpec(modifying=True, audible=True, lock="check"),  # LEGACY floor
     # Exempt from the Live lock: whoever holds it, stopping sound must work.
     "stop_playback": CommandSpec(modifying=True, lock="exempt"),  # LEGACY floor
     # The load_* tools actually send load_browser_item; without a modifying
@@ -210,8 +213,8 @@ COMMANDS: dict[str, CommandSpec] = {
     # clients (plan §9) and for the cross-half modifying-set equality.
     # Also in the LEGACY floor, so it stays ungated.
     "load_instrument_or_effect": CommandSpec(modifying=True),
-    "switch_to_arrangement_view": CommandSpec(modifying=True, gated=True),
-    "set_current_song_time": CommandSpec(modifying=True, gated=True),
+    "switch_to_arrangement_view": CommandSpec(modifying=True, gated=True, lock="check"),
+    "set_current_song_time": CommandSpec(modifying=True, gated=True, lock="check"),
     # 35 s, not the modifying default: the Remote Script's queue timeout for
     # this row is 30 s because destination_times places a whole run of
     # stamps inside one main-thread task, and the socket must outlast it by
@@ -223,7 +226,7 @@ COMMANDS: dict[str, CommandSpec] = {
         modifying=True, timeout=35.0, gated=True, min_script_version="1.15.0"
     ),
     "create_locator": CommandSpec(modifying=True, gated=True),
-    "jump_to_locator": CommandSpec(modifying=True, gated=True),
+    "jump_to_locator": CommandSpec(modifying=True, gated=True, lock="check"),
     "delete_locator": CommandSpec(modifying=True, gated=True),
     # Scripts up to 1.11.0 advertise trim_arrangement_clip but serve the
     # marker-write implementation, which is verifiably inert on real Live
