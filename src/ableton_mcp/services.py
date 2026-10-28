@@ -802,6 +802,47 @@ class AbletonService:
         return self._send("load_browser_item",
                           _guarded(params, expect_track_name))
 
+    # Rack chains
+
+    def get_rack_chains(self, track_index: int, device_index: int,
+                        track_type: str = "regular") -> Dict[str, Any]:
+        return self._send("get_rack_chains", {
+            "track_index": track_index, "device_index": device_index,
+            "track_type": track_type})
+
+    def insert_rack_chain(self, track_index: int, device_index: int,
+                          index: int = -1, name: Optional[str] = None,
+                          track_type: str = "regular",
+                          expect_track_name: Optional[str] = None) -> Dict[str, Any]:
+        params: Dict[str, Any] = {"track_index": track_index,
+                                  "device_index": device_index, "index": index,
+                                  "track_type": track_type}
+        if name is not None:
+            params["name"] = name
+        return self._send("insert_rack_chain", _guarded(params, expect_track_name))
+
+    def insert_chain_device(self, track_index: int, device_index: int,
+                            chain_index: int, device_name: str, index: int = -1,
+                            track_type: str = "regular",
+                            expect_track_name: Optional[str] = None) -> Dict[str, Any]:
+        return self._send("insert_chain_device", _guarded({
+            "track_index": track_index, "device_index": device_index,
+            "chain_index": chain_index, "device_name": device_name,
+            "index": index, "track_type": track_type}, expect_track_name))
+
+    def set_chain_mixer(self, track_index: int, device_index: int,
+                        chain_index: int, settings: Dict[str, Any],
+                        track_type: str = "regular",
+                        expect_track_name: Optional[str] = None) -> Dict[str, Any]:
+        # Only the fields the caller set go on the wire: the handler treats
+        # an absent key as "leave it", and None would mean the same anyway.
+        params: Dict[str, Any] = {"track_index": track_index,
+                                  "device_index": device_index,
+                                  "chain_index": chain_index,
+                                  "track_type": track_type}
+        params.update({k: v for k, v in settings.items() if v is not None})
+        return self._send("set_chain_mixer", _guarded(params, expect_track_name))
+
     def load_device_from_path(self, track_index: int, path: str,
                               track_type: str = "regular",
                               expect_track_name: Optional[str] = None

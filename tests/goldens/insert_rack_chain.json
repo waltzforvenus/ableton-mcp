@@ -1,0 +1,62 @@
+{
+  "cases": [
+    {
+      "args": {
+        "device_index": 0,
+        "name": "Amp B",
+        "track_index": 1
+      },
+      "expect": "Added chain 1 'Amp B' (volume 0.0 dB; no devices) to 'Audio Effect Rack' on 'GTR'; the rack now has 2 chains",
+      "name": "success",
+      "wire": [
+        {
+          "command": "insert_rack_chain",
+          "params": {
+            "device_index": 0,
+            "index": -1,
+            "name": "Amp B",
+            "track_index": 1,
+            "track_type": "regular"
+          },
+          "response": {
+            "chain": {
+              "devices": [],
+              "index": 1,
+              "name": "Amp B",
+              "volume": 0.85,
+              "volume_display": "0.0 dB"
+            },
+            "chain_count": 2,
+            "chain_index": 1,
+            "device_index": 0,
+            "device_name": "Audio Effect Rack",
+            "track_index": 1,
+            "track_name": "GTR"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "device_index": 0,
+        "name": "Amp B",
+        "track_index": 1
+      },
+      "expect": "Error adding a rack chain: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "insert_rack_chain",
+          "params": {
+            "device_index": 0,
+            "index": -1,
+            "name": "Amp B",
+            "track_index": 1,
+            "track_type": "regular"
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

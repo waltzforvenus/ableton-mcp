@@ -191,7 +191,7 @@ available on `main` or in a released package.
 
 ### Added tools
 
-Upstream exposes 37 MCP tools; this fork exposes 71. The mixer, device control
+Upstream exposes 37 MCP tools; this fork exposes 75. The mixer, device control
 and routing tools are new here:
 
 | Area | Tools |
@@ -412,7 +412,7 @@ who holds it.
 
 ### Tool reference
 
-All 71 tools the server exposes. Tools marked **†** are added by this fork and
+All 75 tools the server exposes. Tools marked **†** are added by this fork and
 are not present upstream.
 
 #### Session & info
@@ -473,6 +473,10 @@ are not present upstream.
 | `set_plugin_preset` † | `track_index`, `device_index`, `preset_index`?, `preset_name`?, `track_type`? | Select a plugin's factory preset by index or by name (exact, then an unambiguous fragment); refuses ambiguous names, out-of-range indices and devices without presets |
 | `delete_device` † | `track_index`, `device_index`, `track_type`? | Remove a device from a track's chain |
 | `load_devices` † | `track_index`, `uris`, `track_type`?, `expect_track_name`? | Load several browser items onto one track in order (a whole chain); stops at the first failure and returns the final device list |
+| `get_rack_chains` † | `track_index`, `device_index`, `track_type`? | A rack's chains: name, volume/pan (value + display), mute, solo, Drum Rack `in_note`, devices |
+| `insert_rack_chain` † | `track_index`, `device_index`, `index`?, `name`? | Add a chain to a rack (Live 12 `RackDevice.insert_chain`) — parallel blends |
+| `insert_chain_device` † | `track_index`, `device_index`, `chain_index`, `device_name`, `index`? | Put a native device into one chain at a position (`Chain.insert_device`) |
+| `set_chain_mixer` † | `track_index`, `device_index`, `chain_index`, `volume`?, `panning`?, `mute`?, `solo`?, `name`?, `in_note`? | Set a chain's mixer (raw or display strings), name, and a Drum Rack pad's receiving note |
 | `load_device_from_path` † | `track_index`, `path`, `track_type`?, `expect_track_name`? | Load a preset file (.adv/.adg/.vstpreset/.aupreset) from the User Library or a Places folder by absolute path — how a configured plugin (amp capture, IR, patch) comes back exactly |
 | `get_plugin_state` † | `source_path`, `track`?, `plugin`?, `include_strings`? | Offline: decode hosted plugins' saved state from a .als/.adv/.adg/.vstpreset — size, sha256, file paths and readable strings — to verify which model/IR/patch a plugin holds |
 | `load_instrument_or_effect` | `track_index`, `uri`, `track_type`? | Load an instrument or effect onto a track using its URI |

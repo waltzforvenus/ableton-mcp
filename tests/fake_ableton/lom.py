@@ -188,6 +188,68 @@ class FakeDevice(object):
         self.parameters = list(parameters)
 
 
+class FakeChainMixer(object):
+    """Chain.mixer_device: volume and panning as real parameters."""
+
+    def __init__(self, volume=0.85, panning=0.0):
+        self.volume = FakeParameter("Chain Volume", volume, 0.0, 1.0, unit="dB")
+        self.panning = FakeParameter("Chain Pan", panning, -1.0, 1.0)
+
+
+class FakeChain(object):
+    """A rack chain. ``insert_device(name, index)`` models Live 12's
+    Chain.insert_device ("At end if -1"); ``insert_device_api=False`` on the
+    owning rack's config removes it, as on builds before it existed."""
+
+    def __init__(self, name, devices=None, insert_device_api=True):
+        self.name = name
+        self.devices = list(devices or [])
+        self.mixer_device = FakeChainMixer()
+        self.mute = False
+        self.solo = False
+        if insert_device_api:
+            self.insert_device = self._insert_device
+
+    def _insert_device(self, device_name, target_index=-1):
+        device = FakeDevice(device_name)
+        if target_index is None or target_index < 0 or target_index >= len(self.devices):
+            self.devices.append(device)
+        else:
+            self.devices.insert(target_index, device)
+        return device
+
+
+class FakeDrumChain(FakeChain):
+    def __init__(self, name, in_note=36, **kw):
+        super().__init__(name, **kw)
+        self.in_note = int(in_note)
+
+
+class FakeRackDevice(FakeDevice):
+    """An Audio Effect / Instrument / Drum Rack. ``insert_chain`` models
+    RackDevice.insert_chain (Live 12.x); pass ``insert_chain_api=False`` for
+    a build without it."""
+
+    def __init__(self, name="Audio Effect Rack", chains=None, drum=False,
+                 insert_chain_api=True, chain_insert_device_api=True):
+        super().__init__(name, class_name="DrumGroupDevice" if drum else "AudioEffectGroupDevice")
+        self.can_have_chains = True
+        self.can_have_drum_pads = bool(drum)
+        self.chains = list(chains or [])
+        self._chain_insert_device_api = chain_insert_device_api
+        if insert_chain_api:
+            self.insert_chain = self._insert_chain
+
+    def _insert_chain(self, index=-1):
+        cls = FakeDrumChain if self.can_have_drum_pads else FakeChain
+        chain = cls("Chain", insert_device_api=self._chain_insert_device_api)
+        if index is None or index < 0 or index >= len(self.chains):
+            self.chains.append(chain)
+        else:
+            self.chains.insert(index, chain)
+        return chain
+
+
 class FakePluginDevice(FakeDevice):
     """A hosted VST/VST3/AU — Live.PluginDevice.PluginDevice (class_name
     "PluginDevice") or an Audio Unit ("AuPluginDevice").

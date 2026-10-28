@@ -390,6 +390,40 @@ def set_device_parameters(result: Dict[str, Any]) -> str:
     return head + body + tail
 
 
+get_rack_chains = as_json
+
+
+def _chain_line(chain: Dict[str, Any]) -> str:
+    devices = ", ".join(d.get("name") for d in chain.get("devices") or []) or "no devices"
+    vol = chain.get("volume_display") or chain.get("volume")
+    return (f"chain {chain.get('index')} '{chain.get('name')}' (volume {vol}; "
+            f"{devices})")
+
+
+def insert_rack_chain(result: Dict[str, Any]) -> str:
+    return (f"Added {_chain_line(result.get('chain') or {})} to "
+            f"'{result.get('device_name')}' on '{result.get('track_name')}'; the "
+            f"rack now has {result.get('chain_count')} chains")
+
+
+def insert_chain_device(result: Dict[str, Any]) -> str:
+    return (f"Inserted into '{result.get('device_name')}' "
+            f"{_chain_line(result.get('chain') or {})}")
+
+
+def set_chain_mixer(result: Dict[str, Any]) -> str:
+    parts = []
+    for key, change in (result.get("changes") or {}).items():
+        if isinstance(change, dict):
+            shown = change.get("display_value") or change.get("value")
+            parts.append(f"{key} = {shown}" + (" (clamped)" if change.get("clamped") else "")
+                         + _asked(change))
+        else:
+            parts.append(f"{key} = {change}")
+    return (f"Set '{result.get('device_name')}' chain {result.get('chain_index')}: "
+            + ", ".join(parts))
+
+
 def load_device_from_path(result: Dict[str, Any]) -> str:
     new = result.get("new_devices") or []
     added = f"added {', '.join(new)}" if new else "no new device appeared"
@@ -1036,6 +1070,10 @@ ERROR_PHRASES: Dict[str, str] = {
     "checkpoint_set": "checkpointing the set",
     "load_devices": "loading devices",
     "load_device_from_path": "loading the preset file",
+    "get_rack_chains": "reading rack chains",
+    "insert_rack_chain": "adding a rack chain",
+    "insert_chain_device": "inserting a device into the chain",
+    "set_chain_mixer": "setting the chain mixer",
     "get_plugin_state": "reading plugin state",
     "get_clip_notes": "getting clip notes",
     "get_session_snapshot": "getting session snapshot",

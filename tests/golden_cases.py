@@ -1,4 +1,4 @@
-"""Golden-case definitions for all 71 MCP tools (docs/REFACTOR_PLAN.md
+"""Golden-case definitions for all 75 MCP tools (docs/REFACTOR_PLAN.md
 section 5 Level 1, section 6 PR3).
 
 Each case names a tool, the arguments to call it with, and the exact ordered
@@ -991,6 +991,59 @@ BASE_CASES = [
     ]),
 
     # ── fire_clip ─────────────────────────────────────────────────────────
+    # ── rack chains ───────────────────────────────────────────────────────
+    _case("get_rack_chains", "success", {"track_index": 1, "device_index": 0}, [
+        _ok("get_rack_chains", {"track_index": 1, "device_index": 0,
+                                "track_type": "regular"},
+            {"track_index": 1, "track_name": "GTR", "device_index": 0,
+             "device_name": "Audio Effect Rack", "is_drum_rack": False,
+             "chain_count": 1, "can_insert_chain": True,
+             "chains": [{"index": 0, "name": "Amp A", "volume": 0.85,
+                         "volume_display": "0.0 dB", "panning": 0.0,
+                         "panning_display": "C", "mute": False, "solo": False,
+                         "devices": [{"index": 0, "name": "Amp",
+                                      "class_name": "Amp", "is_active": True,
+                                      "device_on": True}]}]}),
+    ]),
+    _case("insert_rack_chain", "success",
+          {"track_index": 1, "device_index": 0, "name": "Amp B"}, [
+        _ok("insert_rack_chain", {"track_index": 1, "device_index": 0,
+                                  "index": -1, "track_type": "regular",
+                                  "name": "Amp B"},
+            {"track_index": 1, "track_name": "GTR", "device_index": 0,
+             "device_name": "Audio Effect Rack", "chain_index": 1,
+             "chain_count": 2,
+             "chain": {"index": 1, "name": "Amp B", "volume": 0.85,
+                       "volume_display": "0.0 dB", "devices": []}}),
+    ]),
+    _case("insert_chain_device", "success",
+          {"track_index": 1, "device_index": 0, "chain_index": 1,
+           "device_name": "Utility"}, [
+        _ok("insert_chain_device", {"track_index": 1, "device_index": 0,
+                                    "chain_index": 1, "device_name": "Utility",
+                                    "index": -1, "track_type": "regular"},
+            {"track_index": 1, "track_name": "GTR", "device_index": 0,
+             "device_name": "Audio Effect Rack", "chain_index": 1,
+             "chain": {"index": 1, "name": "Amp B", "volume": 0.85,
+                       "volume_display": "0.0 dB",
+                       "devices": [{"index": 0, "name": "Utility"}]}}),
+    ]),
+    _case("set_chain_mixer", "volume_display_and_mute",
+          {"track_index": 1, "device_index": 0, "chain_index": 1,
+           "volume": "-6 dB", "mute": False}, [
+        _ok("set_chain_mixer", {"track_index": 1, "device_index": 0,
+                                "chain_index": 1, "track_type": "regular",
+                                "volume": "-6 dB", "mute": False},
+            {"track_index": 1, "track_name": "GTR", "device_index": 0,
+             "device_name": "Audio Effect Rack", "chain_index": 1,
+             "changes": {"volume": {"name": "Chain Volume", "value": 0.7,
+                                    "display_value": "-6.0 dB",
+                                    "clamped": False,
+                                    "requested_display": "-6 dB",
+                                    "resolved_by": "display_search"},
+                         "mute": False},
+             "chain": {"index": 1, "name": "Amp B"}}),
+    ]),
     _case("load_device_from_path", "success",
           {"track_index": 1, "path": "/Users/x/Music/Ableton/User Library/Presets/Audio Effects/Amp A.adv"}, [
         _ok("load_browser_item_by_path",

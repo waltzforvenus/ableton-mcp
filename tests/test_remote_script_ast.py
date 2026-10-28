@@ -374,6 +374,10 @@ PR5_SCRIPT_CAPABILITIES = [
     "load_instrument_or_effect",
     "load_browser_item",
     "load_browser_item_by_path",
+    "get_rack_chains",
+    "insert_rack_chain",
+    "insert_chain_device",
+    "set_chain_mixer",
     "get_arrangement_clips",
     "duplicate_session_clip_to_arrangement",
     "create_locator",
@@ -415,13 +419,15 @@ PR5_SCRIPT_CAPABILITIES = [
 def test_derived_capabilities_equal_the_pr5_snapshot():
     table = _commands_table()
     derived = sorted(name for name, row in table.items() if row[3])
-    assert len(PR5_SCRIPT_CAPABILITIES) == 57  # pinned (PR5 + locator jump + arrangement editing + clip warp
+    assert len(PR5_SCRIPT_CAPABILITIES) == 61  # pinned (PR5 + locator jump + arrangement editing + clip warp
     # + 1.15.0's duplicate_track, set_device_parameters, delete_locator
     # + 1.16.0's get_plugin_presets, set_plugin_preset
     # + 1.17.0's get_clip_warp_markers, edit_clip_warp_markers
     # + 1.18.0's set_track_solo, get_song_scale, set_song_scale)
     # + 1.19.0's get_live_status (the Live-lock preflight)
     # + 1.22.0's load_browser_item_by_path (User Library presets)
+    # + 1.23.0's rack chains: get_rack_chains, insert_rack_chain,
+    #   insert_chain_device, set_chain_mixer
     assert derived == sorted(PR5_SCRIPT_CAPABILITIES), (
         f"advertised-command drift — "
         f"gained: {sorted(set(derived) - set(PR5_SCRIPT_CAPABILITIES))}, "

@@ -1,0 +1,75 @@
+{
+  "cases": [
+    {
+      "args": {
+        "chain_index": 1,
+        "device_index": 0,
+        "mute": false,
+        "track_index": 1,
+        "volume": "-6 dB"
+      },
+      "expect": "Set 'Audio Effect Rack' chain 1: mute = False, volume = -6.0 dB (asked '-6 dB')",
+      "name": "volume_display_and_mute",
+      "wire": [
+        {
+          "command": "set_chain_mixer",
+          "params": {
+            "chain_index": 1,
+            "device_index": 0,
+            "mute": false,
+            "track_index": 1,
+            "track_type": "regular",
+            "volume": "-6 dB"
+          },
+          "response": {
+            "chain": {
+              "index": 1,
+              "name": "Amp B"
+            },
+            "chain_index": 1,
+            "changes": {
+              "mute": false,
+              "volume": {
+                "clamped": false,
+                "display_value": "-6.0 dB",
+                "name": "Chain Volume",
+                "requested_display": "-6 dB",
+                "resolved_by": "display_search",
+                "value": 0.7
+              }
+            },
+            "device_index": 0,
+            "device_name": "Audio Effect Rack",
+            "track_index": 1,
+            "track_name": "GTR"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "chain_index": 1,
+        "device_index": 0,
+        "mute": false,
+        "track_index": 1,
+        "volume": "-6 dB"
+      },
+      "expect": "Error setting the chain mixer: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "set_chain_mixer",
+          "params": {
+            "chain_index": 1,
+            "device_index": 0,
+            "mute": false,
+            "track_index": 1,
+            "track_type": "regular",
+            "volume": "-6 dB"
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}
