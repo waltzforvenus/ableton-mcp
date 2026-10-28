@@ -191,7 +191,7 @@ available on `main` or in a released package.
 
 ### Added tools
 
-Upstream exposes 37 MCP tools; this fork exposes 75. The mixer, device control
+Upstream exposes 37 MCP tools; this fork exposes 79. The mixer, device control
 and routing tools are new here:
 
 | Area | Tools |
@@ -203,6 +203,7 @@ and routing tools are new here:
 | **Clips & tracks** | `set_clip_gain`, `set_clip_warp`, `duplicate_track`, `delete_track` |
 | **Warp vision** | `analyze_clip_audio` (spectrogram + waveform image with the clip's warp markers, transients and the song grid, plus JSON), `suggest_warp_markers` (dry-run proposals with a before/after image; `apply=True` executes and verifies), `edit_clip_warp_markers` (batch add/move/remove, read back and verified), `get_clip_warp_markers` — needs the optional `analysis` extra for the two audio tools |
 | **Transport & session** | `back_to_arrangement`, `set_count_in`, `save_set`, `get_song_scale` / `set_song_scale` (Live 12's song-wide key and scale) |
+| **Rendering** | `export_audio` (Live's offline export, fields read back by label), `bounce_track` (freeze / bounce via the Edit menu), `analyze_audio` / `verify_audio` (LUFS, true peak, silence, clipping, cut tails) |
 | **Saving** | `save_set` (API, else Live's File menu with consent; verified), `checkpoint_set` (labelled, hash-verified copies) |
 | **Shared-Live safety** | `get_live_status` (one-call preflight: transport/record, soloed/muted/armed tracks, set name and unsaved marker, modal dialogs, user idle, lock holder), `acquire_live_lock` / `release_live_lock` (one editor at a time; release only after a verified save) |
 
@@ -412,7 +413,7 @@ who holds it.
 
 ### Tool reference
 
-All 75 tools the server exposes. Tools marked **†** are added by this fork and
+All 79 tools the server exposes. Tools marked **†** are added by this fork and
 are not present upstream.
 
 #### Session & info
@@ -473,6 +474,10 @@ are not present upstream.
 | `set_plugin_preset` † | `track_index`, `device_index`, `preset_index`?, `preset_name`?, `track_type`? | Select a plugin's factory preset by index or by name (exact, then an unambiguous fragment); refuses ambiguous names, out-of-range indices and devices without presets |
 | `delete_device` † | `track_index`, `device_index`, `track_type`? | Remove a device from a track's chain |
 | `load_devices` † | `track_index`, `uris`, `track_type`?, `expect_track_name`? | Load several browser items onto one track in order (a whole chain); stops at the first failure and returns the final device list |
+| `export_audio` † | `output_dir`, `file_stem`, `scope`?, `track`?, `start_beat`?, `end_beat`?, `tail_beats`?, `sample_rate`?, `bit_depth`?, `file_type`?, … `allow_ui_automation`, `dry_run`? | Live's own offline render via File › Export Audio/Video, driven over Accessibility: range from the LOM, every field set by label and read back, Export by its button, files measured. No playback |
+| `bounce_track` † | `track_index`, `mode`?, `allow_ui_automation`, `expect_track_name`?, `confirm_destructive`? | Freeze / Bounce to New Track / Bounce Track in Place through the Edit menu, verified through the LOM (frozen flag, track count, the new clip's file) |
+| `analyze_audio` † | `path`, `start_s`?, `end_s`? | Measure a file offline: duration, rate, LUFS-I, LRA, true peak, sample peak, RMS, clipping, L/R balance/correlation, silence, cut tail (ffmpeg) |
+| `verify_audio` † | `path`, `expected_duration_s`?, `tolerance_s`?, `sample_rate`?, `bit_depth`?, `max_true_peak_dbtp`?, `min_lufs`?, `max_lufs`?, `allow_tail_cut`? | analyze_audio plus pass/fail checks; fails on silence, clipping, a cut tail, or any limit |
 | `get_rack_chains` † | `track_index`, `device_index`, `track_type`? | A rack's chains: name, volume/pan (value + display), mute, solo, Drum Rack `in_note`, devices |
 | `insert_rack_chain` † | `track_index`, `device_index`, `index`?, `name`? | Add a chain to a rack (Live 12 `RackDevice.insert_chain`) — parallel blends |
 | `insert_chain_device` † | `track_index`, `device_index`, `chain_index`, `device_name`, `index`? | Put a native device into one chain at a position (`Chain.insert_device`) |

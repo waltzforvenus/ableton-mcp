@@ -1,0 +1,24 @@
+{
+  "cases": [
+    {
+      "args": {
+        "allow_ui_automation": true,
+        "mode": "freeze",
+        "track_index": 2
+      },
+      "expect": "Refused, nothing rendered: UI-driven rendering needs macOS.",
+      "name": "no_ui",
+      "wire": []
+    },
+    {
+      "args": {
+        "allow_ui_automation": true,
+        "mode": "freeze",
+        "track_index": 2
+      },
+      "expect": "Refused, nothing rendered: UI-driven rendering needs macOS.",
+      "name": "error",
+      "wire": []
+    }
+  ]
+}

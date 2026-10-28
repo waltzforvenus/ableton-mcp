@@ -47,6 +47,9 @@ class Settings:
     # viewers in some agent sandboxes refuse it).
     allow_ui: bool = False
     evidence_dir: Optional[str] = None
+    # ffmpeg for render verification (analyze_audio, export_audio); found
+    # on PATH or the Homebrew prefixes when unset.
+    ffmpeg: Optional[str] = None
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] = os.environ) -> "Settings":
@@ -59,6 +62,7 @@ class Settings:
             allow_ui=env.get("ABLETON_MCP_ALLOW_UI", "0").strip().lower()
             in ("1", "true", "yes", "on"),
             evidence_dir=env.get("ABLETON_MCP_EVIDENCE_DIR") or None,
+            ffmpeg=env.get("ABLETON_MCP_FFMPEG") or None,
         )
 
 
@@ -91,7 +95,8 @@ def build_deps(settings: Settings) -> Deps:
     lock = LiveLock(settings.lock_file, require=settings.require_lock)
     service = AbletonService(client, handshake, lock=lock, ui=MacUI(),
                              allow_ui=settings.allow_ui,
-                             evidence_dir=settings.evidence_dir)
+                             evidence_dir=settings.evidence_dir,
+                             ffmpeg=settings.ffmpeg)
     return Deps(client=client, handshake=handshake, service=service)
 
 

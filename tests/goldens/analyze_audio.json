@@ -1,0 +1,20 @@
+{
+  "cases": [
+    {
+      "args": {
+        "path": "/nonexistent/mix.wav"
+      },
+      "expect": "Error analysing audio: no such audio file: '/nonexistent/mix.wav'",
+      "name": "missing_file",
+      "wire": []
+    },
+    {
+      "args": {
+        "path": "/nonexistent/mix.wav"
+      },
+      "expect": "Error analysing audio: no such audio file: '/nonexistent/mix.wav'",
+      "name": "error",
+      "wire": []
+    }
+  ]
+}

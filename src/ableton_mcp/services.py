@@ -23,7 +23,7 @@ import shutil
 import time
 from typing import Any, Dict, List, Optional, Union
 
-from . import plugin_state, warp_vision
+from . import audio_metrics, plugin_state, render, warp_vision
 from .commands import COMMANDS
 from .handshake import CapabilityError, ScriptHandshake
 from .live_lock import LiveLock, LockError
@@ -85,7 +85,8 @@ class AbletonService:
                  lock: Optional[LiveLock] = None,
                  ui: Optional[MacUI] = None,
                  allow_ui: bool = False,
-                 evidence_dir: Optional[str] = None) -> None:
+                 evidence_dir: Optional[str] = None,
+                 ffmpeg: Optional[str] = None) -> None:
         self._client = client
         self._handshake = handshake
         # Both optional so test doubles that predate them keep working: no
@@ -97,6 +98,7 @@ class AbletonService:
         # without it each UI-driving call must pass allow_ui_automation.
         self._allow_ui = allow_ui
         self._evidence_dir = evidence_dir
+        self._ffmpeg = ffmpeg
 
     def _send(self, name: str,
               params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -515,6 +517,67 @@ class AbletonService:
             "mtime_advanced": (mtime_after is not None and (
                 mtime_before is None or mtime_after > mtime_before)),
         }
+
+    # Rendering (render.py drives the UI; these are its LOM/lock hooks)
+
+    def check_ui_write(self, action: str) -> None:
+        """The Live lock for a UI-driven action that is not a wire command:
+        refused exactly as a state-changing command would be."""
+        if self._lock is not None:
+            self._lock.check_write(action)
+
+    def live_status_raw(self) -> Dict[str, Any]:
+        return self._send("get_live_status")
+
+    def select_track(self, track_index: int, track_type: str = "regular",
+                     expect_track_name: Optional[str] = None) -> Dict[str, Any]:
+        return self._send("select_track", _guarded({
+            "track_index": track_index, "track_type": track_type},
+            expect_track_name))
+
+    def track_render_state(self, track_index: int,
+                           track_type: str = "regular") -> Dict[str, Any]:
+        return self._send("get_track_render_state", {
+            "track_index": track_index, "track_type": track_type})
+
+    def _require_ui(self, allow_ui_automation: bool) -> MacUI:
+        if not self._ui_allowed(allow_ui_automation):
+            raise render.RenderRefused(
+                "not_macos" if self._ui is None or not self._ui.available
+                else "not_allowed")
+        return self._ui
+
+    def export_audio(self, allow_ui_automation: bool = False,
+                     evidence_dir: Optional[str] = None,
+                     **options: Any) -> Dict[str, Any]:
+        ui = self._require_ui(allow_ui_automation)
+        return render.export_audio(
+            self, ui, evidence_dir=evidence_dir or self._evidence_dir,
+            ffmpeg=self._ffmpeg, **options)
+
+    def bounce_track(self, track_index: int, mode: str,
+                     allow_ui_automation: bool = False,
+                     expect_track_name: Optional[str] = None,
+                     confirm_destructive: bool = False) -> Dict[str, Any]:
+        ui = self._require_ui(allow_ui_automation)
+        try:
+            return render.bounce_track(
+                self, ui, track_index=track_index, mode=mode,
+                expect_track_name=expect_track_name,
+                confirm_destructive=confirm_destructive, ffmpeg=self._ffmpeg)
+        finally:
+            # A freeze or bounce edits the set whether or not it was
+            # confirmed in time; release must see a save after it.
+            if self._lock is not None:
+                self._lock.touch()
+
+    def analyze_audio(self, path: str, start_s: Optional[float] = None,
+                      end_s: Optional[float] = None) -> Dict[str, Any]:
+        return audio_metrics.analyze(path, start_s=start_s, end_s=end_s,
+                                     ffmpeg=self._ffmpeg)
+
+    def verify_audio(self, path: str, **checks: Any) -> Dict[str, Any]:
+        return audio_metrics.verify(path, ffmpeg=self._ffmpeg, **checks)
 
     def checkpoint_set(self, label: str, set_path: Optional[str] = None,
                        allow_ui_automation: bool = False,

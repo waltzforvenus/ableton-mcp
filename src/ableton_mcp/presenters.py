@@ -391,6 +391,44 @@ def set_device_parameters(result: Dict[str, Any]) -> str:
 
 
 get_rack_chains = as_json
+analyze_audio = as_json
+verify_audio = as_json
+export_audio = as_json
+bounce_track = as_json
+
+_RENDER_REASONS = {
+    "not_allowed": "this drives Live's UI; pass allow_ui_automation=true (or run the server with ABLETON_MCP_ALLOW_UI=1)",
+    "not_macos": "UI-driven rendering needs macOS",
+    "user_active": "the user is using the machine (idle {idle_s} s < {required_s} s); ask them, or wait",
+    "ui_unreadable": "Live's windows cannot be read (is Live running, and does this process have the Accessibility permission?)",
+    "modal_open": "a dialog is open in Live ({modal_dialog!r}); close it first",
+    "transport_busy": "Live is playing or recording (playing={is_playing}, record={record_mode}); stop first",
+    "soloed": "tracks are soloed ({soloed}) and strict_solo is on",
+    "select_failed": "could not select the track ({selection})",
+    "no_end": "{note}",
+    "exists": "{path} already exists; pass overwrite=true to replace it",
+    "menu": "the menu item could not be clicked ({menu})",
+    "dialog_did_not_open": "the Export Audio/Video dialog did not open",
+    "labels_missing": "the dialog has no field labelled {missing} (a Live update may have renamed it); nothing was set",
+    "readback_mismatch": "the dialog does not show what was requested, so the export was cancelled: {diffs} {problems}",
+    "export_button": "the Export button could not be pressed ({detail})",
+    "save_panel": "the save panel could not be filled ({detail}); cancelled",
+    "save_panel_name": "the save panel shows {shows!r}, not {wanted!r}; cancelled",
+    "destructive": "{mode} replaces the track's clips and devices; pass confirm_destructive=true",
+    "checkpoint_failed": "the safety checkpoint before a destructive bounce failed ({checkpoint})",
+    "cannot_freeze": "Live says '{track}' cannot be frozen",
+}
+
+
+def render_refusal(e: Any) -> str:
+    reason = getattr(e, "reason", str(e))
+    details = getattr(e, "details", {}) or {}
+    template = _RENDER_REASONS.get(reason, reason)
+    try:
+        why = template.format(**details)
+    except (KeyError, IndexError, ValueError):
+        why = f"{template} ({details})"
+    return f"Refused, nothing rendered: {why}."
 
 
 def _chain_line(chain: Dict[str, Any]) -> str:
@@ -1071,6 +1109,10 @@ ERROR_PHRASES: Dict[str, str] = {
     "load_devices": "loading devices",
     "load_device_from_path": "loading the preset file",
     "get_rack_chains": "reading rack chains",
+    "analyze_audio": "analysing audio",
+    "verify_audio": "verifying audio",
+    "export_audio": "exporting audio",
+    "bounce_track": "bouncing the track",
     "insert_rack_chain": "adding a rack chain",
     "insert_chain_device": "inserting a device into the chain",
     "set_chain_mixer": "setting the chain mixer",
