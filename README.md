@@ -191,7 +191,7 @@ and routing tools are new here:
 | Area | Tools |
 |---|---|
 | **Mixer** | `set_track_volume`, `set_track_pan`, `set_track_mute`, `set_track_arm`, `set_track_monitoring` |
-| **Devices** | `delete_device`, `set_device_parameters` (the batch form), `get_plugin_presets` / `set_plugin_preset` (factory presets on hosted VST/VST3/AU plugins, whose parameters Live does not expose) — plus `get_device_parameters` / `set_device_parameter` extended to address parameters *by name* and to reach return tracks via `track_type` |
+| **Devices** | `delete_device`, `set_device_parameters` (the batch form), `get_plugin_presets` / `set_plugin_preset` (factory presets on hosted VST/VST3/AU plugins, whose parameters Live does not expose) — plus `get_device_parameters` / `set_device_parameter` extended to address parameters *by name* and to reach return tracks and the master track via `track_type` (`"return"` / `"master"`) |
 | **Sends & buses** | `create_return_track`, `set_track_send` — one shared reverb instead of a copy per track |
 | **Routing** | `set_track_routing`, `get_track_routing` |
 | **Clips & tracks** | `set_clip_gain`, `set_clip_warp`, `duplicate_track`, `delete_track` |

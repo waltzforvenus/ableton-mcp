@@ -597,7 +597,8 @@ def set_device_parameter(ctx: Context, track_index: int, device_index: int,
       "Dry/Wet"), or its integer index passed as a string (e.g. "3").
       Also accepted as parameter_name
     - value: The value to set, in the parameter's own units
-    - track_type: "regular" (default) or "return"
+    - track_type: "regular" (default), "return" (track_index is then the
+      return's index), or "master" (track_index is ignored)
     - expect_track_name: Optional safety net — refuse and change nothing
       unless the track at track_index is really named this. Track indices
       renumber whenever a track is added or deleted, and an index that is
@@ -655,7 +656,8 @@ def set_device_parameters(ctx: Context, track_index: int, device_index: int,
     - track_index: The index of the track containing the device
     - device_index: The index of the device in that track's chain (0 = first)
     - parameters: {parameter name or index: value} — everything to set
-    - track_type: "regular" (default) or "return"
+    - track_type: "regular" (default), "return" (track_index is then the
+      return's index), or "master" (track_index is ignored)
     - expect_track_name: Optional safety net — refuse and change nothing
       unless the track at track_index is really named this. Track indices
       renumber whenever a track is added or deleted, and an index that is
@@ -692,7 +694,8 @@ def get_plugin_presets(ctx: Context, track_index: int, device_index: int,
     Parameters:
     - track_index: The index of the track containing the device
     - device_index: The index of the device in that track's chain (0 = first)
-    - track_type: "regular" (default) or "return"
+    - track_type: "regular" (default), "return" (track_index is then the
+      return's index), or "master" (track_index is ignored)
     """
     result = _deps(ctx).service.get_plugin_presets(track_index, device_index,
                                                    track_type)
@@ -733,7 +736,8 @@ def set_plugin_preset(ctx: Context, track_index: int, device_index: int,
     - device_index: The index of the device in that track's chain (0 = first)
     - preset_index: The preset's position in get_plugin_presets' list (0 = first)
     - preset_name: The preset's name, exact or an unambiguous fragment
-    - track_type: "regular" (default) or "return"
+    - track_type: "regular" (default), "return" (track_index is then the
+      return's index), or "master" (track_index is ignored)
     - expect_track_name: Optional safety net — refuse and change nothing
       unless the track at track_index is really named this. Track indices
       renumber whenever a track is added or deleted, and an index that is
@@ -764,7 +768,8 @@ def delete_device(ctx: Context, track_index: int, device_index: int,
     Parameters:
     - track_index: The index of the track containing the device
     - device_index: The index of the device to remove (0 = first in the chain)
-    - track_type: "regular" (default) or "return"
+    - track_type: "regular" (default), "return" (track_index is then the
+      return's index), or "master" (track_index is ignored)
     - expect_track_name: Optional safety net — refuse and change nothing
       unless the track at track_index is really named this. Track indices
       renumber whenever a track is added or deleted, and an index that is
@@ -789,6 +794,8 @@ def set_track_volume(ctx: Context, track_index: int, value: float,
     Parameters:
     - track_index: The index of the track
     - value: Fader position from 0.0 to 1.0 (0.85 = 0 dB)
+    - track_type: "regular" (default), "return" (track_index is then the
+      return's index), or "master" (track_index is ignored)
     - expect_track_name: Optional safety net — refuse and change nothing
       unless the track at track_index is really named this. Track indices
       renumber whenever a track is added or deleted, and an index that is
@@ -809,6 +816,8 @@ def set_track_pan(ctx: Context, track_index: int, value: float,
     Parameters:
     - track_index: The index of the track
     - value: -1.0 is hard left, 0.0 is centre, 1.0 is hard right
+    - track_type: "regular" (default), "return" (track_index is then the
+      return's index), or "master" (track_index is ignored)
     - expect_track_name: Optional safety net — refuse and change nothing
       unless the track at track_index is really named this. Track indices
       renumber whenever a track is added or deleted, and an index that is
