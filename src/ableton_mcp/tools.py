@@ -22,6 +22,7 @@ from . import presenters
 from .handshake import CapabilityError
 from .live_lock import LockError
 from .render import RenderRefused
+from .services import AudioAuthRequired
 
 if TYPE_CHECKING:  # annotation-only: app.py imports this module at runtime
     from .app import Deps
@@ -60,6 +61,8 @@ def tool(fn):
             # A lock refusal is an answer, not a failure: worded by the View
             # (naming the holder), not wrapped in the tool's "Error ..." text.
             return presenters.lock_refusal(e)
+        except AudioAuthRequired as e:
+            return presenters.audio_auth_required(e)
         except RenderRefused as e:
             # Same for a render gate or readback: nothing was rendered, and
             # the reply says exactly why.
@@ -293,6 +296,7 @@ def get_session_snapshot(
     include_rack_chains: bool = False,
     include_empty_slots: bool = False,
     tracks: Optional[Union[List[Union[int, str]], int, str]] = None,
+    max_chars: Optional[int] = 40000,
 ) -> str:
     """
     Read project state in one call: session metadata, tracks (mixer, devices,
@@ -325,6 +329,11 @@ def get_session_snapshot(
     - tracks: restrict to these song tracks — indices, names, or a mix; one
       selector or a list. Names match case-insensitively. A selector that
       matches nothing is refused rather than quietly dropped
+    - max_chars: size budget for the reply (default 40000; 0 = no limit).
+      Over budget, whole tracks are dropped from the end and named in
+      omitted_tracks, with `continuation` holding the `tracks` argument that
+      fetches exactly those next — never a reply cut off mid-JSON. For a
+      mixer check, get_mix_state is a fraction of the size.
     """
     # A bare selector is the common case ("just the DRUMS bus"), so accept
     # one without a list around it and normalise here — the wire form is a
@@ -336,8 +345,25 @@ def get_session_snapshot(
         selection = [tracks]
     result = _deps(ctx).service.get_session_snapshot(
         include_notes, include_params, include_warp_markers,
-        include_rack_chains, include_empty_slots, selection)
+        include_rack_chains, include_empty_slots, selection,
+        max_chars=max_chars)
     return presenters.get_session_snapshot(result)
+
+
+@tool
+def get_mix_state(ctx: Context) -> str:
+    """
+    The mixer at a glance: one compact row per track, return and the main
+    track — name, volume and pan as Live displays them ("-6.0 dB", "12L"),
+    mute, solo, arm, every send as displayed, output routing, and the device
+    chain (names with on/off state).
+
+    Use this for "how is the mix set?" questions and before/after mixer
+    edits; it is a few KB where a snapshot is tens or hundreds. Use
+    get_session_snapshot when you need clips, notes or parameter values.
+    """
+    result = _deps(ctx).service.get_mix_state()
+    return presenters.get_mix_state(result)
 
 
 @tool
@@ -888,7 +914,8 @@ def create_return_track(ctx: Context) -> str:
 
 @tool
 def set_track_arm(ctx: Context, track_index: int, armed: bool = True,
-                  expect_track_name: Optional[str] = None) -> str:
+                  expect_track_name: Optional[str] = None,
+                  authorized: bool = False) -> str:
     """
     Arm or disarm a track for recording.
 
@@ -899,9 +926,11 @@ def set_track_arm(ctx: Context, track_index: int, armed: bool = True,
       unless the track at track_index is really named this. Track indices
       renumber whenever a track is added or deleted, and an index that is
       still in range but now points elsewhere fails silently otherwise
+    - authorized: arming prepares to record, so it needs the user's explicit
+      OK — pass true only when they gave it (disarming never needs it)
     """
     result = _deps(ctx).service.set_track_arm(track_index, armed,
-                                              expect_track_name)
+                                              expect_track_name, authorized)
     return presenters.set_track_arm(result, track_index)
 
 
@@ -1885,7 +1914,8 @@ def load_devices(ctx: Context, track_index: int, uris: List[str],
 
 @tool
 def fire_clip(ctx: Context, track_index: int, clip_index: int,
-              expect_track_name: Optional[str] = None) -> str:
+              expect_track_name: Optional[str] = None,
+              authorized: bool = False) -> str:
     """
     Start playing a clip.
 
@@ -1897,7 +1927,8 @@ def fire_clip(ctx: Context, track_index: int, clip_index: int,
       renumber whenever a track is added or deleted, and an index that is
       still in range but now points elsewhere fails silently otherwise
     """
-    _deps(ctx).service.fire_clip(track_index, clip_index, expect_track_name)
+    _deps(ctx).service.fire_clip(track_index, clip_index, expect_track_name,
+                                 authorized)
     return presenters.fire_clip(track_index, clip_index)
 
 
@@ -1942,10 +1973,13 @@ def delete_clip(ctx: Context, track_index: int, clip_index: int,
 
 
 @tool
-def start_playback(ctx: Context) -> str:
+def start_playback(ctx: Context, authorized: bool = False) -> str:
     """Start playing the Ableton session.
     """
-    _deps(ctx).service.start_playback()
+    # Upstream's docstring, kept byte-identical; `authorized` is the S1
+    # gate's argument (makes sound: true only with the user's OK), and the
+    # refusal names it.
+    _deps(ctx).service.start_playback(authorized)
     return presenters.start_playback()
 
 

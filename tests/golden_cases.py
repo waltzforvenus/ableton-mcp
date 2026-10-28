@@ -1,4 +1,4 @@
-"""Golden-case definitions for all 79 MCP tools (docs/REFACTOR_PLAN.md
+"""Golden-case definitions for all 80 MCP tools (docs/REFACTOR_PLAN.md
 section 5 Level 1, section 6 PR3).
 
 Each case names a tool, the arguments to call it with, and the exact ordered
@@ -138,6 +138,23 @@ BASE_CASES = [
         }),
     ]),
 
+    _case("get_mix_state", "success", {}, [
+        _ok("get_mix_state", {}, {
+            "tempo": 120.0,
+            "tracks": [{"index": 0, "name": "DRUMS", "track_type": "track",
+                        "volume": "-3.0 dB", "volume_raw": 0.8, "pan": "C",
+                        "mute": False, "solo": False, "arm": False,
+                        "sends": [{"to": "A-Reverb", "level": "-12.0 dB"}],
+                        "output": "Main", "devices": ["Drum Buss", "Utility (off)"]}],
+            "returns": [{"index": 0, "name": "A-Reverb", "track_type": "return",
+                         "volume": "0.0 dB", "volume_raw": 0.85, "pan": "C",
+                         "mute": False, "solo": False, "sends": [],
+                         "output": "Main", "devices": ["Reverb"]}],
+            "master": {"name": "Main", "track_type": "master", "volume": "0.0 dB",
+                       "volume_raw": 0.85, "pan": "C", "mute": None,
+                       "solo": None, "sends": [], "output": "1/2",
+                       "devices": ["Limiter"]}}),
+    ]),
     # ── get_live_status / the Live lock ───────────────────────────────────
     # The golden runner wires no lock and no UI, so these freeze the
     # Live half of the status and the "not configured" wording; the lock

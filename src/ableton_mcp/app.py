@@ -50,6 +50,10 @@ class Settings:
     # ffmpeg for render verification (analyze_audio, export_audio); found
     # on PATH or the Homebrew prefixes when unset.
     ffmpeg: Optional[str] = None
+    # S1: playback, firing a clip and arming need the caller's explicit
+    # authorized=true. Default ON — sound in someone's room is not a thing
+    # to do by accident; ABLETON_MCP_REQUIRE_AUDIO_AUTH=0 opts out.
+    require_audio_auth: bool = True
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] = os.environ) -> "Settings":
@@ -63,6 +67,8 @@ class Settings:
             in ("1", "true", "yes", "on"),
             evidence_dir=env.get("ABLETON_MCP_EVIDENCE_DIR") or None,
             ffmpeg=env.get("ABLETON_MCP_FFMPEG") or None,
+            require_audio_auth=env.get("ABLETON_MCP_REQUIRE_AUDIO_AUTH", "1")
+            .strip().lower() not in ("0", "false", "no", "off"),
         )
 
 
@@ -96,7 +102,8 @@ def build_deps(settings: Settings) -> Deps:
     service = AbletonService(client, handshake, lock=lock, ui=MacUI(),
                              allow_ui=settings.allow_ui,
                              evidence_dir=settings.evidence_dir,
-                             ffmpeg=settings.ffmpeg)
+                             ffmpeg=settings.ffmpeg,
+                             require_audio_auth=settings.require_audio_auth)
     return Deps(client=client, handshake=handshake, service=service)
 
 

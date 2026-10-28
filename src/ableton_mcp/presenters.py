@@ -32,6 +32,21 @@ get_session_info = as_json
 get_remote_script_info = as_json
 get_track_info = as_json
 get_live_status = as_json
+get_mix_state = as_json
+
+_AUDIBLE_WHAT = {
+    "start_playback": "starts playback",
+    "fire_clip": "fires a clip (it plays)",
+    "set_track_arm": "arms a track for recording",
+}
+
+
+def audio_auth_required(e: Any) -> str:
+    command = getattr(e, "command", str(e))
+    what = _AUDIBLE_WHAT.get(command, "makes sound")
+    return (f"Refused: this {what}, which needs the user's explicit OK. Ask them; "
+            f"if they agree, call again with authorized=true. Nothing was sent. "
+            f"(The server-wide gate is ABLETON_MCP_REQUIRE_AUDIO_AUTH.)")
 
 
 def _holder_text(lock: Any) -> str:
@@ -1103,6 +1118,7 @@ ERROR_PHRASES: Dict[str, str] = {
     "get_remote_script_info": "getting remote script info",
     "get_track_info": "getting track info",
     "get_live_status": "getting Live status",
+    "get_mix_state": "getting the mix state",
     "acquire_live_lock": "acquiring the Live lock",
     "release_live_lock": "releasing the Live lock",
     "checkpoint_set": "checkpointing the set",

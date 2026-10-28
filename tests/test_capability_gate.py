@@ -377,6 +377,7 @@ def test_the_matrix_is_not_vacuous():
         "edit_clip_warp_markers",
         "get_clip_warp_markers",
         "get_live_status",
+        "get_mix_state",
         "get_plugin_presets",
         "get_rack_chains",
         "get_song_scale",

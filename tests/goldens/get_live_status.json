@@ -2,7 +2,7 @@
   "cases": [
     {
       "args": {},
-      "expect": "{\n  \"connected\": true,\n  \"live\": {\n    \"armed\": [],\n    \"current_song_time\": 0.0,\n    \"exclusive_solo\": true,\n    \"is_playing\": false,\n    \"last_event_time\": 160.0,\n    \"live_version\": \"12.4.7\",\n    \"muted\": [],\n    \"record_mode\": false,\n    \"return_track_count\": 1,\n    \"selected_track\": \"BASS\",\n    \"session_record\": false,\n    \"signature_denominator\": 4,\n    \"signature_numerator\": 4,\n    \"soloed\": [\n      {\n        \"index\": 1,\n        \"name\": \"BASS\",\n        \"track_type\": \"track\"\n      }\n    ],\n    \"song_length\": 192.0,\n    \"tempo\": 120.0,\n    \"track_count\": 3\n  },\n  \"live_error\": null,\n  \"script_version\": null,\n  \"expected_script_version\": \"1.24.0\",\n  \"lock\": null,\n  \"ui\": {\n    \"readable\": false,\n    \"set_name\": null,\n    \"unsaved\": null,\n    \"modal_dialog\": null,\n    \"frontmost\": null,\n    \"titles\": null\n  },\n  \"user_idle_s\": null\n}",
+      "expect": "{\n  \"connected\": true,\n  \"live\": {\n    \"armed\": [],\n    \"current_song_time\": 0.0,\n    \"exclusive_solo\": true,\n    \"is_playing\": false,\n    \"last_event_time\": 160.0,\n    \"live_version\": \"12.4.7\",\n    \"muted\": [],\n    \"record_mode\": false,\n    \"return_track_count\": 1,\n    \"selected_track\": \"BASS\",\n    \"session_record\": false,\n    \"signature_denominator\": 4,\n    \"signature_numerator\": 4,\n    \"soloed\": [\n      {\n        \"index\": 1,\n        \"name\": \"BASS\",\n        \"track_type\": \"track\"\n      }\n    ],\n    \"song_length\": 192.0,\n    \"tempo\": 120.0,\n    \"track_count\": 3\n  },\n  \"live_error\": null,\n  \"script_version\": null,\n  \"expected_script_version\": \"1.25.0\",\n  \"lock\": null,\n  \"ui\": {\n    \"readable\": false,\n    \"set_name\": null,\n    \"unsaved\": null,\n    \"modal_dialog\": null,\n    \"frontmost\": null,\n    \"titles\": null\n  },\n  \"user_idle_s\": null\n}",
       "name": "success",
       "wire": [
         {
@@ -38,7 +38,7 @@
     },
     {
       "args": {},
-      "expect": "{\n  \"connected\": false,\n  \"live\": null,\n  \"live_error\": \"Could not connect to Ableton. Make sure the Remote Script is running.\",\n  \"script_version\": null,\n  \"expected_script_version\": \"1.24.0\",\n  \"lock\": null,\n  \"ui\": {\n    \"readable\": false,\n    \"set_name\": null,\n    \"unsaved\": null,\n    \"modal_dialog\": null,\n    \"frontmost\": null,\n    \"titles\": null\n  },\n  \"user_idle_s\": null\n}",
+      "expect": "{\n  \"connected\": false,\n  \"live\": null,\n  \"live_error\": \"Could not connect to Ableton. Make sure the Remote Script is running.\",\n  \"script_version\": null,\n  \"expected_script_version\": \"1.25.0\",\n  \"lock\": null,\n  \"ui\": {\n    \"readable\": false,\n    \"set_name\": null,\n    \"unsaved\": null,\n    \"modal_dialog\": null,\n    \"frontmost\": null,\n    \"titles\": null\n  },\n  \"user_idle_s\": null\n}",
       "name": "unreachable",
       "wire": [
         {
@@ -50,7 +50,7 @@
     },
     {
       "args": {},
-      "expect": "{\n  \"connected\": false,\n  \"live\": null,\n  \"live_error\": \"boom\",\n  \"script_version\": null,\n  \"expected_script_version\": \"1.24.0\",\n  \"lock\": null,\n  \"ui\": {\n    \"readable\": false,\n    \"set_name\": null,\n    \"unsaved\": null,\n    \"modal_dialog\": null,\n    \"frontmost\": null,\n    \"titles\": null\n  },\n  \"user_idle_s\": null\n}",
+      "expect": "{\n  \"connected\": false,\n  \"live\": null,\n  \"live_error\": \"boom\",\n  \"script_version\": null,\n  \"expected_script_version\": \"1.25.0\",\n  \"lock\": null,\n  \"ui\": {\n    \"readable\": false,\n    \"set_name\": null,\n    \"unsaved\": null,\n    \"modal_dialog\": null,\n    \"frontmost\": null,\n    \"titles\": null\n  },\n  \"user_idle_s\": null\n}",
       "name": "error",
       "wire": [
         {

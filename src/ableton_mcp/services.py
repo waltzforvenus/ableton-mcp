@@ -17,6 +17,7 @@ string, success and error alike, belongs to the View (presenters.py).
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 import shutil
@@ -64,12 +65,63 @@ def _guarded(params: Dict[str, Any],
     return params
 
 
+def _json_len(obj: Any) -> int:
+    return len(json.dumps(obj, indent=2))
+
+
+def _fit_snapshot(snapshot: Dict[str, Any], max_chars: int) -> Dict[str, Any]:
+    """Trim a snapshot to ``max_chars`` of rendered JSON, by whole tracks.
+
+    Scoped snapshots still overflowed the output cap ~50 times in one
+    agent's runs (median 16.6k tokens), and an overflow is worse than a
+    short answer: the client truncates mid-JSON. So the reply keeps every
+    non-track section and as many whole tracks, in order, as fit; the rest
+    are named in ``omitted_tracks`` with ``continuation`` — the ``tracks``
+    argument that fetches exactly them next. Never trims inside a track.
+    """
+    if _json_len(snapshot) <= max_chars:
+        return snapshot
+    tracks = list(snapshot.get("tracks") or [])
+
+    def build(k: int) -> Dict[str, Any]:
+        out = dict(snapshot)
+        out["tracks"] = tracks[:k]
+        omitted = tracks[k:]
+        if omitted:
+            out["truncated"] = True
+            out["max_chars"] = max_chars
+            out["omitted_tracks"] = [{"index": t.get("index"), "name": t.get("name")}
+                                     for t in omitted]
+            out["continuation"] = {"tracks": [t.get("index") for t in omitted]}
+        return out
+
+    # The largest whole-track prefix whose reply (omission list included)
+    # fits; at least one track, so the answer always makes progress.
+    lo, hi = 1, len(tracks)
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        if _json_len(build(mid)) <= max_chars:
+            lo = mid
+        else:
+            hi = mid - 1
+    return build(min(lo, len(tracks)))
+
+
 def _sha256(path: str) -> str:
     digest = hashlib.sha256()
     with open(path, "rb") as f:
         for block in iter(lambda: f.read(1 << 20), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+class AudioAuthRequired(Exception):
+    """An audible command (playback, firing a clip, arming) without the
+    caller's explicit authorized=true while the audio gate is on."""
+
+    def __init__(self, command: str) -> None:
+        super().__init__(command)
+        self.command = command
 
 
 class AbletonService:
@@ -86,7 +138,8 @@ class AbletonService:
                  ui: Optional[MacUI] = None,
                  allow_ui: bool = False,
                  evidence_dir: Optional[str] = None,
-                 ffmpeg: Optional[str] = None) -> None:
+                 ffmpeg: Optional[str] = None,
+                 require_audio_auth: bool = False) -> None:
         self._client = client
         self._handshake = handshake
         # Both optional so test doubles that predate them keep working: no
@@ -99,9 +152,13 @@ class AbletonService:
         self._allow_ui = allow_ui
         self._evidence_dir = evidence_dir
         self._ffmpeg = ffmpeg
+        # Off unless the composition root turns it on, so test doubles and
+        # goldens see the historical behaviour.
+        self._require_audio_auth = require_audio_auth
 
     def _send(self, name: str,
-              params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+              params: Optional[Dict[str, Any]] = None,
+              authorized: bool = True) -> Dict[str, Any]:
         """Send one wire command, applying the registry's gate first.
 
         A ``COMMANDS[name].gated`` row routes through
@@ -113,6 +170,10 @@ class AbletonService:
         them, plan §4).
         """
         spec = COMMANDS[name]
+        if spec.audible and self._require_audio_auth and not authorized:
+            # First of all: making sound without the user's OK is the one
+            # thing no lock or gate downstream can undo.
+            raise AudioAuthRequired(name)
         guarded = (self._lock is not None and spec.modifying
                    and spec.lock != "exempt")
         if guarded:
@@ -238,6 +299,7 @@ class AbletonService:
         include_rack_chains: bool = False,
         include_empty_slots: bool = False,
         tracks: Optional[List[Union[int, str]]] = None,
+        max_chars: Optional[int] = None,
     ) -> Dict[str, Any]:
         # Every flag goes on the wire explicitly, none left to the script's
         # own default: schema v3 changed three of those defaults, and a
@@ -253,7 +315,13 @@ class AbletonService:
         }
         if tracks is not None:
             params["tracks"] = tracks
-        return self._send("get_session_snapshot", params)
+        result = self._send("get_session_snapshot", params)
+        if max_chars:
+            result = _fit_snapshot(result, int(max_chars))
+        return result
+
+    def get_mix_state(self) -> Dict[str, Any]:
+        return self._send("get_mix_state")
 
     def create_midi_track(self, index: int) -> Dict[str, Any]:
         return self._send("create_midi_track", {"index": index})
@@ -624,12 +692,12 @@ class AbletonService:
         return self._send("create_return_track", {})
 
     def set_track_arm(self, track_index: int, armed: bool,
-                      expect_track_name: Optional[str] = None
-                      ) -> Dict[str, Any]:
+                      expect_track_name: Optional[str] = None,
+                      authorized: bool = False) -> Dict[str, Any]:
         return self._send("set_track_arm", _guarded({
             "track_index": track_index,
             "value": armed
-        }, expect_track_name))
+        }, expect_track_name), authorized=authorized or not armed)
 
     def set_track_monitoring(self, track_index: int, state: str,
                              expect_track_name: Optional[str] = None
@@ -966,11 +1034,12 @@ class AbletonService:
         }
 
     def fire_clip(self, track_index: int, clip_index: int,
-                  expect_track_name: Optional[str] = None) -> Dict[str, Any]:
+                  expect_track_name: Optional[str] = None,
+                  authorized: bool = False) -> Dict[str, Any]:
         return self._send("fire_clip", _guarded({
             "track_index": track_index,
             "clip_index": clip_index
-        }, expect_track_name))
+        }, expect_track_name), authorized=authorized)
 
     def stop_clip(self, track_index: int, clip_index: int,
                   expect_track_name: Optional[str] = None) -> Dict[str, Any]:
@@ -986,8 +1055,8 @@ class AbletonService:
             "clip_index": clip_index,
         }, expect_track_name))
 
-    def start_playback(self) -> Dict[str, Any]:
-        return self._send("start_playback")
+    def start_playback(self, authorized: bool = False) -> Dict[str, Any]:
+        return self._send("start_playback", authorized=authorized)
 
     def stop_playback(self) -> Dict[str, Any]:
         return self._send("stop_playback")
