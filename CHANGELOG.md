@@ -108,6 +108,17 @@ counts, is `docs/IMPROVEMENTS.md`.
   guessed wrong seven times across four days and never stuck. Passing two
   spellings with different values is refused rather than resolved.
 
+### Fixed (user-facing)
+
+- `get_track_info` on a group track, and `get_session_snapshot` on any Set
+  that contains one, no longer fail with "Master and Return Tracks have no
+  'Arm' state!". Live raises on *reading* `arm` for group tracks too, and
+  the snapshot's `getattr(track, "arm", False)` never guarded it (the
+  attribute exists; reading it is what throws). Both now report
+  `arm: false` for any track that cannot be armed. Ported from upstream
+  `4b707a2` (#128, fixing upstream #126); the passive arm listener that
+  upstream also patched does not exist here.
+
 ### Changed (user-facing)
 
 - **`duplicate_to_arrangement` and `duplicate_arrangement_clip` now REFUSE a

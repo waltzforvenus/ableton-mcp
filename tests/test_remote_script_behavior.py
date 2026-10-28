@@ -22,6 +22,7 @@ from fake_ableton import (
     FakeDevice,
     FakeLiveConfig,
     FakePluginDevice,
+    FakeTrack,
     make_harness,
 )
 
@@ -1485,6 +1486,41 @@ def test_get_session_snapshot_smoke():
     assert result["master_track"]["volume"] == 0.85
     assert result["cue_points"] == [{"name": "Verse", "time": 8.0}]
     assert len(result["scenes"]) == 4
+
+
+def _song_with_a_group_track():
+    """The standard song plus a group track at index 3. Live raises on
+    reading a group track's arm (upstream #126), so it is the case that
+    took down get_track_info on that index and get_session_snapshot whole."""
+    harness = make_harness()
+    harness.song.tracks.append(
+        FakeTrack("Bus", config=harness.config, kind="group"))
+    return harness
+
+
+def test_get_track_info_on_a_group_track_reports_unarmed():
+    harness = _song_with_a_group_track()
+    result = _ok(harness.process(_cmd("get_track_info", track_index=3)))
+    assert result["name"] == "Bus"
+    assert result["arm"] is False
+
+
+def test_get_track_info_still_reads_a_real_arm():
+    harness = make_harness()
+    harness.song.tracks[0].arm = True
+    result = _ok(harness.process(_cmd("get_track_info", track_index=0)))
+    assert result["arm"] is True
+
+
+def test_get_session_snapshot_survives_a_group_track():
+    harness = _song_with_a_group_track()
+    harness.song.tracks[1].arm = True
+    result = _ok(harness.process(_cmd("get_session_snapshot")))
+    arms = [(t["name"], t["arm"]) for t in result["tracks"]]
+    assert arms == [("Lead", False), ("Drums", True), ("Audio", False),
+                    ("Bus", False)]
+    # The parts of the snapshot reachable no other way come through too.
+    assert result["cue_points"] == [{"name": "Verse", "time": 8.0}]
 
 
 # --------------------------------------------------------------------------

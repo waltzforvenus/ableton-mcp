@@ -496,12 +496,18 @@ class FakeTrack(object):
         self.name = name
         self.mute = False
         self.solo = False
-        self.arm = False
+        self._arm = False
         self.can_be_armed = kind == "regular"
         self.current_monitoring_state = 1  # Auto
         if kind == "regular":
             self.has_midi_input = bool(midi)
             self.has_audio_input = not midi
+        elif kind == "group":
+            # A group track lives in song.tracks and has slots (they launch
+            # its children's clips) but, like the master and the returns, no
+            # arm state.
+            self.has_midi_input = False
+            self.has_audio_input = True
         else:
             # Returns and the master are audio-only and slotless.
             self.has_midi_input = False
@@ -532,6 +538,22 @@ class FakeTrack(object):
         all_channels = FakeRoutingOption("All Channels")
         self.available_input_routing_channels = [all_channels]
         self.input_routing_channel = all_channels
+
+    # Live raises on *reading* arm for a track that has no arm state, not
+    # only on writing it, and for group tracks as well as the master and the
+    # returns, whatever the message says. The attribute exists, so a
+    # getattr(track, "arm", False) default never applies (upstream #126).
+    @property
+    def arm(self):
+        if not self.can_be_armed:
+            raise RuntimeError("Master and Return Tracks have no 'Arm' state!")
+        return self._arm
+
+    @arm.setter
+    def arm(self, value):
+        if not self.can_be_armed:
+            raise RuntimeError("Master and Return Tracks have no 'Arm' state!")
+        self._arm = bool(value)
 
     def delete_device(self, device_index):
         # Silently doing nothing is a real observed outcome, not a fake-only
