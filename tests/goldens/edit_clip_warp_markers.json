@@ -1,0 +1,233 @@
+{
+  "cases": [
+    {
+      "args": {
+        "clip_index": 0,
+        "edits": [
+          {
+            "beat_time": 4.0,
+            "new_beat_time": 4.0625,
+            "op": "move"
+          },
+          {
+            "beat_time": 8.0,
+            "op": "add",
+            "sample_time": 3.98
+          }
+        ],
+        "track_index": 1
+      },
+      "expect": "Applied 2/2 warp edits to 'Drum Take' on 'Drums' \u2014 every edit verified against Live's read-back; 4 markers now\n{\n \"applied\": 2,\n \"clip_name\": \"Drum Take\",\n \"failed\": 0,\n \"mismatches\": [],\n \"not_attempted\": 0,\n \"requested\": 2,\n \"results\": [\n  {\n   \"beat_time\": 4.0,\n   \"index\": 0,\n   \"new_beat_time\": 4.0625,\n   \"ok\": true,\n   \"op\": \"move\",\n   \"sample_time\": 2.0\n  },\n  {\n   \"beat_time\": 8.0,\n   \"index\": 1,\n   \"ok\": true,\n   \"op\": \"add\",\n   \"sample_time\": 3.98\n  }\n ],\n \"track_name\": \"Drums\",\n \"verified\": true,\n \"warp_markers_after\": [\n  {\n   \"beat_time\": 0.0,\n   \"sample_time\": 0.0\n  },\n  {\n   \"beat_time\": 4.0625,\n   \"sample_time\": 2.0\n  },\n  {\n   \"beat_time\": 8.0,\n   \"sample_time\": 3.98\n  },\n  {\n   \"beat_time\": 16.0,\n   \"sample_time\": 8.0\n  }\n ],\n \"warp_markers_before\": [\n  {\n   \"beat_time\": 0.0,\n   \"sample_time\": 0.0\n  },\n  {\n   \"beat_time\": 4.0,\n   \"sample_time\": 2.0\n  },\n  {\n   \"beat_time\": 16.0,\n   \"sample_time\": 8.0\n  }\n ]\n}",
+      "name": "verified_batch",
+      "wire": [
+        {
+          "command": "edit_clip_warp_markers",
+          "params": {
+            "arrangement": true,
+            "clip_index": 0,
+            "edits": [
+              {
+                "beat_time": 4.0,
+                "new_beat_time": 4.0625,
+                "op": "move"
+              },
+              {
+                "beat_time": 8.0,
+                "op": "add",
+                "sample_time": 3.98
+              }
+            ],
+            "stop_on_error": true,
+            "track_index": 1
+          },
+          "response": {
+            "applied": 2,
+            "clip_name": "Drum Take",
+            "failed": 0,
+            "mismatches": [],
+            "not_attempted": 0,
+            "requested": 2,
+            "results": [
+              {
+                "beat_time": 4.0,
+                "index": 0,
+                "new_beat_time": 4.0625,
+                "ok": true,
+                "op": "move",
+                "sample_time": 2.0
+              },
+              {
+                "beat_time": 8.0,
+                "index": 1,
+                "ok": true,
+                "op": "add",
+                "sample_time": 3.98
+              }
+            ],
+            "track_name": "Drums",
+            "verified": true,
+            "warp_markers_after": [
+              {
+                "beat_time": 0.0,
+                "sample_time": 0.0
+              },
+              {
+                "beat_time": 4.0625,
+                "sample_time": 2.0
+              },
+              {
+                "beat_time": 8.0,
+                "sample_time": 3.98
+              },
+              {
+                "beat_time": 16.0,
+                "sample_time": 8.0
+              }
+            ],
+            "warp_markers_before": [
+              {
+                "beat_time": 0.0,
+                "sample_time": 0.0
+              },
+              {
+                "beat_time": 4.0,
+                "sample_time": 2.0
+              },
+              {
+                "beat_time": 16.0,
+                "sample_time": 8.0
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "clip_index": 0,
+        "edits": [
+          {
+            "beat_time": 4.0,
+            "new_beat_time": 4.0625,
+            "op": "move"
+          },
+          {
+            "beat_time": 8.0,
+            "op": "add",
+            "sample_time": 3.98
+          }
+        ],
+        "stop_on_error": true,
+        "track_index": 1
+      },
+      "expect": "Warp edits on 'Drum Take' on 'Drums' NOT fully verified: 0/2 reported applied, 1 failed, 1 not attempted, 0 read-back mismatches. warp_markers_before below is the state to restore if needed\n{\n \"applied\": 0,\n \"clip_name\": \"Drum Take\",\n \"failed\": 1,\n \"mismatches\": [],\n \"not_attempted\": 1,\n \"requested\": 2,\n \"results\": [\n  {\n   \"beat_time\": 4.0,\n   \"error\": \"No warp marker at beat 4 (nearest is at 3.5)\",\n   \"index\": 0,\n   \"ok\": false,\n   \"op\": \"move\"\n  }\n ],\n \"track_name\": \"Drums\",\n \"verified\": false,\n \"warp_markers_after\": [\n  {\n   \"beat_time\": 0.0,\n   \"sample_time\": 0.0\n  },\n  {\n   \"beat_time\": 3.5,\n   \"sample_time\": 1.75\n  }\n ],\n \"warp_markers_before\": [\n  {\n   \"beat_time\": 0.0,\n   \"sample_time\": 0.0\n  },\n  {\n   \"beat_time\": 3.5,\n   \"sample_time\": 1.75\n  }\n ]\n}",
+      "name": "refused_edit_not_verified",
+      "wire": [
+        {
+          "command": "edit_clip_warp_markers",
+          "params": {
+            "arrangement": true,
+            "clip_index": 0,
+            "edits": [
+              {
+                "beat_time": 4.0,
+                "new_beat_time": 4.0625,
+                "op": "move"
+              },
+              {
+                "beat_time": 8.0,
+                "op": "add",
+                "sample_time": 3.98
+              }
+            ],
+            "stop_on_error": true,
+            "track_index": 1
+          },
+          "response": {
+            "applied": 0,
+            "clip_name": "Drum Take",
+            "failed": 1,
+            "mismatches": [],
+            "not_attempted": 1,
+            "requested": 2,
+            "results": [
+              {
+                "beat_time": 4.0,
+                "error": "No warp marker at beat 4 (nearest is at 3.5)",
+                "index": 0,
+                "ok": false,
+                "op": "move"
+              }
+            ],
+            "track_name": "Drums",
+            "verified": false,
+            "warp_markers_after": [
+              {
+                "beat_time": 0.0,
+                "sample_time": 0.0
+              },
+              {
+                "beat_time": 3.5,
+                "sample_time": 1.75
+              }
+            ],
+            "warp_markers_before": [
+              {
+                "beat_time": 0.0,
+                "sample_time": 0.0
+              },
+              {
+                "beat_time": 3.5,
+                "sample_time": 1.75
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "clip_index": 0,
+        "edits": [
+          {
+            "beat_time": 4.0,
+            "new_beat_time": 4.0625,
+            "op": "move"
+          },
+          {
+            "beat_time": 8.0,
+            "op": "add",
+            "sample_time": 3.98
+          }
+        ],
+        "track_index": 1
+      },
+      "expect": "Error editing warp markers: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "edit_clip_warp_markers",
+          "params": {
+            "arrangement": true,
+            "clip_index": 0,
+            "edits": [
+              {
+                "beat_time": 4.0,
+                "new_beat_time": 4.0625,
+                "op": "move"
+              },
+              {
+                "beat_time": 8.0,
+                "op": "add",
+                "sample_time": 3.98
+              }
+            ],
+            "stop_on_error": true,
+            "track_index": 1
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

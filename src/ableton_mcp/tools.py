@@ -386,6 +386,212 @@ def set_clip_warp(ctx: Context, track_index: int, clip_index: int, warping: bool
     return presenters.set_clip_warp(result)
 
 
+# ── Warp vision ──────────────────────────────────────────────────────────────
+#
+# The workflow these four tools teach, in order: analyze_clip_audio (LOOK at
+# the audio against its current warping) -> suggest_warp_markers (dry run:
+# proposed edits + before/after image) -> apply (apply=True, or
+# edit_clip_warp_markers with edits you chose) -> analyze_clip_audio again
+# to verify. The image tools return text AND an image; the text alone is
+# complete, so a model without vision can still do the whole loop.
+
+@tool
+def get_clip_warp_markers(ctx: Context, track_index: int, clip_index: int,
+                          arrangement: bool = True,
+                          expect_track_name: Optional[str] = None) -> str:
+    """
+    Read an audio clip's warp markers, with what is needed to use them.
+
+    Returns every marker as {beat_time, sample_time}: beat_time in CLIP
+    beats, sample_time in SECONDS of the source file. Live's last marker is
+    hidden in its UI (it only sets the final segment's tempo) — leave it
+    alone. Also returns the file path and sample rate, start/end/loop
+    markers (in beats while warping, seconds when not — see marker_units),
+    warping and warp_mode, the song tempo and meter, and which edit APIs
+    this Live version has. For an Arrangement clip, song beat = start_time +
+    (clip beat - start_marker).
+
+    Prefer analyze_clip_audio when you want to SEE whether the warping is
+    right; use this for the raw numbers before hand-editing.
+
+    Parameters:
+    - track_index: The index of the track containing the clip
+    - clip_index: Arrangement clip index (get_arrangement_clips order) or
+      Session slot index when arrangement is False
+    - arrangement: True (default) for an Arrangement clip, False for Session
+    - expect_track_name: Optional guard; refuse if the track is named otherwise
+    """
+    result = _deps(ctx).service.get_clip_warp_markers(
+        track_index, clip_index, arrangement,
+        expect_track_name=expect_track_name)
+    return presenters.get_clip_warp_markers(result)
+
+
+@tool
+def edit_clip_warp_markers(ctx: Context, track_index: int, clip_index: int,
+                           edits: List[Dict[str, Any]],
+                           arrangement: bool = True,
+                           stop_on_error: bool = True,
+                           expect_track_name: Optional[str] = None) -> str:
+    """
+    Add, move and remove warp markers in one batch, then verify the result.
+
+    Every edit is applied inside one Live main-thread task, in list order,
+    and the markers are read back afterwards: the response says, per edit,
+    whether Live accepted it, and `verified` is true only if the read-back
+    matches what the edits should have produced (Live's edit calls are
+    "if possible" — a refused edit can be silent, so trust `verified`, not
+    the absence of an error). warp_markers_before is returned for restoring.
+
+    Each edit is a dict:
+    - {"op": "add", "beat_time": B, "sample_time": S} — pin the audio at S
+      seconds of the file to clip beat B. Omit sample_time to pin whatever
+      currently plays at B (a marker that changes nothing until moved).
+    - {"op": "move", "beat_time": B, "new_beat_time": B2} (or "distance":
+      beats) — drag the marker at B to B2; its audio position stays, so the
+      audio around it stretches. This is the usual "put the hit on the grid".
+    - {"op": "remove", "beat_time": B}
+    Live's rules: markers stay strictly increasing in BOTH beat and sample
+    time, sample_time within the file, each segment 5-999 BPM. Do removes
+    before adds on the same beat. The clip must be warped (set_clip_warp).
+    suggest_warp_markers produces edits in exactly this shape.
+
+    Parameters:
+    - track_index / clip_index / arrangement: which clip (see
+      get_clip_warp_markers)
+    - edits: The list of edits (max 256)
+    - stop_on_error: Stop at the first edit Live refuses (default True)
+    - expect_track_name: Optional guard; refuse if the track is named otherwise
+    """
+    result = _deps(ctx).service.edit_clip_warp_markers(
+        track_index, clip_index, list(edits or []), arrangement,
+        bool(stop_on_error), expect_track_name=expect_track_name)
+    return presenters.edit_clip_warp_markers(result)
+
+
+@tool
+def analyze_clip_audio(ctx: Context, track_index: int, clip_index: int,
+                       arrangement: bool = True,
+                       start_beat: Optional[float] = None,
+                       end_beat: Optional[float] = None,
+                       start_seconds: Optional[float] = None,
+                       end_seconds: Optional[float] = None,
+                       include_image: bool = True,
+                       image_width: int = 1200,
+                       sensitivity: float = 0.5,
+                       max_transients: int = 150,
+                       expect_track_name: Optional[str] = None) -> Any:
+    """
+    LOOK at an audio clip against its warping: image + data. Start here.
+
+    Reads the clip's audio file on this machine (nothing is uploaded) and
+    returns (1) an image: waveform with the song's bars/beats as Live
+    currently maps them onto the audio, the clip's warp markers, detected
+    transients, a low/mid/high energy strip and a log-frequency spectrogram;
+    and (2) JSON: transients (file time, song beat, ms off the nearest 16th,
+    strength, dominant band), the source tempo estimate vs the tempo the
+    warping implies, per-band energy over time, the warp markers in the
+    window, and grid_alignment — the median/p90 ms by which strong hits miss
+    the beat grid. That number is how you judge a warp, before and after.
+
+    Well warped: grey beat lines sit on the attacks of the kicks/snares
+    (cyan ticks), grid_alignment median under ~5 ms. Drifting: hits slide
+    progressively off the lines — use suggest_warp_markers mode="rewarp".
+    Workflow: analyze -> suggest_warp_markers (dry run) -> apply -> analyze
+    again to verify. Zoom in on a problem bar with start_beat/end_beat.
+
+    Parameters:
+    - track_index / clip_index / arrangement: which clip (Arrangement by default)
+    - start_beat / end_beat: Window on the grid shown in the image — SONG
+      beats for an Arrangement clip, clip beats for a Session clip
+    - start_seconds / end_seconds: Window in seconds of the source file
+      (wins over the beat window). Default: everything the clip plays
+    - include_image: False for JSON only (text-only models, smaller output)
+    - image_width: Pixels, 400-2400 (default 1200)
+    - sensitivity: Transient detection 0..1 (raise for soft material)
+    - max_transients: Cap on transients listed in the JSON (strongest kept)
+    - expect_track_name: Optional guard; refuse if the track is named otherwise
+    """
+    result = _deps(ctx).service.analyze_clip_audio(
+        track_index, clip_index, arrangement,
+        expect_track_name=expect_track_name,
+        start_seconds=start_seconds, end_seconds=end_seconds,
+        start_beat=start_beat, end_beat=end_beat,
+        sensitivity=float(sensitivity), include_image=bool(include_image),
+        image_width=int(image_width), max_transients=int(max_transients))
+    return presenters.analyze_clip_audio(result)
+
+
+@tool
+def suggest_warp_markers(ctx: Context, track_index: int, clip_index: int,
+                         arrangement: bool = True,
+                         mode: str = "transients",
+                         subdivision: float = 1.0,
+                         tolerance: Optional[float] = None,
+                         min_strength: float = 0.3,
+                         max_edits: int = 32,
+                         start_beat: Optional[float] = None,
+                         end_beat: Optional[float] = None,
+                         start_seconds: Optional[float] = None,
+                         end_seconds: Optional[float] = None,
+                         apply: bool = False,
+                         include_image: bool = True,
+                         image_width: int = 1200,
+                         sensitivity: float = 0.5,
+                         expect_track_name: Optional[str] = None) -> Any:
+    """
+    Propose warp-marker edits that put the clip's hits on the grid; DRY RUN
+    by default, with a before/after image. apply=True executes and verifies.
+
+    Modes:
+    - "transients" (default): local fix for a clip that is roughly right.
+      Each strong hit within `tolerance` of a grid line is pulled onto it —
+      by moving the marker already on it, or adding one. Leaves other
+      markers alone.
+    - "rewarp": for a clip whose warping DRIFTS (live playing, a wrong
+      Auto-Warp tempo). Tracks the beat left to right from the first strong
+      hit, placing a marker on the hit nearest each predicted grid line and
+      re-estimating the tempo as it goes; replaces the window's markers.
+    - "tempo": for constant-tempo material (machines, click-tracked): two
+      markers a whole number of bars apart at the estimated source tempo.
+
+    The result carries `edits` (exactly what edit_clip_warp_markers takes —
+    you may drop or adjust some and send them yourself), per-edit evidence
+    (which transient, how many ms it moves), and grid_alignment before and
+    after: PREDICTED on a dry run, MEASURED from Live's read-back after
+    apply. Always look at the dry run before applying; afterwards, run
+    analyze_clip_audio on the same window to verify. The clip must be
+    warped (set_clip_warp warping=True). Arrangement clips snap to the
+    SONG's grid.
+
+    Parameters:
+    - track_index / clip_index / arrangement: which clip
+    - mode: "transients", "rewarp" or "tempo"
+    - subdivision: Grid step in beats to snap to (1.0 = quarter notes,
+      0.5 = eighths, 4.0 = bars)
+    - tolerance: Max distance from a grid line, as a fraction of the
+      subdivision, for a hit to count (default 0.35; 0.3 in rewarp)
+    - min_strength: Ignore transients weaker than this (0..1)
+    - max_edits: Cap on markers placed (default 32, max 256)
+    - start_beat / end_beat / start_seconds / end_seconds: window, as in
+      analyze_clip_audio. Work a few bars at a time on long clips
+    - apply: False (default) = dry run; True = send the edits and verify
+    - include_image / image_width / sensitivity: as in analyze_clip_audio
+    - expect_track_name: Optional guard; refuse if the track is named otherwise
+    """
+    result = _deps(ctx).service.suggest_warp_markers(
+        track_index, clip_index, arrangement, apply=bool(apply),
+        include_image=bool(include_image), image_width=int(image_width),
+        expect_track_name=expect_track_name,
+        mode=mode, subdivision=float(subdivision),
+        tolerance=None if tolerance is None else float(tolerance),
+        min_strength=float(min_strength), max_edits=int(max_edits),
+        sensitivity=float(sensitivity),
+        start_seconds=start_seconds, end_seconds=end_seconds,
+        start_beat=start_beat, end_beat=end_beat)
+    return presenters.suggest_warp_markers(result)
+
+
 @tool
 def back_to_arrangement(ctx: Context) -> str:
     """
