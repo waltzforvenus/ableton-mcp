@@ -321,6 +321,18 @@ counts, is `docs/IMPROVEMENTS.md`.
 
 ### Fixed (user-facing)
 
+- **A clean save stayed unreleasable after transport-only work.** Commands
+  that take over Live but leave nothing to save - the transport
+  (`start_playback`, `stop_clip`, `fire_clip`,
+  `set_current_song_time`, `back_to_arrangement`, `jump_to_locator`),
+  the view switch (`switch_to_arrangement_view`) and `select_track` -
+  now meet the shared Live lock as `check`, not `write`: they still
+  refuse it while someone else holds it, but no longer stamp
+  `last_edit_ts`. Cmd-S on an unchanged set does not touch the file, so
+  a stamp from them made a set saved after the last real edit impossible
+  to release (seen after an export, 10-28). `save_set` keeps its
+`check`; `stop_playback` stays exempt.
+
 - **`get_session_snapshot` after opening another set** (Remote Script
   **1.20.0** — re-run the installer). The script cached Live's Song once, at
   load; after a set switch unscoped snapshots failed with Boost.Python's
@@ -586,6 +598,18 @@ builds we can verify).
 
 ### Fixed (user-facing)
 
+- **A clean save stayed unreleasable after transport-only work.** Commands
+  that take over Live but leave nothing to save - the transport
+  (`start_playback`, `stop_clip`, `fire_clip`,
+  `set_current_song_time`, `back_to_arrangement`, `jump_to_locator`),
+  the view switch (`switch_to_arrangement_view`) and `select_track` -
+  now meet the shared Live lock as `check`, not `write`: they still
+  refuse it while someone else holds it, but no longer stamp
+  `last_edit_ts`. Cmd-S on an unchanged set does not touch the file, so
+  a stamp from them made a set saved after the last real edit impossible
+  to release (seen after an export, 10-28). `save_set` keeps its
+`check`; `stop_playback` stays exempt.
+
 - `create_locator` no longer misfires after a transport stop. It toggles
   Live's cue at the playhead, but a `current_song_time` write can be
   swallowed while the transport settles (verified on 12.4.3) — the toggle
@@ -714,6 +738,18 @@ restart Live after upgrading** — the repairs below live in the script half.
   "Installing from CI builds and releases" section.
 
 ### Fixed (user-facing)
+
+- **A clean save stayed unreleasable after transport-only work.** Commands
+  that take over Live but leave nothing to save - the transport
+  (`start_playback`, `stop_clip`, `fire_clip`,
+  `set_current_song_time`, `back_to_arrangement`, `jump_to_locator`),
+  the view switch (`switch_to_arrangement_view`) and `select_track` -
+  now meet the shared Live lock as `check`, not `write`: they still
+  refuse it while someone else holds it, but no longer stamp
+  `last_edit_ts`. Cmd-S on an unchanged set does not touch the file, so
+  a stamp from them made a set saved after the last real edit impossible
+  to release (seen after an export, 10-28). `save_set` keeps its
+`check`; `stop_playback` stays exempt.
 
 - `get_device_parameters` and `set_device_parameter` work again. They had
   been broken at runtime since the 2026-08 upstream merge: the merged Remote
