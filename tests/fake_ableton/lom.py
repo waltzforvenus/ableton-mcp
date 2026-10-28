@@ -144,6 +144,58 @@ class FakeDevice(object):
         self.parameters = list(parameters)
 
 
+class FakePluginDevice(FakeDevice):
+    """A hosted VST/VST3/AU — Live.PluginDevice.PluginDevice (class_name
+    "PluginDevice") or an Audio Unit ("AuPluginDevice").
+
+    Live exposes no parameters of an unconfigured VST3 beyond "Device On"
+    (verified on 12.4.3 with TAL-NoiseMaker, Dexed and u-he), so the default
+    parameter list here is exactly that one entry, and the preset surface is
+    the whole interface: ``presets`` is a tuple of names (empty for a plugin
+    that publishes none) and ``selected_preset_index`` is the writable
+    selection. Only this class carries the two attributes — a native
+    FakeDevice has neither, which is what the script's hasattr probe
+    branches on.
+
+    ``preset_select_lands=False`` models a write that returns normally but
+    reads back unchanged — indistinguishable, inside one tick, from a stale
+    read — the condition _set_plugin_preset's ``verified`` flag exists for
+    (the same shape as FakeLiveConfig.device_delete_lands).
+    """
+
+    def __init__(self, name, class_name="PluginDevice", class_display_name=None,
+                 parameters=None, presets=(), selected_preset_index=0,
+                 preset_select_lands=True):
+        FakeDevice.__init__(self, name, class_name=class_name,
+                            class_display_name=class_display_name,
+                            parameters=parameters)
+        self._presets = tuple(presets)
+        self._selected_preset_index = int(selected_preset_index)
+        self._preset_select_lands = bool(preset_select_lands)
+
+    @property
+    def presets(self):
+        return self._presets
+
+    @property
+    def selected_preset_index(self):
+        return self._selected_preset_index
+
+    @selected_preset_index.setter
+    def selected_preset_index(self, index):
+        index = int(index)
+        # Strict on purpose, so the handler's own range check is what the
+        # tests exercise rather than the fake quietly accepting nonsense.
+        # -1 is Live's "nothing selected".
+        if index < -1 or index >= len(self._presets):
+            raise RuntimeError(
+                "Invalid preset index %d for '%s' (%d presets)"
+                % (index, self.name, len(self._presets)))
+        if not self._preset_select_lands:
+            return
+        self._selected_preset_index = index
+
+
 class FakeMixerDevice(object):
     def __init__(self, num_sends=0):
         self.volume = FakeParameter("Volume", 0.85, 0.0, 1.0, unit="dB")

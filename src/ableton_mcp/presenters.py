@@ -156,6 +156,38 @@ def set_device_parameters(result: Dict[str, Any]) -> str:
     return head + body + tail
 
 
+get_plugin_presets = as_json
+
+
+def _preset_label(index: Any, name: Any) -> str:
+    """"12 'Warm Pad'", or the bare index when the list does not cover it
+    (Live reports -1 while no preset is selected)."""
+    if name is None:
+        return f"index {index} (no preset)"
+    return f"{index} '{name}'"
+
+
+def set_plugin_preset(result: Dict[str, Any]) -> str:
+    where = (f"{result.get('device')} (track {result.get('track_index')} "
+             f"'{result.get('track_name')}')")
+    requested = _preset_label(result.get("requested_index"),
+                              result.get("requested_name"))
+    previous = _preset_label(result.get("previous_index"),
+                             result.get("previous_name"))
+    if not result.get("verified"):
+        # A read in the same tick as the write can be stale, so this is not
+        # proof the select failed — and a blind second select in reply
+        # cannot learn more than the first did. Say what Live reads back
+        # and let a later call confirm.
+        read_back = _preset_label(result.get("selected_index"),
+                                  result.get("selected_name"))
+        return (f"Asked {where} to select preset {requested}, but Live still "
+                f"reads back {read_back} (was {previous}). The read-back can "
+                f"lag the write within one tick, so re-read with "
+                f"get_plugin_presets before selecting again.")
+    return f"Selected preset {requested} on {where}; was {previous}"
+
+
 def delete_device(result: Dict[str, Any], track_index: int) -> str:
     name = result.get("deleted_device_name")
     remaining = result.get("remaining_devices") or []
@@ -672,6 +704,8 @@ ERROR_PHRASES: Dict[str, str] = {
     "get_device_parameters": "getting device parameters",
     "set_device_parameter": "setting device parameter",
     "set_device_parameters": "setting device parameters",
+    "get_plugin_presets": "getting plugin presets",
+    "set_plugin_preset": "setting plugin preset",
     "delete_device": "deleting device",
     "set_track_volume": "setting track volume",
     "set_track_pan": "setting track pan",

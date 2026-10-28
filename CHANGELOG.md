@@ -9,7 +9,7 @@ separately, and a script change means **re-run
 
 ## [Unreleased]
 
-Ships Remote Script **1.15.0**. **Re-run `ableton-mcp-install-script` and
+Ships Remote Script **1.16.0**. **Re-run `ableton-mcp-install-script` and
 restart Live after upgrading** — the new commands live in the script half,
 and Live caches an already-imported script module, so re-selecting the
 control surface is not enough. This release is larger than usual on the
@@ -23,6 +23,23 @@ counts, is `docs/IMPROVEMENTS.md`.
 
 ### Added (user-facing)
 
+- `get_plugin_presets` † and `set_plugin_preset` †: list and select the
+  factory presets of a hosted VST/VST3/AU plugin. Live exposes *no*
+  parameters of an unconfigured VST3 or AU through its API — verified on
+  12.4.3, `get_device_parameters` on TAL-NoiseMaker, Dexed and the u-he
+  synths shows only "Device On" — so `set_device_parameter` cannot reach
+  them at all. What the LOM does expose on those devices is
+  `Live.PluginDevice.PluginDevice.presets` (a tuple of names, empty for a
+  plugin that publishes none) and the writable `selected_preset_index`,
+  which makes preset selection the one way to change what such a plugin
+  sounds like from here. Names match exactly first (case-insensitively),
+  then as a fragment — but a fragment that fits several presets is refused
+  with the candidates listed rather than resolved to the first; an index
+  out of range, a device that is not a plugin, and a plugin with an empty
+  bank are refused too, with nothing changed. The reply reports what Live
+  reads back and whether it matched (`verified`), without retrying: a
+  same-tick read can lag the write, and an in-tick re-read returns the
+  same stale value by construction.
 - `set_clip_warp` †: turn an audio clip's warping on or off (and optionally
   set its warp mode). This is the fix for a problem that has no workaround
   from the API otherwise: Live's "Auto-Warp Long Samples" guesses a source
@@ -145,6 +162,48 @@ counts, is `docs/IMPROVEMENTS.md`.
 
 ### Internal
 
+- `scripts/push_notes.py`: a standard-library-only CLI that pushes MIDI
+  notes from JSON files — a note list, or a manifest of files → track/clip
+  targets — straight to the Remote Script socket, in chunks of at most 110
+  notes, every chunk carrying `expect_count` and every command
+  `expect_track_name`, printing what Live reported for each chunk. It
+  exists because a whole-song drum part sent through the MCP round trip
+  passes through the model's context once per tool call; 2,513 notes went
+  in this way over ~45 calls in a few seconds, with no tokens spent. Safe
+  beside a running server: the script accepts several clients and
+  serialises writes on Live's main thread. Every note is validated before
+  anything is sent, the run stops at the first refusal and names the
+  half-written clip, and `--dry-run` connects to nothing.
+  `tests/test_push_notes.py` drives it against a loopback peer that behaves
+  like the script's handlers — both guards' refusals, replies split inside
+  a multi-byte character, a reply that never comes, a connection closed
+  mid-reply, and the pre-1.15.0 echoed count. The no-telemetry guardrail
+  now scans `scripts/` too, with `push_notes.py` the one file there allowed
+  to import `socket`.
+- Remote Script **1.15.0 → 1.16.0** for the plugin-preset pair, with
+  `EXPECTED_REMOTE_SCRIPT_VERSION` moved in the same commit. Neither new
+  registry row carries a `min_script_version` floor: a brand-new command is
+  never advertised by an older script, so the ordinary capability gate
+  already answers with the installer message, and a floor would only cost
+  a guardrail its exactness.
+- Tool surface 55 → 57; `tests/data/tool_names.txt`, the pinned counts in
+  four test modules, `PR5_SCRIPT_CAPABILITIES` (48 → 50) and
+  `GATED_POST_1_7_0` updated to match.
+- `tests/fake_ableton` gained `FakePluginDevice`: a hosted plugin whose
+  only parameter is "Device On" (as Live really shows it) and whose
+  `presets` / `selected_preset_index` are the interface — the only fake
+  device carrying either attribute, which is what the script's `hasattr`
+  probe branches on. `preset_select_lands=False` models the
+  write-returns-but-reads-back-unchanged case the `verified` flag exists
+  for.
+- Goldens re-recorded: six new cases for the pair plus their error cases,
+  and the `get_remote_script_info` cases that embed the expected script
+  version. New behaviour tests cover listing (plugin, native device, AU and
+  probe detection, empty bank), selection by index, exact name and unique
+  fragment, and every refusal — ambiguous fragment, duplicated name,
+  unknown name, out-of-range index, non-plugin, empty bank, nothing asked
+  for, disagreeing index and name, `expect_track_name` mismatch — plus the
+  unverified read-back and a return-track selection.
 - Remote Script **1.14.0 → 1.15.0**, with `EXPECTED_REMOTE_SCRIPT_VERSION`
   moved in the same commit as always.
 - Nine existing registry rows gained `min_script_version="1.15.0"`. They are

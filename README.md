@@ -126,6 +126,7 @@ That's it — ask your assistant to build something.
 - [Installation](#installation)
 - [Usage](#usage)
   - [Tool reference](#tool-reference)
+  - [Pushing notes in bulk](#pushing-notes-in-bulk)
 - [Troubleshooting](#troubleshooting)
 - [Technical Details](#technical-details)
 - [Limitations & Security Considerations](#limitations--security-considerations)
@@ -184,13 +185,13 @@ On top of that:
 
 ### Added tools
 
-Upstream exposes 37 MCP tools; this fork exposes 55. The mixer, device control
+Upstream exposes 37 MCP tools; this fork exposes 57. The mixer, device control
 and routing tools are new here:
 
 | Area | Tools |
 |---|---|
 | **Mixer** | `set_track_volume`, `set_track_pan`, `set_track_mute`, `set_track_arm`, `set_track_monitoring` |
-| **Devices** | `delete_device`, `set_device_parameters` (the batch form) — plus `get_device_parameters` / `set_device_parameter` extended to address parameters *by name* and to reach return tracks via `track_type` |
+| **Devices** | `delete_device`, `set_device_parameters` (the batch form), `get_plugin_presets` / `set_plugin_preset` (factory presets on hosted VST/VST3/AU plugins, whose parameters Live does not expose) — plus `get_device_parameters` / `set_device_parameter` extended to address parameters *by name* and to reach return tracks via `track_type` |
 | **Sends & buses** | `create_return_track`, `set_track_send` — one shared reverb instead of a copy per track |
 | **Routing** | `set_track_routing`, `get_track_routing` |
 | **Clips & tracks** | `set_clip_gain`, `set_clip_warp`, `duplicate_track`, `delete_track` |
@@ -319,6 +320,12 @@ uv run ableton-mcp
 uv run pytest        # tests run without Ableton and without network
 ```
 
+`scripts/` holds two helpers that are deliberately not tests:
+`smoke_live.py` drives a real Live session through the production stack and
+reports per step, and `push_notes.py` pushes note JSON files straight to the
+Remote Script socket without going through the model at all (see
+[Pushing notes in bulk](#pushing-notes-in-bulk)).
+
 ### Installing from CI builds and releases
 
 Every push runs the [CI workflow](.github/workflows/ci.yml): the full test
@@ -373,7 +380,7 @@ A few notes that apply to every install method:
 
 ### Tool reference
 
-All 55 tools the server exposes. Tools marked **†** are added by this fork and
+All 57 tools the server exposes. Tools marked **†** are added by this fork and
 are not present upstream.
 
 #### Session & info
@@ -423,6 +430,8 @@ are not present upstream.
 | `get_device_parameters` | `track_index`, `device_index`, `track_type`? | List every parameter on a device, with its current value, range and the |
 | `set_device_parameter` | `track_index`, `device_index`, `parameter`, `value`, `track_type`? | Set one parameter on a device. This is how you actually mix: pull a reverb's |
 | `set_device_parameters` † | `track_index`, `device_index`, `parameters`, `track_type`? | Set MANY parameters on one device in a single call — the batch form, preferred when dialling a device in |
+| `get_plugin_presets` † | `track_index`, `device_index`, `track_type`? | List a hosted VST/VST3/AU plugin's factory presets and which one is selected — the way in to a plugin whose parameters Live does not expose |
+| `set_plugin_preset` † | `track_index`, `device_index`, `preset_index`?, `preset_name`?, `track_type`? | Select a plugin's factory preset by index or by name (exact, then an unambiguous fragment); refuses ambiguous names, out-of-range indices and devices without presets |
 | `delete_device` † | `track_index`, `device_index`, `track_type`? | Remove a device from a track's chain |
 | `load_instrument_or_effect` | `track_index`, `uri`, `track_type`? | Load an instrument or effect onto a track using its URI |
 | `load_drum_kit` | `track_index`, `rack_uri`, `kit_path` | Load a drum rack and then load a specific drum kit into it |
@@ -494,6 +503,13 @@ name a neighbouring tool uses: `duplicate_to_arrangement`'s
 `create_audio_clip`'s `path` as `file_path`. Passing both spellings with
 different values is refused rather than resolved.
 
+Third-party plugins are a special case. Live exposes no parameters of an
+unconfigured VST3 or AU through its API — `get_device_parameters` on
+TAL-NoiseMaker, Dexed or a u-he synth lists only "Device On" — so
+`get_plugin_presets` / `set_plugin_preset` work through the one thing it does
+expose: the plugin's factory preset list. A plugin that publishes no presets
+to Live can only be set up from its own window.
+
 ### Example Commands
 
 | Prompt |
@@ -504,10 +520,55 @@ different values is refused rather than resolved.
 | *"Create a new MIDI track with a synth bass instrument"* |
 | *"Add a reverb return track and send the drums to it at 20%"* |
 | *"Pull the Dry/Wet on the reverb down to 15%"* |
+| *"Put the NoiseMaker on a warm pad preset"* |
 | *"Create a 4-bar MIDI clip with a simple melody"* |
 | *"Add a jazz chord progression to the clip in track 1"* |
 | *"Set the tempo to 120 BPM"* |
 | *"Save the set"* |
+
+### Pushing notes in bulk
+
+`add_notes_to_clip` is the right tool for a phrase and the wrong transport
+for a whole-song drum part: every note the model sends passes through its
+context twice, once read and once re-emitted per call, and a few thousand
+notes is a couple of hundred kilobytes of JSON. When a generator has already
+written the notes to disk, push the files straight to the Remote Script's
+socket instead:
+
+```bash
+python3 scripts/push_notes.py verse1.kt.0.json verse1.kt.1.json \
+    --track 0 --clip 3 --expect-track-name "drums — kick + toms" --clip-name "verse1 kt"
+```
+
+or describe many clips in one manifest, with file paths relative to it:
+
+```json
+{"targets": [
+  {"file": "verse1.kt.0.json", "track_index": 0, "clip_index": 3,
+   "expect_track_name": "drums — kick + toms", "clip_name": "verse1 kt", "clear": true},
+  {"file": "verse1.sh.0.json", "track_index": 1, "clip_index": 3,
+   "expect_track_name": "drums — hats + snare + cymbals"},
+  {"notes": [{"pitch": 49, "start_time": 0.0, "duration": 0.5, "velocity": 110, "mute": false}],
+   "track_index": 1, "clip_index": 0, "arrangement": true}
+]}
+```
+
+```bash
+python3 scripts/push_notes.py drums-manifest.json
+```
+
+A note file is a JSON list of `{pitch, start_time, duration, velocity, mute}`
+objects, `start_time` in beats from the clip's own start. The script needs
+nothing installed (standard library only). It validates every note before it
+sends anything, writes in chunks of at most 110 notes with `expect_count` on
+each chunk and `expect_track_name` on every command, and prints what Live
+reported for each chunk: the count Live took, not the count sent. It stops at
+the first refusal and says which clip is half-written. Writes are additive,
+so `--clear` (or `"clear": true` on a manifest entry) empties the clip first;
+`--arrangement` addresses a clip on the timeline; `--dry-run` prints the plan
+and connects to nothing. It is safe to run while the MCP server is
+connected: the Remote Script takes any number of clients and serialises
+writes on Live's main thread.
 
 ---
 
@@ -528,6 +589,12 @@ A JSON-based protocol over a TCP socket bound to `127.0.0.1`:
 
 - **Commands** are sent as JSON objects with a `type` and optional `params`
 - **Responses** are JSON objects with a `status` and `result` or `message`
+- There is no length framing and no request id: a reply is complete when the
+  bytes so far parse as JSON, and it answers the last command sent on that
+  connection. The script accepts several connections and serialises
+  state-changing commands on Live's main thread. `scripts/push_notes.py` is
+  a standard-library client for this protocol, small enough to read as its
+  specification
 
 ## Limitations & Security Considerations
 

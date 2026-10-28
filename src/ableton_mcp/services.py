@@ -284,6 +284,35 @@ class AbletonService:
             "track_type": track_type
         }, expect_track_name))
 
+    def get_plugin_presets(self, track_index: int, device_index: int,
+                           track_type: str) -> Dict[str, Any]:
+        return self._send("get_plugin_presets", {
+            "track_index": track_index,
+            "device_index": device_index,
+            "track_type": track_type
+        })
+
+    def set_plugin_preset(self, track_index: int, device_index: int,
+                          preset_index: Optional[int] = None,
+                          preset_name: Optional[str] = None,
+                          track_type: str = "regular",
+                          expect_track_name: Optional[str] = None
+                          ) -> Dict[str, Any]:
+        # Presence-driven, like jump_to_locator: only the criteria the
+        # caller gave go on the wire, so the script's index / name /
+        # both-must-agree resolution sees exactly what was asked and never
+        # a null it has to explain away.
+        params: Dict[str, Any] = {
+            "track_index": track_index,
+            "device_index": device_index,
+            "track_type": track_type
+        }
+        if preset_index is not None:
+            params["preset_index"] = preset_index
+        if preset_name:
+            params["preset_name"] = preset_name
+        return self._send("set_plugin_preset", _guarded(params, expect_track_name))
+
     def delete_device(self, track_index: int, device_index: int,
                       track_type: str,
                       expect_track_name: Optional[str] = None

@@ -1,0 +1,163 @@
+{
+  "cases": [
+    {
+      "args": {
+        "device_index": 1,
+        "preset_index": 2,
+        "track_index": 0
+      },
+      "expect": "Selected preset 2 'Bass Growl' on TAL-NoiseMaker (track 0 'Lead'); was 0 'Init'",
+      "name": "success_by_index",
+      "wire": [
+        {
+          "command": "set_plugin_preset",
+          "params": {
+            "device_index": 1,
+            "preset_index": 2,
+            "track_index": 0,
+            "track_type": "regular"
+          },
+          "response": {
+            "device": "TAL-NoiseMaker",
+            "device_index": 1,
+            "preset_count": 3,
+            "previous_index": 0,
+            "previous_name": "Init",
+            "requested_index": 2,
+            "requested_name": "Bass Growl",
+            "selected_index": 2,
+            "selected_name": "Bass Growl",
+            "track_index": 0,
+            "track_name": "Lead",
+            "verified": true
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "device_index": 1,
+        "preset_name": "warm",
+        "track_index": 0
+      },
+      "expect": "Selected preset 1 'Warm Pad' on TAL-NoiseMaker (track 0 'Lead'); was 0 'Init'",
+      "name": "success_by_name",
+      "wire": [
+        {
+          "command": "set_plugin_preset",
+          "params": {
+            "device_index": 1,
+            "preset_name": "warm",
+            "track_index": 0,
+            "track_type": "regular"
+          },
+          "response": {
+            "device": "TAL-NoiseMaker",
+            "device_index": 1,
+            "preset_count": 3,
+            "previous_index": 0,
+            "previous_name": "Init",
+            "requested_index": 1,
+            "requested_name": "Warm Pad",
+            "selected_index": 1,
+            "selected_name": "Warm Pad",
+            "track_index": 0,
+            "track_name": "Lead",
+            "verified": true
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "device_index": 1,
+        "expect_track_name": "Lead",
+        "preset_index": 0,
+        "track_index": 0
+      },
+      "expect": "Selected preset 0 'Init' on TAL-NoiseMaker (track 0 'Lead'); was index -1 (no preset)",
+      "name": "success_from_no_selection",
+      "wire": [
+        {
+          "command": "set_plugin_preset",
+          "params": {
+            "device_index": 1,
+            "expect_track_name": "Lead",
+            "preset_index": 0,
+            "track_index": 0,
+            "track_type": "regular"
+          },
+          "response": {
+            "device": "TAL-NoiseMaker",
+            "device_index": 1,
+            "preset_count": 3,
+            "previous_index": -1,
+            "previous_name": null,
+            "requested_index": 0,
+            "requested_name": "Init",
+            "selected_index": 0,
+            "selected_name": "Init",
+            "track_index": 0,
+            "track_name": "Lead",
+            "verified": true
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "device_index": 1,
+        "preset_index": 2,
+        "track_index": 0
+      },
+      "expect": "Asked TAL-NoiseMaker (track 0 'Lead') to select preset 2 'Bass Growl', but Live still reads back 0 'Init' (was 0 'Init'). The read-back can lag the write within one tick, so re-read with get_plugin_presets before selecting again.",
+      "name": "not_verified",
+      "wire": [
+        {
+          "command": "set_plugin_preset",
+          "params": {
+            "device_index": 1,
+            "preset_index": 2,
+            "track_index": 0,
+            "track_type": "regular"
+          },
+          "response": {
+            "device": "TAL-NoiseMaker",
+            "device_index": 1,
+            "preset_count": 3,
+            "previous_index": 0,
+            "previous_name": "Init",
+            "requested_index": 2,
+            "requested_name": "Bass Growl",
+            "selected_index": 0,
+            "selected_name": "Init",
+            "track_index": 0,
+            "track_name": "Lead",
+            "verified": false
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "device_index": 1,
+        "preset_index": 2,
+        "track_index": 0
+      },
+      "expect": "Error setting plugin preset: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "set_plugin_preset",
+          "params": {
+            "device_index": 1,
+            "preset_index": 2,
+            "track_index": 0,
+            "track_type": "regular"
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

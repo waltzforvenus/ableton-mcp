@@ -11,7 +11,7 @@ An MCP server that drives Ableton Live. Two halves that must stay in step:
   - `app.py` — composition root: `Settings`, `Deps`, `build_app()`, `main()`.
     The only module that reads the environment, configures logging, or wires
     objects together.
-  - `tools.py` — **controllers**: all 55 `@tool` functions, kept in upstream's
+  - `tools.py` — **controllers**: all 57 `@tool` functions, kept in upstream's
     order; coerce arguments, call the service, hand the result to a presenter.
   - `services.py` — **model** (domain): `AbletonService`, one method per wire
     command; its `_send` consults the registry, so gating happens in one place.
@@ -64,7 +64,8 @@ grep -ri "telemetry\|supabase\|analytics\|dataset\|trajectory" src/ableton_mcp/ 
 
 This rule is mechanized in `tests/test_no_telemetry.py`: the grep above as a
 test, plus no HTTP-client imports anywhere, plus `socket` importable only in
-`connection.py` and the Remote Script. The test failing is the rule being
+`connection.py`, the Remote Script, and `scripts/push_notes.py` (the direct
+socket client; `scripts/` is scanned too). The test failing is the rule being
 broken, not the test being wrong.
 
 Reading Live's state and returning it *to the user's own MCP client* is fine —
@@ -99,7 +100,7 @@ one silently wins. The same trap exists inside the Remote Script's class
 body: Python keeps the later `def`, which is how the 2026-08 merge shipped
 broken device-parameter handlers while its commit message said ours were
 kept. Both are now caught mechanically — `tests/test_tool_surface.py` pins
-`list_tools()` against the `tests/data/tool_names.txt` snapshot (55 unique
+`list_tools()` against the `tests/data/tool_names.txt` snapshot (57 unique
 names), and `tests/test_remote_script_ast.py` rejects any method defined
 twice in any class. If you deliberately add or rename a tool, update the
 snapshot (and the README) in the same commit.
@@ -185,6 +186,15 @@ Tests mock the Ableton socket, so they run anywhere. Keep it that way — a test
 that needs Live running is a test that never runs. CI
 (`.github/workflows/ci.yml`) runs the suite and the build on every push and
 PR; the guardrails only guard if they run.
+
+`scripts/` holds two things that are deliberately not tests: `smoke_live.py`
+drives a real Live through the production stack, and `push_notes.py` pushes
+note JSON files straight to the Remote Script socket in guarded chunks (for
+bulk MIDI that should not pass through the model's context; a generator
+writes the files, the script moves them). `push_notes.py` is standard
+library only so it runs with nothing installed, and
+`tests/test_push_notes.py` covers it against a fake socket peer. Both
+scripts are scanned by the no-telemetry guardrail.
 
 **Goldens are the frozen interface.** `tests/goldens/*.json` record, per
 tool, the wire exchange and the exact response string. They change only when

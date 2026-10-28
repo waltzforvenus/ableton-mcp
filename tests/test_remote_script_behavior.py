@@ -17,7 +17,13 @@ Runs anywhere: no Ableton, no network.
 
 import pytest
 
-from fake_ableton import FakeClip, FakeDevice, FakeLiveConfig, make_harness
+from fake_ableton import (
+    FakeClip,
+    FakeDevice,
+    FakeLiveConfig,
+    FakePluginDevice,
+    make_harness,
+)
 
 
 # --------------------------------------------------------------------------
@@ -102,6 +108,260 @@ def test_set_device_parameter_reports_old_value():
     assert result["old_value"] == 60.0
     assert result["value"] == 30.0
     assert param.value == 30.0
+
+
+# --------------------------------------------------------------------------
+# Plugin presets — the one lever the LOM offers on a hosted VST3/AU whose
+# parameters Live does not expose beyond "Device On"
+# --------------------------------------------------------------------------
+
+NOISEMAKER_PRESETS = ["Init", "Warm Pad", "Warm Pad Wide", "Bass Growl", "Pluck"]
+
+
+def _host_plugin(harness, track_index=0, presets=NOISEMAKER_PRESETS, **kwargs):
+    """Append a hosted plugin to a track; return its device index."""
+    track = harness.song.tracks[track_index]
+    track.devices.append(
+        FakePluginDevice("TAL-NoiseMaker", presets=presets, **kwargs))
+    return len(track.devices) - 1
+
+
+def _selection(harness, device_index, track_index=0):
+    device = harness.song.tracks[track_index].devices[device_index]
+    return device.selected_preset_index
+
+
+def test_get_plugin_presets_lists_the_bank_and_the_selection():
+    harness = make_harness()
+    device_index = _host_plugin(harness)
+    result = _ok(harness.process(_cmd(
+        "get_plugin_presets", track_index=0, device_index=device_index)))
+    assert result["track_name"] == "Lead"
+    assert result["device"] == "TAL-NoiseMaker"
+    assert result["class_name"] == "PluginDevice"
+    assert result["is_plugin"] is True
+    assert result["presets"] == NOISEMAKER_PRESETS
+    assert result["preset_count"] == 5
+    assert result["selected_preset_index"] == 0
+    assert result["selected_preset_name"] == "Init"
+    # Read-only: nothing was scheduled onto Live's main thread.
+    assert harness.scheduled == []
+
+
+def test_get_plugin_presets_on_one_of_lives_own_devices_answers_not_refuses():
+    # Reading the wrong device is a wrong answer, not a wrong edit, so the
+    # reply says what it found instead of erroring.
+    harness = make_harness()
+    result = _ok(harness.process(_cmd(
+        "get_plugin_presets", track_index=0, device_index=0)))
+    assert result["device"] == "Operator"
+    assert result["is_plugin"] is False
+    assert result["presets"] == []
+    assert result["preset_count"] == 0
+    assert result["selected_preset_index"] is None
+    assert result["selected_preset_name"] is None
+
+
+def test_get_plugin_presets_detects_an_au_by_class_name_and_others_by_probe():
+    # Both halves of the detection: the documented class names, and the
+    # hasattr fallback for a Live build that names a hosted device otherwise.
+    harness = make_harness()
+    au = _host_plugin(harness, class_name="AuPluginDevice")
+    odd = _host_plugin(harness, class_name="SomeFutureHostedDevice")
+    for device_index in (au, odd):
+        result = _ok(harness.process(_cmd(
+            "get_plugin_presets", track_index=0, device_index=device_index)))
+        assert result["is_plugin"] is True
+        assert result["presets"] == NOISEMAKER_PRESETS
+
+
+def test_get_plugin_presets_on_a_plugin_that_publishes_none():
+    harness = make_harness()
+    device_index = _host_plugin(harness, presets=[], selected_preset_index=-1)
+    result = _ok(harness.process(_cmd(
+        "get_plugin_presets", track_index=0, device_index=device_index)))
+    assert result["is_plugin"] is True
+    assert result["presets"] == []
+    assert result["preset_count"] == 0
+    # Live's "nothing selected" index is passed through; it has no name.
+    assert result["selected_preset_index"] == -1
+    assert result["selected_preset_name"] is None
+
+
+def test_set_plugin_preset_by_index():
+    harness = make_harness()
+    device_index = _host_plugin(harness)
+    result = _ok(harness.process(_cmd(
+        "set_plugin_preset", track_index=0, device_index=device_index,
+        preset_index=3)))
+    assert result["device"] == "TAL-NoiseMaker"
+    assert result["previous_index"] == 0
+    assert result["previous_name"] == "Init"
+    assert result["requested_index"] == 3
+    assert result["requested_name"] == "Bass Growl"
+    assert result["selected_index"] == 3
+    assert result["selected_name"] == "Bass Growl"
+    assert result["verified"] is True
+    assert _selection(harness, device_index) == 3
+    # A state change: scheduled onto Live's main thread.
+    assert len(harness.scheduled) == 1
+
+
+def test_set_plugin_preset_by_exact_name_ignores_case_and_beats_a_fragment():
+    # "warm pad" is an exact (case-insensitive) match for index 1 AND a
+    # fragment of index 2 — exact wins, so this is not ambiguous.
+    harness = make_harness()
+    device_index = _host_plugin(harness)
+    result = _ok(harness.process(_cmd(
+        "set_plugin_preset", track_index=0, device_index=device_index,
+        preset_name="warm pad")))
+    assert result["selected_index"] == 1
+    assert result["selected_name"] == "Warm Pad"
+    assert result["verified"] is True
+    assert _selection(harness, device_index) == 1
+
+
+def test_set_plugin_preset_by_unique_fragment():
+    harness = make_harness()
+    device_index = _host_plugin(harness)
+    result = _ok(harness.process(_cmd(
+        "set_plugin_preset", track_index=0, device_index=device_index,
+        preset_name="GROWL")))
+    assert result["selected_index"] == 3
+    assert result["selected_name"] == "Bass Growl"
+    assert _selection(harness, device_index) == 3
+
+
+def test_set_plugin_preset_refuses_an_ambiguous_fragment():
+    harness = make_harness()
+    device_index = _host_plugin(harness)
+    message = _err(harness.process(_cmd(
+        "set_plugin_preset", track_index=0, device_index=device_index,
+        preset_name="pad")))
+    assert "matches 2 presets" in message
+    assert "1 'Warm Pad'" in message and "2 'Warm Pad Wide'" in message
+    assert "preset_index" in message
+    assert _selection(harness, device_index) == 0
+
+
+def test_set_plugin_preset_refuses_a_name_two_presets_share_exactly():
+    harness = make_harness()
+    device_index = _host_plugin(harness, presets=["Init", "Lead", "Lead"])
+    message = _err(harness.process(_cmd(
+        "set_plugin_preset", track_index=0, device_index=device_index,
+        preset_name="Lead")))
+    assert "ambiguous" in message
+    assert "1 'Lead', 2 'Lead'" in message
+    assert _selection(harness, device_index) == 0
+
+
+def test_set_plugin_preset_refuses_an_unknown_name_and_lists_the_bank():
+    harness = make_harness()
+    device_index = _host_plugin(harness)
+    message = _err(harness.process(_cmd(
+        "set_plugin_preset", track_index=0, device_index=device_index,
+        preset_name="organ")))
+    assert message.startswith("No preset named 'organ'")
+    assert "0 'Init'" in message and "4 'Pluck'" in message
+    assert _selection(harness, device_index) == 0
+
+
+def test_set_plugin_preset_refuses_an_index_out_of_range():
+    harness = make_harness()
+    device_index = _host_plugin(harness)
+    for bad in (5, -1):
+        message = _err(harness.process(_cmd(
+            "set_plugin_preset", track_index=0, device_index=device_index,
+            preset_index=bad)))
+        assert "out of range" in message
+        assert "5 presets (0 to 4)" in message
+    assert _selection(harness, device_index) == 0
+
+
+def test_set_plugin_preset_refuses_a_device_without_presets():
+    harness = make_harness()
+    # One of Live's own devices: no preset list at all.
+    message = _err(harness.process(_cmd(
+        "set_plugin_preset", track_index=0, device_index=0, preset_index=0)))
+    assert "'Operator' (Operator), not a hosted VST/VST3/AU plugin" in message
+    assert "set_device_parameters" in message
+    # A hosted plugin that publishes an empty bank.
+    device_index = _host_plugin(harness, presets=[], selected_preset_index=-1)
+    message = _err(harness.process(_cmd(
+        "set_plugin_preset", track_index=0, device_index=device_index,
+        preset_index=0)))
+    assert "publishes no presets" in message
+    assert _selection(harness, device_index) == -1
+
+
+def test_set_plugin_preset_refuses_when_nothing_is_asked_for():
+    harness = make_harness()
+    device_index = _host_plugin(harness)
+    message = _err(harness.process(_cmd(
+        "set_plugin_preset", track_index=0, device_index=device_index)))
+    assert message.startswith("Give preset_index or preset_name")
+    assert _selection(harness, device_index) == 0
+
+
+def test_set_plugin_preset_takes_index_and_name_together_only_when_they_agree():
+    harness = make_harness()
+    device_index = _host_plugin(harness)
+    message = _err(harness.process(_cmd(
+        "set_plugin_preset", track_index=0, device_index=device_index,
+        preset_index=1, preset_name="Pluck")))
+    assert "the two disagree" in message
+    assert _selection(harness, device_index) == 0
+    result = _ok(harness.process(_cmd(
+        "set_plugin_preset", track_index=0, device_index=device_index,
+        preset_index=4, preset_name="Pluck")))
+    assert result["selected_index"] == 4
+    assert _selection(harness, device_index) == 4
+
+
+def test_set_plugin_preset_honours_expect_track_name():
+    harness = make_harness()
+    device_index = _host_plugin(harness)
+    message = _err(harness.process(_cmd(
+        "set_plugin_preset", track_index=0, device_index=device_index,
+        preset_index=2, expect_track_name="Drums")))
+    assert message.startswith("Track 0 is 'Lead', not the expected 'Drums'")
+    assert _selection(harness, device_index) == 0
+    # The guard compares case-insensitively after stripping.
+    result = _ok(harness.process(_cmd(
+        "set_plugin_preset", track_index=0, device_index=device_index,
+        preset_index=2, expect_track_name=" lead ")))
+    assert result["verified"] is True
+    assert _selection(harness, device_index) == 2
+
+
+def test_set_plugin_preset_on_a_return_track():
+    harness = make_harness()
+    track = harness.song.return_tracks[0]
+    track.devices.append(
+        FakePluginDevice("ValhallaRoom", presets=["Hall", "Plate"]))
+    result = _ok(harness.process(_cmd(
+        "set_plugin_preset", track_index=0, device_index=1,
+        preset_name="plate", track_type="return")))
+    assert result["track_name"] == "A Reverb"
+    assert result["selected_name"] == "Plate"
+    assert track.devices[1].selected_preset_index == 1
+
+
+def test_set_plugin_preset_reports_unverified_when_the_write_does_not_read_back():
+    # The write returned but the same-tick read-back still shows the old
+    # index — a stale read and a refused select look identical from here,
+    # and neither is retried: an in-tick re-read returns the same value.
+    harness = make_harness()
+    device_index = _host_plugin(harness, preset_select_lands=False)
+    result = _ok(harness.process(_cmd(
+        "set_plugin_preset", track_index=0, device_index=device_index,
+        preset_index=2)))
+    assert result["requested_index"] == 2
+    assert result["requested_name"] == "Warm Pad Wide"
+    assert result["selected_index"] == 0
+    assert result["selected_name"] == "Init"
+    assert result["verified"] is False
+    assert len(harness.scheduled) == 1
 
 
 # --------------------------------------------------------------------------

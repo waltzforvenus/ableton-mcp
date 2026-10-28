@@ -374,10 +374,12 @@ def test_the_matrix_is_not_vacuous():
     assert GATED_POST_1_7_0 == [
         "delete_locator",
         "duplicate_track",
+        "get_plugin_presets",
         "jump_to_locator",
         "move_arrangement_clip",
         "set_clip_warp",
         "set_device_parameters",
+        "set_plugin_preset",
     ]
     assert FLOOR_UNADVERTISED_IN_1_7_0 == [
         "fire_clip", "load_browser_item", "set_clip_name", "set_tempo",
