@@ -9,7 +9,7 @@ separately, and a script change means **re-run
 
 ## [Unreleased]
 
-Ships Remote Script **1.17.0**. **Re-run `ableton-mcp-install-script` and
+Ships Remote Script **1.18.0**. **Re-run `ableton-mcp-install-script` and
 restart Live after upgrading** — the new commands live in the script half,
 and Live caches an already-imported script module, so re-selecting the
 control surface is not enough. This release is larger than usual on the
@@ -270,11 +270,18 @@ counts, is `docs/IMPROVEMENTS.md`.
 
 ### Internal
 
+- Remote Script **1.17.0 → 1.18.0**, with `EXPECTED_REMOTE_SCRIPT_VERSION`
+  moved in the same commit, for the commands added after 1.17.0
+  (`set_track_solo`, `get_song_scale`, `set_song_scale`). 1.17.0 already
+  carried the dispatcher and framing ports (safe arm reads, browser tree,
+  byte-safe framing, cancel-on-timeout, quiet refusals); 1.18.0 changes no
+  existing command. No `min_script_version` floors: all three names are new,
+  so a 1.17.0 script never advertises them and the capability gate answers
+  with the installer message.
 - `set_track_solo` adds one advertised, gated, main-thread command with no
   `min_script_version` floor: an older script never advertises the name,
   so the capability gate already answers with the installer message.
-  `SCRIPT_VERSION` is deliberately not bumped here; the cycle takes one
-  bump for all its new commands. Tool surface 57 → 58;
+  Tool surface 57 → 58 (on top of warp vision's four: 61 → 62);
   `tests/data/tool_names.txt`, the pinned counts, `PR5_SCRIPT_CAPABILITIES`
   (50 → 51) and `GATED_POST_1_7_0` updated. `FakeLiveConfig` gained
   `exclusive_solo` (True / False / None = property absent) so both sides

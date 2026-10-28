@@ -417,8 +417,7 @@ def test_derived_capabilities_equal_the_pr5_snapshot():
     # + 1.15.0's duplicate_track, set_device_parameters, delete_locator
     # + 1.16.0's get_plugin_presets, set_plugin_preset
     # + 1.17.0's get_clip_warp_markers, edit_clip_warp_markers
-    # + set_track_solo, get_song_scale, set_song_scale, landing ahead of
-    # the cycle's next script-version bump)
+    # + 1.18.0's set_track_solo, get_song_scale, set_song_scale)
     assert derived == sorted(PR5_SCRIPT_CAPABILITIES), (
         f"advertised-command drift — "
         f"gained: {sorted(set(derived) - set(PR5_SCRIPT_CAPABILITIES))}, "
