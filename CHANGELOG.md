@@ -321,6 +321,18 @@ counts, is `docs/IMPROVEMENTS.md`.
 
 ### Fixed (user-facing)
 
+- **`export_audio`'s dialog handling on Live 12.4.7 + macOS 26.** The
+  dialog's AX shape differs from the fixture the driver was written
+  against: toggles are nameless AXButtons reading On/Off, the
+  bar/beat/sixteenth boxes are AXSliders that ignore written values
+  (stepped instead), the MP3 toggle matches a label's ' (' suffix,
+  Export/Cancel are the unnamed bottom pair, pop-up menus open as a
+  separate nameless window of AXMenuItems, and the macOS 26 Save panel
+  keeps its fields in splitter group 1 and opens a moment after the
+  press (Go-to-folder resets the name). Verified against real Live
+  12.4.7; smoke_live now also takes/adopts the shared Live lock and
+  gates playback on --allow-audio and menu/dialog steps on --allow-ui.
+
 - **`get_session_snapshot` after opening another set** (Remote Script
   **1.20.0** — re-run the installer). The script cached Live's Song once, at
   load; after a set switch unscoped snapshots failed with Boost.Python's
