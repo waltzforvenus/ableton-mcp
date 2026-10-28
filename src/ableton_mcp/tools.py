@@ -1543,6 +1543,102 @@ def load_instrument_or_effect(ctx: Context, track_index: int, uri: str,
 
 
 @tool
+def get_rack_chains(ctx: Context, track_index: int, device_index: int,
+                    track_type: str = "regular") -> str:
+    """
+    List a rack's chains — Audio Effect, Instrument or Drum Rack — with each
+    chain's name, volume and pan (raw value and what Live displays), mute,
+    solo, a Drum Rack chain's receiving note (in_note), and its devices with
+    their on/off state. Read this before editing chains with
+    insert_rack_chain, insert_chain_device or set_chain_mixer.
+
+    Parameters:
+    - track_index / device_index: the rack's track and its index in the chain
+    - track_type: "regular" (default), "return" or "master"
+    """
+    result = _deps(ctx).service.get_rack_chains(track_index, device_index, track_type)
+    return presenters.get_rack_chains(result)
+
+
+@tool
+def insert_rack_chain(ctx: Context, track_index: int, device_index: int,
+                      index: int = -1, name: Optional[str] = None,
+                      track_type: str = "regular",
+                      expect_track_name: Optional[str] = None) -> str:
+    """
+    Add a chain to a rack — the first step of a parallel blend (e.g. two amp
+    chains in one Audio Effect Rack, each with its own volume).
+
+    Parameters:
+    - track_index / device_index: the rack
+    - index: where the new chain goes (-1, the default, appends)
+    - name: optional name for the new chain
+    - track_type / expect_track_name: as for the other device tools
+
+    Verified by the chain count. Needs Live 12's RackDevice.insert_chain;
+    on an older Live it refuses and changes nothing.
+    """
+    result = _deps(ctx).service.insert_rack_chain(
+        track_index, device_index, index, name, track_type, expect_track_name)
+    return presenters.insert_rack_chain(result)
+
+
+@tool
+def insert_chain_device(ctx: Context, track_index: int, device_index: int,
+                        chain_index: int, device_name: str, index: int = -1,
+                        track_type: str = "regular",
+                        expect_track_name: Optional[str] = None) -> str:
+    """
+    Put a Live device into ONE chain of a rack, at a position — e.g. a Utility
+    (phase invert) in the second amp chain.
+
+    Parameters:
+    - track_index / device_index: the rack; chain_index: the chain
+    - device_name: a Live device's name as Live lists it ("Utility", "EQ
+      Eight", "Saturator"). Live's insert_device takes native devices; a
+      hosted plugin may be refused — then load a saved preset of it with
+      load_device_from_path onto a track instead.
+    - index: position in the chain (-1, the default, appends)
+
+    Verified by the chain's device count.
+    """
+    result = _deps(ctx).service.insert_chain_device(
+        track_index, device_index, chain_index, device_name, index, track_type,
+        expect_track_name)
+    return presenters.insert_chain_device(result)
+
+
+@tool
+def set_chain_mixer(ctx: Context, track_index: int, device_index: int,
+                    chain_index: int, volume: Optional[Union[float, str]] = None,
+                    panning: Optional[Union[float, str]] = None,
+                    mute: Optional[bool] = None, solo: Optional[bool] = None,
+                    name: Optional[str] = None, in_note: Optional[int] = None,
+                    track_type: str = "regular",
+                    expect_track_name: Optional[str] = None) -> str:
+    """
+    Set one rack chain's mixer and identity: volume, pan, mute, solo, name,
+    and — on a Drum Rack chain — the MIDI note it receives (in_note; a pad
+    with the wrong receiving note is silent).
+
+    Parameters:
+    - track_index / device_index: the rack; chain_index: the chain
+    - volume / panning: raw values, or what Live displays ("-6 dB", "25L"
+      style strings are matched against the parameter's own display, as
+      set_device_parameter does)
+    - mute / solo / name: as named
+    - in_note: 0-127 (or -1 for "all notes") — Drum Rack chains only
+    Only the fields given change. Reports each change as Live reads it back.
+    """
+    settings = {"volume": volume, "panning": panning, "mute": mute,
+                "solo": solo, "name": name, "in_note": in_note}
+    result = _deps(ctx).service.set_chain_mixer(
+        track_index, device_index, chain_index, settings, track_type,
+        expect_track_name)
+    return presenters.set_chain_mixer(result)
+
+
+@tool
 def load_device_from_path(ctx: Context, track_index: int, path: str,
                           track_type: str = "regular",
                           expect_track_name: Optional[str] = None) -> str:

@@ -37,7 +37,7 @@ EXPECTED_COMMAND_ERRORS = (ValueError, IndexError, KeyError)
 
 # Bumped whenever the TCP command surface changes; the MCP server compares
 # this to EXPECTED_REMOTE_SCRIPT_VERSION.
-SCRIPT_VERSION = "1.22.0"
+SCRIPT_VERSION = "1.23.0"
 PROTOCOL_VERSION = 1
 
 # The trim eraser (see _trim_arrangement_clip): a temporary Session clip
@@ -154,6 +154,7 @@ COMMANDS = {
     "get_clip_notes":             ("_get_clip_notes",             False, None, True),
     "get_clip_warp_markers":      ("_get_clip_warp_markers",      False, None, True),
     "get_session_snapshot":       ("_get_session_snapshot",       False, None, True),
+    "get_rack_chains":            ("_get_rack_chains",            False, None, True),
     "get_song_scale":             ("_get_song_scale",             False, None, True),
     "get_browser_item":           ("_get_browser_item",           False, None, False),
     "get_browser_tree":           ("get_browser_tree",            False, None, True),
@@ -198,6 +199,9 @@ COMMANDS = {
     "stop_playback":              ("_stop_playback",              True,  None, False),
     "load_browser_item":          ("_load_browser_item",          True,  None, True),
     "load_browser_item_by_path":  ("_load_browser_item_by_path",  True,  None, True),
+    "insert_rack_chain":          ("_insert_rack_chain",          True,  None, True),
+    "insert_chain_device":        ("_insert_chain_device",        True,  None, True),
+    "set_chain_mixer":            ("_set_chain_mixer",            True,  None, True),
     "load_instrument_or_effect":  ("_load_instrument_or_effect",  True,  None, True),
     "switch_to_arrangement_view": ("_switch_to_arrangement_view", True,  None, True),
     "set_current_song_time":      ("_set_current_song_time",      True,  None, True),
@@ -1335,6 +1339,182 @@ class AbletonMCP(ControlSurface):
         except Exception as e:
             self.log_message("Error setting device parameters: " + str(e))
             raise
+
+    # ── Rack chains ───────────────────────────────────────────────────────
+    # Parallel blends (two amp chains in one rack, one phase-inverted) were
+    # impossible from here: the fork could read a rack's chains but never
+    # make one. Live 12 added RackDevice.insert_chain and
+    # Chain.insert_device(name, index) to the API, so a rack can now be
+    # built — chains created, a native device placed in a chain, each
+    # chain's mixer set — and a Drum Rack pad's receiving note (in_note)
+    # fixed without editing the set's XML. Every write is verified by
+    # reading the count or value back.
+
+    def _resolve_rack(self, track_index, device_index, track_type,
+                      expect_track_name=None):
+        track, rack = self._resolve_device(track_index, device_index, track_type,
+                                           expect_track_name=expect_track_name)
+        if not getattr(rack, "can_have_chains", False):
+            raise ValueError("Device %d ('%s') is not a rack; it has no chains"
+                             % (device_index, rack.name))
+        return track, rack
+
+    def _resolve_chain(self, rack, chain_index):
+        chains = list(rack.chains)
+        if chain_index < 0 or chain_index >= len(chains):
+            raise IndexError("Chain index %d out of range (rack has %d chains)"
+                             % (chain_index, len(chains)))
+        return chains[chain_index]
+
+    def _chain_info(self, index, chain):
+        info = {"index": index, "name": chain.name}
+        mixer = getattr(chain, "mixer_device", None)
+        for key in ("volume", "panning"):
+            info[key] = info[key + "_display"] = None
+            try:
+                param = getattr(mixer, key)
+                info[key] = float(param.value)
+                info[key + "_display"] = str(param.str_for_value(param.value))
+            except Exception:
+                pass
+        for flag in ("mute", "solo"):
+            try:
+                info[flag] = bool(getattr(chain, flag))
+            except Exception:
+                info[flag] = None
+        if hasattr(chain, "in_note"):
+            try:
+                info["in_note"] = int(chain.in_note)
+            except Exception:
+                info["in_note"] = None
+        devices = []
+        try:
+            for i, d in enumerate(chain.devices):
+                entry = {"index": i, "name": d.name, "class_name": d.class_name}
+                entry.update(self._device_on_state(d))
+                devices.append(entry)
+        except Exception:
+            pass
+        info["devices"] = devices
+        return info
+
+    def _rack_header(self, track, track_index, device_index, rack):
+        return {"track_index": track_index, "track_name": track.name,
+                "device_index": device_index, "device_name": rack.name}
+
+    def _get_rack_chains(self, track_index=0, device_index=0, track_type="regular"):
+        """A rack's chains: name, mixer (volume/pan as value + display),
+        mute/solo, a drum chain's in_note, and each chain's devices."""
+        track, rack = self._resolve_rack(track_index, device_index, track_type)
+        chains = list(rack.chains)
+        result = self._rack_header(track, track_index, device_index, rack)
+        result.update({
+            "is_drum_rack": bool(getattr(rack, "can_have_drum_pads", False)),
+            "chain_count": len(chains),
+            "chains": [self._chain_info(i, c) for i, c in enumerate(chains)],
+            "can_insert_chain": callable(getattr(rack, "insert_chain", None)),
+        })
+        return result
+
+    def _insert_rack_chain(self, track_index=0, device_index=0, index=-1,
+                           name=None, track_type="regular",
+                           expect_track_name=None):
+        """Add a chain to a rack (RackDevice.insert_chain), optionally named."""
+        track, rack = self._resolve_rack(track_index, device_index, track_type,
+                                         expect_track_name)
+        insert = getattr(rack, "insert_chain", None)
+        if not callable(insert):
+            raise Exception("This Live build has no RackDevice.insert_chain "
+                            "(it arrived in Live 12); add the chain by hand")
+        before = len(rack.chains)
+        # The binary documents the member but not its arguments; try the
+        # positional index first, then the bare call (append).
+        if index is None or index < 0:
+            try:
+                insert()
+            except TypeError:
+                insert(before)
+        else:
+            insert(index)
+        after = list(rack.chains)
+        if len(after) != before + 1:
+            raise Exception("insert_chain returned but the rack still has %d "
+                            "chains" % len(after))
+        new_index = index if (index is not None and 0 <= index <= before) else before
+        chain = after[new_index]
+        if name:
+            chain.name = name
+        result = self._rack_header(track, track_index, device_index, rack)
+        result.update({"chain_index": new_index, "chain_count": len(after),
+                       "chain": self._chain_info(new_index, chain)})
+        return result
+
+    def _insert_chain_device(self, track_index=0, device_index=0, chain_index=0,
+                             device_name="", index=-1, track_type="regular",
+                             expect_track_name=None):
+        """Put a native device into one chain (Chain.insert_device(name, i))."""
+        track, rack = self._resolve_rack(track_index, device_index, track_type,
+                                         expect_track_name)
+        chain = self._resolve_chain(rack, chain_index)
+        insert = getattr(chain, "insert_device", None)
+        if not callable(insert):
+            raise Exception("This Live build has no Chain.insert_device (it "
+                            "arrived in Live 12)")
+        if not device_name:
+            raise ValueError("device_name must name a Live device, e.g. 'Utility'")
+        before = [d.name for d in chain.devices]
+        insert(device_name, -1 if index is None else index)
+        after = [d.name for d in chain.devices]
+        if len(after) != len(before) + 1:
+            raise Exception("insert_device('%s') returned but the chain still "
+                            "has %d devices — Live may accept only native "
+                            "device names here" % (device_name, len(after)))
+        result = self._rack_header(track, track_index, device_index, rack)
+        result.update({"chain_index": chain_index,
+                       "chain": self._chain_info(chain_index, chain)})
+        return result
+
+    def _set_chain_mixer(self, track_index=0, device_index=0, chain_index=0,
+                         volume=None, panning=None, mute=None, solo=None,
+                         name=None, in_note=None, track_type="regular",
+                         expect_track_name=None):
+        """Set a chain's volume/pan (raw or display strings like "-6 dB"),
+        mute, solo, name, and a drum chain's receiving note."""
+        track, rack = self._resolve_rack(track_index, device_index, track_type,
+                                         expect_track_name)
+        chain = self._resolve_chain(rack, chain_index)
+        changes = {}
+        mixer = getattr(chain, "mixer_device", None)
+        for key, value in (("volume", volume), ("panning", panning)):
+            if value is None:
+                continue
+            param = getattr(mixer, key, None)
+            if param is None:
+                raise Exception("This chain exposes no %s" % key)
+            changes[key] = self._write_device_parameter(param, value)
+        for key, value in (("mute", mute), ("solo", solo)):
+            if value is not None:
+                setattr(chain, key, bool(value))
+                changes[key] = bool(getattr(chain, key))
+        if name is not None:
+            chain.name = name
+            changes["name"] = chain.name
+        if in_note is not None:
+            if not hasattr(chain, "in_note"):
+                raise ValueError("Chain %d is not a Drum Rack chain; it has no "
+                                 "in_note" % chain_index)
+            note = int(in_note)
+            if note < -1 or note > 127:
+                raise ValueError("in_note must be 0-127 (or -1 for all notes)")
+            chain.in_note = note
+            changes["in_note"] = int(chain.in_note)
+        if not changes:
+            raise ValueError("Nothing to set: pass volume, panning, mute, solo, "
+                             "name or in_note")
+        result = self._rack_header(track, track_index, device_index, rack)
+        result.update({"chain_index": chain_index, "changes": changes,
+                       "chain": self._chain_info(chain_index, chain)})
+        return result
 
     # ── Plugin presets ────────────────────────────────────────────────────
     # The one lever the LOM offers on a hosted VST3/AU whose parameters Live

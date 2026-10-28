@@ -1,0 +1,71 @@
+{
+  "cases": [
+    {
+      "args": {
+        "device_index": 0,
+        "track_index": 1
+      },
+      "expect": "{\n  \"can_insert_chain\": true,\n  \"chain_count\": 1,\n  \"chains\": [\n    {\n      \"devices\": [\n        {\n          \"class_name\": \"Amp\",\n          \"device_on\": true,\n          \"index\": 0,\n          \"is_active\": true,\n          \"name\": \"Amp\"\n        }\n      ],\n      \"index\": 0,\n      \"mute\": false,\n      \"name\": \"Amp A\",\n      \"panning\": 0.0,\n      \"panning_display\": \"C\",\n      \"solo\": false,\n      \"volume\": 0.85,\n      \"volume_display\": \"0.0 dB\"\n    }\n  ],\n  \"device_index\": 0,\n  \"device_name\": \"Audio Effect Rack\",\n  \"is_drum_rack\": false,\n  \"track_index\": 1,\n  \"track_name\": \"GTR\"\n}",
+      "name": "success",
+      "wire": [
+        {
+          "command": "get_rack_chains",
+          "params": {
+            "device_index": 0,
+            "track_index": 1,
+            "track_type": "regular"
+          },
+          "response": {
+            "can_insert_chain": true,
+            "chain_count": 1,
+            "chains": [
+              {
+                "devices": [
+                  {
+                    "class_name": "Amp",
+                    "device_on": true,
+                    "index": 0,
+                    "is_active": true,
+                    "name": "Amp"
+                  }
+                ],
+                "index": 0,
+                "mute": false,
+                "name": "Amp A",
+                "panning": 0.0,
+                "panning_display": "C",
+                "solo": false,
+                "volume": 0.85,
+                "volume_display": "0.0 dB"
+              }
+            ],
+            "device_index": 0,
+            "device_name": "Audio Effect Rack",
+            "is_drum_rack": false,
+            "track_index": 1,
+            "track_name": "GTR"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "device_index": 0,
+        "track_index": 1
+      },
+      "expect": "Error reading rack chains: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "get_rack_chains",
+          "params": {
+            "device_index": 0,
+            "track_index": 1,
+            "track_type": "regular"
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

@@ -29,12 +29,15 @@ get_device_parameters
 get_live_status
 get_plugin_presets
 get_plugin_state
+get_rack_chains
 get_remote_script_info
 get_session_info
 get_session_snapshot
 get_song_scale
 get_track_info
 get_track_routing
+insert_chain_device
+insert_rack_chain
 jump_to_locator
 load_device_from_path
 load_devices
@@ -45,6 +48,7 @@ release_live_lock
 save_set
 set_arrangement_clip_name
 set_arrangement_time
+set_chain_mixer
 set_clip_gain
 set_clip_name
 set_clip_warp

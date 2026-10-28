@@ -15,7 +15,7 @@ separately, and a script change means **re-run
   shipped additions, upstream ports, pending Live validation and planned work.
 - Corrected the README tool count and installation examples to use this fork.
 
-Ships Remote Script **1.22.0**. **Re-run `ableton-mcp-install-script` and
+Ships Remote Script **1.23.0**. **Re-run `ableton-mcp-install-script` and
 restart Live after upgrading** — the new commands live in the script half,
 and Live caches an already-imported script module, so re-selecting the
 control surface is not enough. This release is larger than usual on the
@@ -28,6 +28,18 @@ drove a complete track; the backlog it was mined from, with the measured
 counts, is `docs/IMPROVEMENTS.md`.
 
 ### Added (user-facing)
+
+- **Rack chains** (Remote Script **1.23.0**): `get_rack_chains` †,
+  `insert_rack_chain` †, `insert_chain_device` †, `set_chain_mixer` †.
+  Read a rack's chains (name, volume/pan as value and display, mute, solo,
+  devices with on/off state, a Drum Rack chain's `in_note`); add a chain
+  (Live 12's `RackDevice.insert_chain`), put a native device into one chain
+  at a position (`Chain.insert_device`), and set a chain's volume/pan (raw
+  or display strings), mute, solo, name, and a Drum Rack pad's receiving
+  note. Parallel amp blends and silent pads with the wrong `in_note` no
+  longer need the UI or the set's XML. Each write is verified by reading
+  the count or value back; on a Live without the members it refuses and
+  changes nothing.
 
 - `load_device_from_path(track_index, path)` † (Remote Script **1.22.0**):
   load a preset *file* — `.adv` / `.adg` / `.vstpreset` / `.aupreset` — from
