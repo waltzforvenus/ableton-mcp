@@ -15,7 +15,7 @@ separately, and a script change means **re-run
   shipped additions, upstream ports, pending Live validation and planned work.
 - Corrected the README tool count and installation examples to use this fork.
 
-Ships Remote Script **1.20.0**. **Re-run `ableton-mcp-install-script` and
+Ships Remote Script **1.21.0**. **Re-run `ableton-mcp-install-script` and
 restart Live after upgrading** — the new commands live in the script half,
 and Live caches an already-imported script module, so re-selecting the
 control surface is not enough. This release is larger than usual on the
@@ -28,6 +28,23 @@ drove a complete track; the backlog it was mined from, with the measured
 counts, is `docs/IMPROVEMENTS.md`.
 
 ### Added (user-facing)
+
+- **Display-string parameter values** (Remote Script **1.21.0** — re-run the
+  installer): `set_device_parameter` and `set_device_parameters` accept what
+  the device *shows* — `"3.6 s"`, `"28 ms"`, `"-1.5 dB"`, `"35 %"`,
+  `"2.5 kHz"`, `"-inf dB"`, or a picker's label — as well as raw numbers.
+  The script searches the parameter's own `str_for_value` rendering (labels
+  for pickers; 64 samples then bisection otherwise, units folded so "800 ms"
+  equals "0.8 s"), clamps out-of-range targets to the nearer end, and
+  reports `requested_display` / `resolved_by` beside the value it landed on.
+  A bare number, even as text, is still a raw value. Agents had been
+  converting log-scaled decay times and curved gains by hand, and guessing.
+- `load_devices(track_index, uris)` †: load a whole chain in one call, in
+  order, stopping at the first failure; returns what landed, what failed
+  and the track's final device list with indices.
+- `get_track_info` and `get_session_snapshot` report `is_active` and
+  `device_on` per device (None where unreadable), so a bypassed device —
+  or one inside a bypassed rack — is visible without get_device_parameters.
 
 - **`save_set` † now actually saves on Live 12** (macOS, with consent), and
   `checkpoint_set` † keeps labelled copies. Live's Python API has no save

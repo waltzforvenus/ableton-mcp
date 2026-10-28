@@ -1,4 +1,4 @@
-"""Golden-case definitions for all 68 MCP tools (docs/REFACTOR_PLAN.md
+"""Golden-case definitions for all 69 MCP tools (docs/REFACTOR_PLAN.md
 section 5 Level 1, section 6 PR3).
 
 Each case names a tool, the arguments to call it with, and the exact ordered
@@ -991,6 +991,26 @@ BASE_CASES = [
     ]),
 
     # ── fire_clip ─────────────────────────────────────────────────────────
+    _case("load_devices", "stops_at_first_failure",
+          {"track_index": 2, "uris": ["query:A", "query:B", "query:C"]}, [
+        _ok("load_browser_item", {"track_index": 2, "item_uri": "query:A",
+                                  "track_type": "regular"},
+            {"loaded": True, "item_name": "Saturator", "track_name": "GTR",
+             "uri": "query:A", "new_devices": ["Saturator"],
+             "devices_after": ["Amp", "Saturator"]}),
+        _boom("load_browser_item", {"track_index": 2, "item_uri": "query:B",
+                                    "track_type": "regular"},
+              "Browser item with URI 'query:B' not found"),
+    ]),
+    _case("load_devices", "all_loaded",
+          {"track_index": 2, "uris": ["query:A"], "expect_track_name": "GTR"}, [
+        _ok("load_browser_item", {"track_index": 2, "item_uri": "query:A",
+                                  "track_type": "regular",
+                                  "expect_track_name": "GTR"},
+            {"loaded": True, "item_name": "Saturator", "track_name": "GTR",
+             "uri": "query:A", "new_devices": ["Saturator"],
+             "devices_after": ["Saturator"]}),
+    ]),
     _case("fire_clip", "success", {"track_index": 0, "clip_index": 0}, [
         _ok("fire_clip", {"track_index": 0, "clip_index": 0}, {"fired": True}),
     ]),

@@ -5,6 +5,8 @@ from _Framework.ControlSurface import ControlSurface
 import os
 import socket
 import json
+import math
+import re
 import struct
 import tempfile
 import threading
@@ -35,7 +37,7 @@ EXPECTED_COMMAND_ERRORS = (ValueError, IndexError, KeyError)
 
 # Bumped whenever the TCP command surface changes; the MCP server compares
 # this to EXPECTED_REMOTE_SCRIPT_VERSION.
-SCRIPT_VERSION = "1.20.0"
+SCRIPT_VERSION = "1.21.0"
 PROTOCOL_VERSION = 1
 
 # The trim eraser (see _trim_arrangement_clip): a temporary Session clip
@@ -69,6 +71,37 @@ PLUGIN_DEVICE_CLASS_NAMES = ("PluginDevice", "AuPluginDevice")
 # Song.root_note is an int 0-11 with 0 = C; these are the names the replies
 # use for it (sharps, as Live's own key chooser spells them).
 NOTE_NAMES = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
+
+
+# Display strings a caller may hand set_device_parameter(s) instead of a raw
+# value ("3.6 s", "-1.5 dB", "28 ms", "35 %", "2.5 kHz"). Each unit folds to
+# a family and a scale, so "800 ms" and "0.8 s" compare equal: Live switches
+# a time parameter's display between ms and s as the value grows.
+_DISPLAY_NUMBER = re.compile(r"^\s*([-+]?(?:inf|\d+(?:\.\d*)?|\.\d+))\s*(.*)$",
+                             re.IGNORECASE)
+_DISPLAY_UNITS = {
+    "db": ("db", 1.0),
+    "ms": ("s", 0.001), "s": ("s", 1.0), "sec": ("s", 1.0),
+    "hz": ("hz", 1.0), "khz": ("hz", 1000.0),
+    "%": ("%", 1.0),
+    "st": ("st", 1.0), "ct": ("ct", 1.0),
+}
+
+
+def _parse_display_value(text):
+    """(number in the family's base unit, family) for a display string, or
+    None when it does not start with a number. Unknown units keep their own
+    name as the family, so they still only compare with themselves."""
+    if text is None:
+        return None
+    m = _DISPLAY_NUMBER.match(text.replace("\u2212", "-"))
+    if not m:
+        return None
+    number_text, unit = m.group(1), m.group(2).strip().lower()
+    number = float(number_text)  # float("inf") / float("-inf") included
+    unit = unit.split(" ")[0] if unit else ""
+    family, scale = _DISPLAY_UNITS.get(unit, (unit, 1.0))
+    return number * scale, family
 
 
 class _PlainWarpMarker(object):
@@ -617,12 +650,14 @@ class AbletonMCP(ControlSurface):
             # Get devices
             devices = []
             for device_index, device in enumerate(track.devices):
-                devices.append({
+                entry = {
                     "index": device_index,
                     "name": device.name,
                     "class_name": device.class_name,
                     "type": self._get_device_type(device)
-                })
+                }
+                entry.update(self._device_on_state(device))
+                devices.append(entry)
             
             result = {
                 "index": track_index,
@@ -963,13 +998,132 @@ class AbletonMCP(ControlSurface):
         raise ValueError("No parameter named '%s'. Available: %s"
                          % (parameter, names))
 
+    def _value_for_display(self, target, text):
+        """The raw value whose display string reads as ``text``, and how it
+        was found.
+
+        Live's parameters are raw numbers whose mapping to what the device
+        shows is the device's own (log for times and frequencies, curves for
+        some gains) — agents were reverse-engineering "Decay 3.6 s" into
+        0.5067 by hand, and guessing nonlinear outputs. The parameter itself
+        renders any raw value through str_for_value, so the inverse is a
+        search over its range: pickers by label, everything else by
+        sampling then bisecting the rendered numbers. Out-of-range targets
+        land on the nearer end (and say so), like raw values do.
+        """
+        wanted = text.strip()
+        lo, hi = float(target.min), float(target.max)
+
+        def shown(v):
+            try:
+                return str(target.str_for_value(v))
+            except Exception:
+                return None
+
+        if getattr(target, "is_quantized", False):
+            labels = []
+            items = None
+            try:
+                items = getattr(target, "value_items", None)
+            except Exception:
+                items = None
+            if items:
+                labels = [(lo + i, str(label)) for i, label in enumerate(items)]
+            else:
+                steps = int(round(hi - lo))
+                if 0 <= steps <= 512:
+                    for i in range(steps + 1):
+                        label = shown(lo + i)
+                        if label is not None:
+                            labels.append((lo + i, label))
+            low = wanted.lower()
+            for v, label in labels:
+                if label.strip().lower() == low:
+                    return v, "label"
+            parsed = _parse_display_value(wanted)
+            if parsed is not None:
+                for v, label in labels:
+                    other = _parse_display_value(label)
+                    if (other is not None and other[0] == parsed[0]
+                            and (not parsed[1] or parsed[1] == other[1])):
+                        return v, "label"
+            raise ValueError("'%s' is not one of %s's values: %s"
+                             % (text, target.name,
+                                ", ".join(label for _, label in labels)))
+
+        parsed = _parse_display_value(wanted)
+        if parsed is None:
+            raise ValueError("Cannot read a number from '%s' (expected e.g. "
+                             "'3.6 s', '-1.5 dB', '35 %%')" % text)
+        goal, unit = parsed
+        samples = []
+        steps = 64
+        for k in range(steps + 1):
+            v = lo + (hi - lo) * k / float(steps)
+            rendered = _parse_display_value(shown(v))
+            if rendered is None:
+                continue
+            if unit and rendered[1] and rendered[1] != unit:
+                raise ValueError("'%s' is in different units from %s, which "
+                                 "shows values like '%s'" % (text, target.name, shown(v)))
+            samples.append((v, rendered[0]))
+        if len(samples) < 2:
+            raise ValueError("%s does not render values that can be matched "
+                             "to '%s'; pass a raw value" % (target.name, text))
+        ys = [y for _, y in samples]
+        if goal <= min(ys) or goal >= max(ys):
+            best = min(samples, key=lambda vy: abs(vy[1] - goal)
+                       if not math.isinf(vy[1] - goal) else float("inf"))
+            if math.isinf(goal):
+                best = min(samples, key=lambda vy: vy[1]) if goal < 0 else \
+                    max(samples, key=lambda vy: vy[1])
+            return best[0], "display_clamped"
+        for (v0, y0), (v1, y1) in zip(samples, samples[1:]):
+            if y0 == y1 or (y0 - goal) * (y1 - goal) > 0:
+                continue
+            a, b, ya = v0, v1, y0
+            for _ in range(40):
+                mid = (a + b) / 2.0
+                rendered = _parse_display_value(shown(mid))
+                if rendered is None:
+                    break
+                if (ya - goal) * (rendered[0] - goal) <= 0:
+                    b = mid
+                else:
+                    a, ya = mid, rendered[0]
+            # Displays are rounded, so the bracket closes on the EDGE of the
+            # bucket that reads as the goal: take whichever end (or middle)
+            # renders closest to it, not blindly the midpoint, which can sit
+            # on the neighbouring bucket ("-6.1 dB" for "-6 dB").
+            best_v, best_err = None, None
+            for v in (b, (a + b) / 2.0, a):
+                rendered = _parse_display_value(shown(v))
+                if rendered is None:
+                    continue
+                err = abs(rendered[0] - goal)
+                if best_err is None or err < best_err:
+                    best_v, best_err = v, err
+            return (best_v if best_v is not None else (a + b) / 2.0), "display_search"
+        best = min(samples, key=lambda vy: abs(vy[1] - goal))
+        return best[0], "display_nearest"
+
     def _write_device_parameter(self, target, value):
         """Clamp value into a parameter's range, write it, describe the write.
 
         The clamp and the read-back live here, not in the callers, for the
         same reason the resolver does: two copies of Live's range rules
-        would drift.
+        would drift. A value given as text with a unit or a label ("3.6 s",
+        "Hi Quality") is first turned into the raw value that displays as
+        that (_value_for_display); a bare number, even as text, stays raw.
         """
+        display_request = resolved_by = None
+        if hasattr(value, "strip"):
+            text = value.strip()
+            try:
+                value = float(text)
+            except ValueError:
+                display_request = text
+                value, resolved_by = self._value_for_display(target, text)
         value = float(value)
         # Read before writing so the result can report what the caller
         # just overwrote (upstream's one good idea in its version).
@@ -984,16 +1138,22 @@ class AbletonMCP(ControlSurface):
         except Exception:
             shown = ""
 
-        return {
+        row = {
             "name": target.name,
             "requested": value,
             "old_value": old_value,
             "value": target.value,
             "display_value": shown,
-            "clamped": clamped != value,
+            "clamped": clamped != value or resolved_by == "display_clamped",
             "min": target.min,
             "max": target.max,
         }
+        if display_request is not None:
+            # Additive keys, only on display-string writes, so every raw
+            # write's reply stays exactly what it was.
+            row["requested_display"] = display_request
+            row["resolved_by"] = resolved_by
+        return row
 
     def _set_device_parameter(self, track_index=0, device_index=0, parameter=None,
                               value=0.0, track_type="regular",
@@ -1007,7 +1167,7 @@ class AbletonMCP(ControlSurface):
             target = self._resolve_device_parameter(device, parameter)
             written = self._write_device_parameter(target, value)
 
-            return {
+            result = {
                 "track_index": track_index,
                 "track_name": track.name,
                 "device_index": device_index,
@@ -1021,6 +1181,10 @@ class AbletonMCP(ControlSurface):
                 "min": written["min"],
                 "max": written["max"],
             }
+            for key in ("requested_display", "resolved_by"):
+                if key in written:
+                    result[key] = written[key]
+            return result
         except Exception as e:
             self.log_message("Error setting device parameter: " + str(e))
             raise
@@ -4973,6 +5137,27 @@ class AbletonMCP(ControlSurface):
         except Exception:
             return 0
 
+    def _device_on_state(self, device):
+        """Whether a device is on, without a get_device_parameters call.
+
+        Device.is_active is False both when the device is switched off and
+        when it sits in a rack that is off; "Device On" (parameter 0 on
+        every device) is the device's own switch. Both are reported, None
+        where unreadable, so "bypassed" and "inside a bypassed rack" can be
+        told apart."""
+        state = {"is_active": None, "device_on": None}
+        try:
+            state["is_active"] = bool(device.is_active)
+        except Exception:
+            pass
+        try:
+            params = device.parameters
+            if len(params) and params[0].name == "Device On":
+                state["device_on"] = float(params[0].value) >= 0.5
+        except Exception:
+            pass
+        return state
+
     def _serialize_device(self, device, device_index, include_params=True,
                           include_rack_chains=False, depth=0):
         info = {
@@ -4981,6 +5166,7 @@ class AbletonMCP(ControlSurface):
             "class_name": device.class_name,
             "type": self._get_device_type(device),
         }
+        info.update(self._device_on_state(device))
         automated = self._automated_params_for_device(device)
         if automated:
             info["automated_parameters"] = automated

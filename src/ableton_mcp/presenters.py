@@ -356,10 +356,18 @@ def set_track_monitoring(result: Dict[str, Any], track_index: int) -> str:
 get_device_parameters = as_json
 
 
+def _asked(row: Dict[str, Any]) -> str:
+    """" (asked '3.6 s')" on a display-string write, so a nearest-match or
+    clamped landing is visible next to what was requested."""
+    asked = row.get("requested_display")
+    return f" (asked '{asked}')" if asked is not None else ""
+
+
 def set_device_parameter(result: Dict[str, Any]) -> str:
     note = " (clamped)" if result.get("clamped") else ""
     return (f"Set {result.get('device_name')} '{result.get('parameter_name')}' "
-            f"to {result.get('display_value') or result.get('value')}{note}")
+            f"to {result.get('display_value') or result.get('value')}{note}"
+            f"{_asked(result)}")
 
 
 def set_device_parameters(result: Dict[str, Any]) -> str:
@@ -372,13 +380,29 @@ def set_device_parameters(result: Dict[str, Any]) -> str:
             continue
         shown = row.get("display_value") or row.get("value")
         landed.append(f"{row.get('name')} = {shown}"
-                      + (" (clamped)" if row.get("clamped") else ""))
+                      + (" (clamped)" if row.get("clamped") else "")
+                      + _asked(row))
     head = (f"Set {result.get('applied_count')} of "
             f"{result.get('requested_count')} parameters on "
             f"{result.get('device_name')}")
     body = f": {', '.join(landed)}" if landed else ""
     tail = f". NOT applied: {'; '.join(problems)}" if problems else ""
     return head + body + tail
+
+
+def load_devices(result: Dict[str, Any]) -> str:
+    chain = ", ".join(f"{d.get('index')} {d.get('name')}"
+                      for d in result.get("devices") or [])
+    head = (f"Loaded {result.get('loaded_count')} of {result.get('requested_count')} "
+            f"items onto " + (f"'{result.get('track_name')}'" if result.get("track_name")
+                          else f"track {result.get('track_index')}"))
+    failed = result.get("failed")
+    tail = ""
+    if failed:
+        tail = f". STOPPED at {failed.get('uri')}: {failed.get('error')}"
+        if result.get("not_attempted"):
+            tail += f"; not attempted: {result.get('not_attempted')}"
+    return head + (f". Devices now: {chain}" if chain else "") + tail
 
 
 get_plugin_presets = as_json
@@ -999,6 +1023,7 @@ ERROR_PHRASES: Dict[str, str] = {
     "acquire_live_lock": "acquiring the Live lock",
     "release_live_lock": "releasing the Live lock",
     "checkpoint_set": "checkpointing the set",
+    "load_devices": "loading devices",
     "get_clip_notes": "getting clip notes",
     "get_session_snapshot": "getting session snapshot",
     "create_midi_track": "creating MIDI track",

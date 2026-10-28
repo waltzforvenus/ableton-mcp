@@ -802,6 +802,43 @@ class AbletonService:
         return self._send("load_browser_item",
                           _guarded(params, expect_track_name))
 
+    def load_devices(self, track_index: int, uris: List[str],
+                     track_type: str = "regular",
+                     expect_track_name: Optional[str] = None) -> Dict[str, Any]:
+        """Load each URI in turn, stopping at the first failure. Each load is
+        its own wire command (Live loads into the selected track and the
+        device appears within that main-thread task, so there is no batch
+        gain in one long task — only the round-trips to the model matter)."""
+        if not uris:
+            raise ValueError("uris must list at least one browser URI")
+        loaded: List[Dict[str, Any]] = []
+        failed = None
+        devices_after: List[str] = []
+        track_name = None
+        for uri in uris:
+            try:
+                r = self.load_browser_item(track_index, uri, track_type,
+                                           expect_track_name)
+            except LockError:
+                raise
+            except Exception as e:
+                failed = {"uri": uri, "error": str(e)}
+                break
+            loaded.append({"uri": uri, "item_name": r.get("item_name"),
+                           "new_devices": r.get("new_devices")})
+            devices_after = list(r.get("devices_after") or [])
+            track_name = r.get("track_name", track_name)
+        return {
+            "track_index": track_index,
+            "track_name": track_name,
+            "requested_count": len(uris),
+            "loaded_count": len(loaded),
+            "loaded": loaded,
+            "failed": failed,
+            "not_attempted": list(uris[len(loaded) + (1 if failed else 0):]),
+            "devices": [{"index": i, "name": n} for i, n in enumerate(devices_after)],
+        }
+
     def fire_clip(self, track_index: int, clip_index: int,
                   expect_track_name: Optional[str] = None) -> Dict[str, Any]:
         return self._send("fire_clip", _guarded({

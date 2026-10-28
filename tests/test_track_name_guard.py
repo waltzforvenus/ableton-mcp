@@ -43,6 +43,8 @@ REQUIRED_EXTRAS = {
     "set_device_parameter": {"parameter": "Dry/Wet"},
     "create_audio_clip": {"path": "/tmp/loop.wav"},
     "duplicate_to_arrangement": {"destination_time": 16.0},
+    # A list the generic probe would fill with [], which load_devices refuses.
+    "load_devices": {"uris": ["query:Synths#Operator"]},
 }
 
 

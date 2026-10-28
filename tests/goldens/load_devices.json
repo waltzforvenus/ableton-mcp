@@ -1,0 +1,105 @@
+{
+  "cases": [
+    {
+      "args": {
+        "track_index": 2,
+        "uris": [
+          "query:A",
+          "query:B",
+          "query:C"
+        ]
+      },
+      "expect": "Loaded 1 of 3 items onto 'GTR'. Devices now: 0 Amp, 1 Saturator. STOPPED at query:B: Browser item with URI 'query:B' not found; not attempted: ['query:C']",
+      "name": "stops_at_first_failure",
+      "wire": [
+        {
+          "command": "load_browser_item",
+          "params": {
+            "item_uri": "query:A",
+            "track_index": 2,
+            "track_type": "regular"
+          },
+          "response": {
+            "devices_after": [
+              "Amp",
+              "Saturator"
+            ],
+            "item_name": "Saturator",
+            "loaded": true,
+            "new_devices": [
+              "Saturator"
+            ],
+            "track_name": "GTR",
+            "uri": "query:A"
+          }
+        },
+        {
+          "command": "load_browser_item",
+          "params": {
+            "item_uri": "query:B",
+            "track_index": 2,
+            "track_type": "regular"
+          },
+          "raise": "Browser item with URI 'query:B' not found"
+        }
+      ]
+    },
+    {
+      "args": {
+        "expect_track_name": "GTR",
+        "track_index": 2,
+        "uris": [
+          "query:A"
+        ]
+      },
+      "expect": "Loaded 1 of 1 items onto 'GTR'. Devices now: 0 Saturator",
+      "name": "all_loaded",
+      "wire": [
+        {
+          "command": "load_browser_item",
+          "params": {
+            "expect_track_name": "GTR",
+            "item_uri": "query:A",
+            "track_index": 2,
+            "track_type": "regular"
+          },
+          "response": {
+            "devices_after": [
+              "Saturator"
+            ],
+            "item_name": "Saturator",
+            "loaded": true,
+            "new_devices": [
+              "Saturator"
+            ],
+            "track_name": "GTR",
+            "uri": "query:A"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "track_index": 2,
+        "uris": [
+          "query:A",
+          "query:B",
+          "query:C"
+        ]
+      },
+      "expect": "Loaded 0 of 3 items onto track 2. STOPPED at query:A: boom; not attempted: ['query:B', 'query:C']",
+      "name": "error",
+      "wire": [
+        {
+          "command": "load_browser_item",
+          "params": {
+            "item_uri": "query:A",
+            "track_index": 2,
+            "track_type": "regular"
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}
