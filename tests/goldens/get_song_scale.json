@@ -28,13 +28,13 @@
     },
     {
       "args": {},
-      "expect": "Ableton Remote Script missing capability 'get_song_scale' (loaded='1.17.0', expected=1.17.0). Run `ableton-mcp-install-script` to update the User Remote Script, then restart Ableton Live.",
+      "expect": "Ableton Remote Script missing capability 'get_song_scale' (loaded='1.18.0', expected=1.18.0). Run `ableton-mcp-install-script` to update the User Remote Script, then restart Ableton Live.",
       "name": "gated_script_without_it",
       "script_info": {
         "capabilities": [
           "get_session_info"
         ],
-        "script_version": "1.17.0"
+        "script_version": "1.18.0"
       },
       "wire": []
     },
