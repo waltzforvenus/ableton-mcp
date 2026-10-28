@@ -209,20 +209,60 @@ if (ps.length === 0) { JSON.stringify({ok: false, error: "live_not_running"}); }
       if (want.action === "press") {
         e.actions.byName("AXPress").perform();
       } else if (want.action === "toggle") {
-        if (Boolean(e.value()) !== Boolean(want.value)) e.click();
-        result.value = e.value();
-      } else if (want.action === "choose") {
-        e.click(); delay(0.4);
-        const items = e.menus[0].menuItems();
-        let hit = null; const names = [];
-        for (let i = 0; i < items.length; i++) {
-          let n = null; try { n = items[i].name(); } catch (x) {}
-          if (n === null || n === "") continue;
-          names.push(n);
-          if (hit === null && n.toLowerCase() === String(want.value).toLowerCase()) hit = items[i];
+        // Checkboxes report 0/1; Live 12's Export toggles are AXButtons
+        // reporting "On"/"Off" (Boolean("Off") is true, so normalize).
+        const on = v => v === true || v === 1 ||
+          ["1", "on", "true"].indexOf(String(v).toLowerCase()) >= 0;
+        if (on(e.value()) !== Boolean(want.value)) e.click();
+        delay(0.1); result.value = e.value();
+      } else if (want.action === "step") {
+        // Live 12's bar/beat/sixteenth boxes are AXSliders that ignore a
+        // written value; step them with AXIncrement/AXDecrement instead.
+        const target = Math.round(Number(want.value));
+        for (let i = 0; i < 2000; i++) {
+          const cur = Math.round(Number(e.value()));
+          if (cur === target) break;
+          e.actions.byName(cur < target ? "AXIncrement" : "AXDecrement").perform();
         }
-        if (hit === null) { se.keyCode(53); result = {ok: false, error: "option_not_found", options: names}; }
-        else { hit.click(); delay(0.2); result.value = e.value(); }
+        result.value = e.value();
+        if (Math.round(Number(result.value)) !== target) result = {ok: false, error: "step_failed", value: result.value};
+      } else if (want.action === "choose") {
+        const wanted = String(want.value).toLowerCase();
+        // Live marks the current option "✔ 44100"; compare without it.
+        const bare = n => String(n).replace(/^\\u2714\\s*/, "").trim();
+        if (bare(e.value()).toLowerCase() === wanted) {
+          result.value = e.value();   // already set: no menu round-trip
+        } else {
+          e.click(); delay(0.4);
+          // A Cocoa pop-up owns its menu; Live 12's opens as a separate
+          // nameless window of AXMenuItems instead.
+          let items = [];
+          try { items = e.menus[0].menuItems(); } catch (x) { items = []; }
+          if (items.length === 0) {
+            const others = p.windows();
+            for (let w = 0; w < others.length; w++) {
+              let t = null; try { t = others[w].name(); } catch (x) {}
+              if (t !== "" && t !== null) continue;
+              const kids = others[w].entireContents();
+              for (let k = 0; k < kids.length; k++) {
+                let r = null; try { r = kids[k].role(); } catch (x) {}
+                if (r === "AXMenuItem") items.push(kids[k]);
+              }
+            }
+          }
+          let hit = null; const names = [];
+          for (let i = 0; i < items.length; i++) {
+            let n = null; try { n = items[i].name(); } catch (x) {}
+            if (n === null || n === "") continue;
+            names.push(bare(n));
+            if (hit === null && bare(n).toLowerCase() === wanted) hit = items[i];
+          }
+          if (hit === null) { se.keyCode(53); result = {ok: false, error: "option_not_found", options: names}; }
+          else {
+            try { hit.actions.byName("AXPress").perform(); } catch (x) { hit.click(); }
+            delay(0.3); result.value = e.value();
+          }
+        }
       } else if (want.action === "text") {
         e.focused = true; e.value = String(want.value); delay(0.1);
         se.keyCode(48);  // Tab commits the field; Return could press Export
@@ -240,18 +280,30 @@ _JXA_SAVE_PANEL = """
 const se = Application("System Events");
 const ps = se.processes.whose({name: {_beginsWith: %(proc)s}});
 const want = %(spec)s;
-function sheetOrWindow(p) {
+// The element holding the panel's name field and buttons: the window or
+// sheet itself, or (macOS 15+ standalone Save window) its splitter group.
+function withFields(w) {
+  try { if (w.textFields.length) return w; } catch (x) {}
+  try { const g = w.splitterGroups[0]; if (g.textFields.length) return g; } catch (x) {}
+  return null;
+}
+function findPanel(p) {
   const wins = p.windows();
   for (let i = 0; i < wins.length; i++) {
-    try { if (wins[i].sheets.length) return wins[i].sheets[0]; } catch (x) {}
+    try { if (wins[i].sheets.length) { const f = withFields(wins[i].sheets[0]); if (f) return f; } } catch (x) {}
   }
   for (let i = 0; i < wins.length; i++) {
     let sr = null; try { sr = wins[i].subrole(); } catch (x) {}
     let n = ""; try { n = wins[i].name() || ""; } catch (x) {}
     if (sr === "AXDialog" || n.indexOf("Save") === 0 || n.indexOf("Export") === 0) {
-      try { if (wins[i].textFields.length) return wins[i]; } catch (x) {}
+      const f = withFields(wins[i]); if (f) return f;
     }
   }
+  return null;
+}
+function sheetOrWindow(p) {
+  // The panel opens a moment after the button press that asked for it.
+  for (let t = 0; t < 20; t++) { const f = findPanel(p); if (f) return f; delay(0.25); }
   return null;
 }
 if (ps.length === 0) { JSON.stringify({ok: false, error: "live_not_running"}); } else {
@@ -260,12 +312,16 @@ if (ps.length === 0) { JSON.stringify({ok: false, error: "live_not_running"}); }
   const panel = sheetOrWindow(p);
   if (panel === null) { JSON.stringify({ok: false, error: "no_save_panel"}); } else {
     if (want.action === "fill") {
-      const name = panel.textFields[0];
-      name.value = want.filename; delay(0.2);
+      // Folder first: Go-to-folder resets the name field on macOS 26, so a
+      // name typed before it is lost and Live saves "Untitled".
       se.keystroke("g", {using: ["command down", "shift down"]}); delay(0.6);
       se.keystroke(want.directory); delay(0.3);
       se.keyCode(36); delay(0.8);           // Return in the Go-to-folder sheet only
-      let shownName = null; try { shownName = panel.textFields[0].value(); } catch (x) {}
+      const name = sheetOrWindow(p).textFields[0];
+      name.focused = true; delay(0.1);
+      se.keystroke("a", {using: ["command down"]}); delay(0.1);
+      se.keystroke(want.filename); delay(0.3);
+      let shownName = null; try { shownName = sheetOrWindow(p).textFields[0].value(); } catch (x) {}
       JSON.stringify({ok: true, filename: shownName});
     } else if (want.action === "save") {
       const b = panel.buttons.whose({name: "Save"});
@@ -295,7 +351,9 @@ if (ps.length === 0) { JSON.stringify({ok: false, error: "live_not_running"}); }
 
 # Roles that are a dialog field's editable control.
 CONTROL_ROLES = ("AXPopUpButton", "AXCheckBox", "AXTextField", "AXComboBox",
-                 "AXSlider", "AXIncrementor", "AXRadioButton")
+                 "AXSlider", "AXIncrementor", "AXRadioButton", "AXButton")
+# Roles whose row holds one control per part (bar / beat / sixteenth).
+MULTIPART_ROLES = ("AXTextField", "AXSlider")
 
 
 def map_dialog_fields(elements: List[Dict[str, Any]],
@@ -307,7 +365,9 @@ def map_dialog_fields(elements: List[Dict[str, Any]],
     static text, then the control to its right on the same row (centre
     within half a row height), nearest first. A checkbox titled with the
     label itself wins outright; a row with several text fields (bar / beat /
-    sixteenth boxes) returns all of them, left to right. Missing labels are
+    sixteenth boxes, text fields or Live 12's sliders) returns all of them,
+    left to right. A label Live suffixes ("Encode MP3 (CBR 320)") matches
+    its prefix when no exact text exists. Missing labels are
     listed, so a renamed field refuses instead of setting the wrong one.
     """
     def centre(e):
@@ -325,8 +385,12 @@ def map_dialog_fields(elements: List[Dict[str, Any]],
         if titled:
             found[label] = {"controls": [titled[0]], "label": None}
             continue
-        hits = [t for t in texts
-                if str(t.get("value") or t.get("name") or "").strip().rstrip(":").lower() == low]
+        def text_of(t):
+            return str(t.get("value") or t.get("name") or "").strip().rstrip(":").lower()
+        hits = [t for t in texts if text_of(t) == low]
+        if not hits:
+            # Live 12.4.7 suffixes some labels: "Encode MP3 (CBR 320)".
+            hits = [t for t in texts if text_of(t).startswith(low + " (")]
         if not hits:
             missing.append(label)
             continue
@@ -338,8 +402,9 @@ def map_dialog_fields(elements: List[Dict[str, Any]],
             missing.append(label)
             continue
         row.sort(key=lambda c: c.get("x") or 0)
-        if row[0].get("role") == "AXTextField":
-            row = [c for c in row if c.get("role") == "AXTextField"]
+        if row[0].get("role") in MULTIPART_ROLES:
+            role = row[0].get("role")
+            row = [c for c in row if c.get("role") == role]
         else:
             row = row[:1]
         found[label] = {"controls": row, "label": t}

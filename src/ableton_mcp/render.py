@@ -126,8 +126,11 @@ def _bbs_text(parts: Sequence[int]) -> str:
 def _normalize_readback(value: Any) -> str:
     if isinstance(value, bool):
         return "1" if value else "0"
+    if isinstance(value, float) and value.is_integer():
+        value = int(value)   # slider readbacks: 1.0 means bar 1
     text = str(value if value is not None else "").strip()
-    return {"true": "1", "false": "0"}.get(text.lower(), text)
+    # Live 12's Export toggles are buttons reading "On" / "Off".
+    return {"true": "1", "false": "0", "on": "1", "off": "0"}.get(text.lower(), text)
 
 
 # ── export_audio ─────────────────────────────────────────────────────────────
@@ -199,14 +202,40 @@ def _apply_field(ui, mapping: Dict[str, Any], key: str, want: Any) -> Dict[str, 
         return ui.act(EXPORT_WINDOW, controls[0], "toggle", bool(want))
     if kind == "choose":
         return ui.act(EXPORT_WINDOW, controls[0], "choose", want)
-    # position / length: one text field "b.b.s", or three boxes.
+    # position / length: one text field "b.b.s", three boxes, or (Live
+    # 12.4.7) three sliders that only move by increment / decrement.
     parts = list(want)
+    if len(controls) >= 3 and controls[0].get("role") == "AXSlider":
+        results = [ui.act(EXPORT_WINDOW, c, "step", int(p))
+                   for c, p in zip(controls[:3], parts)]
+        bad = [r for r in results if not r.get("ok")]
+        return bad[0] if bad else {"ok": True}
     if len(controls) >= 3:
         results = [ui.act(EXPORT_WINDOW, c, "text", str(p))
                    for c, p in zip(controls[:3], parts)]
         bad = [r for r in results if not r.get("ok")]
         return bad[0] if bad else {"ok": True}
     return ui.act(EXPORT_WINDOW, controls[0], "text", _bbs_text(parts))
+
+
+def export_button(elements: Sequence[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """The dialog's Export button. Live 12.4.7 gives Export and Cancel no
+    AX name or help, so when no button is titled "Export" it is the left
+    one of the nameless pair on the dialog's bottom row (screenshot
+    evidence, 10-28: "Export" left, "Cancel" right)."""
+    buttons = [e for e in elements if e.get("role") == "AXButton"]
+    for b in buttons:
+        if str(b.get("name") or "").strip().lower() == "export":
+            return {"role": "AXButton", "match_name": b.get("name")}
+    bare = [b for b in buttons if not b.get("name") and b.get("value") in (None, "")
+            and b.get("x") is not None and b.get("y") is not None]
+    if len(bare) < 2:
+        return None
+    bottom = max(b["y"] for b in bare)
+    row = sorted((b for b in bare if abs(b["y"] - bottom) <= 3), key=lambda b: b["x"])
+    if len(row) != 2:
+        return None
+    return {"role": "AXButton", "x": row[0]["x"], "y": row[0]["y"]}
 
 
 def _readback(mapping: Dict[str, Any]) -> Dict[str, Any]:
@@ -359,7 +388,10 @@ def export_audio(service: Any, ui: Any, *, scope: str = "main",
             return result
 
         # 6. Export by its button, then the save panel
-        pressed = ui.act(EXPORT_WINDOW, {"role": "AXButton", "match_name": "Export"}, "press")
+        button = export_button(ui.read_window(EXPORT_WINDOW).get("elements") or [])
+        if button is None:
+            raise RenderRefused("export_button", detail={"error": "not_found"})
+        pressed = ui.act(EXPORT_WINDOW, button, "press")
         if not pressed.get("ok"):
             raise RenderRefused("export_button", detail=pressed)
         opened = False  # the dialog has gone; the save panel owns the screen

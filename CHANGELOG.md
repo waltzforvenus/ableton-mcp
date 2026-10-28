@@ -321,6 +321,18 @@ counts, is `docs/IMPROVEMENTS.md`.
 
 ### Fixed (user-facing)
 
+- **`export_audio`'s dialog handling on Live 12.4.7 + macOS 26.** The
+  dialog's AX shape differs from the fixture the driver was written
+  against: toggles are nameless AXButtons reading On/Off, the
+  bar/beat/sixteenth boxes are AXSliders that ignore written values
+  (stepped instead), the MP3 toggle matches a label's ' (' suffix,
+  Export/Cancel are the unnamed bottom pair, pop-up menus open as a
+  separate nameless window of AXMenuItems, and the macOS 26 Save panel
+  keeps its fields in splitter group 1 and opens a moment after the
+  press (Go-to-folder resets the name). Verified against real Live
+  12.4.7; smoke_live now also takes/adopts the shared Live lock and
+  gates playback on --allow-audio and menu/dialog steps on --allow-ui.
+
 - **A clean save stayed unreleasable after transport-only work.** Commands
   that take over Live but leave nothing to save - the transport
   (`start_playback`, `stop_clip`, `fire_clip`,
@@ -332,6 +344,21 @@ counts, is `docs/IMPROVEMENTS.md`.
   a stamp from them made a set saved after the last real edit impossible
   to release (seen after an export, 10-28). `save_set` keeps its
 `check`; `stop_playback` stays exempt.
+
+<<<<<<< HEAD
+=======
+- **A clean save stayed unreleasable after transport-only work.** Commands
+  that take over Live but leave nothing to save - the transport
+  (`start_playback`, `stop_clip`, `fire_clip`,
+  `set_current_song_time`, `back_to_arrangement`, `jump_to_locator`),
+  the view switch (`switch_to_arrangement_view`) and `select_track` -
+  now meet the shared Live lock as `check`, not `write`: they still
+  refuse it while someone else holds it, but no longer stamp
+  `last_edit_ts`. Cmd-S on an unchanged set does not touch the file, so
+  a stamp from them made a set saved after the last real edit impossible
+  to release (seen after an export, 10-28). `save_set` keeps its
+`check`; `stop_playback` stays exempt.
+>>>>>>> origin/dev
 
 - **`get_session_snapshot` after opening another set** (Remote Script
   **1.20.0** — re-run the installer). The script cached Live's Song once, at
