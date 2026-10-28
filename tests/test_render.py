@@ -110,7 +110,7 @@ class FakeExportUI(MacUI):
     of the planned length into the folder the panel was pointed at."""
 
     def __init__(self, tmp_path, idle=120.0, sticky=None, seconds=None,
-                 existing_alert=False, missing_label=None):
+                 existing_alert=False, missing_label=None, live_12_4_7=False):
         super().__init__(runner=lambda a, t: (1, "", ""), platform="darwin",
                          sleep=lambda s: None, clock=self._tick)
         self._t = 0.0
@@ -121,6 +121,7 @@ class FakeExportUI(MacUI):
         self.sticky = sticky or {}        # label -> value the dialog refuses to change
         self.seconds = seconds
         self.missing_label = missing_label
+        self.live_12_4_7 = live_12_4_7   # the real dialog's AX shape, see below
         self.panel = {}
         self.state = {"Rendered Track": "Main", "Render Start": ["1", "1", "1"],
                       "Render Length": "8.0.0", "Render as Loop": 0,
@@ -129,6 +130,8 @@ class FakeExportUI(MacUI):
                       "Encode PCM": 1, "File Type": "WAV", "Bit Depth": "16",
                       "Dither Options": "No Dither", "Encode MP3": 0,
                       "Create Video": 0, "Include Return and Main Effects": 0}
+        if live_12_4_7:   # three length sliders, not one "b.b.s" text field
+            self.state["Render Length"] = [8, 0, 0]
 
     def _tick(self):
         self._t += 1.0
@@ -157,6 +160,8 @@ class FakeExportUI(MacUI):
     def read_window(self, title):
         if not self.open:
             return {"ok": False, "error": "no_window"}
+        if self.live_12_4_7:
+            return self._read_live_12_4_7()
         els, y = [], 20
         for label, value in self.state.items():
             if label == self.missing_label:
@@ -175,9 +180,46 @@ class FakeExportUI(MacUI):
                 role = "AXTextField" if label == "Render Length" else "AXPopUpButton"
                 els.append({"role": role, "value": value, "x": 200, "y": y - 2,
                             "h": 20, "_label": label})
+        els.append({"role": "AXButton", "name": "Export", "x": 200, "y": y + 40, "h": 20})
+        return {"ok": True, "title": "Export Audio/Video", "elements": els}
+
+    # Live 12.4.7's real Export dialog (AX dump, 10-28): toggles are nameless
+    # AXButtons reading "On"/"Off", bar/beat/sixteenth boxes are AXSliders,
+    # the MP3 label carries a suffix, and Export/Cancel have no AX name.
+    SUFFIXED = {"Encode MP3": "Encode MP3 (CBR 320)"}
+
+    def _read_live_12_4_7(self):
+        els, y = [], 200
+        for label, value in self.state.items():
+            if label == self.missing_label:
+                continue
+            y += 22
+            els.append({"role": "AXStaticText", "name": self.SUFFIXED.get(label, label),
+                        "value": self.SUFFIXED.get(label, label), "x": 631, "y": y, "h": 11})
+            if isinstance(value, list):
+                for k, v in enumerate(value):
+                    els.append({"role": "AXSlider", "name": None, "value": int(v),
+                                "x": 815 + 25 * k, "y": y, "h": 11,
+                                "_label": label, "_part": k})
+            elif isinstance(value, int):
+                els.append({"role": "AXButton", "name": None, "value": "On" if value else "Off",
+                            "x": 831, "y": y - 2, "h": 16, "_label": label})
+            else:
+                els.append({"role": "AXPopUpButton", "name": None, "value": value,
+                            "x": 831, "y": y - 2, "h": 18, "_label": label})
+        els.append({"role": "AXButton", "name": None, "value": None, "x": 831, "y": y + 22,
+                    "h": 16})                                   # Encoder Settings
+        els.append({"role": "AXButton", "name": None, "value": None, "x": 685, "y": y + 60,
+                    "h": 18, "_button": "Export"})
+        els.append({"role": "AXButton", "name": None, "value": None, "x": 757, "y": y + 60,
+                    "h": 18, "_button": "Cancel"})
+        self._buttons = {(e["x"], e["y"]): e.get("_button") for e in els if e.get("_button")}
+        self._by_pos = {(e["x"], e["y"]): e for e in els if e.get("_label")}
         return {"ok": True, "title": "Export Audio/Video", "elements": els}
 
     def act(self, window, element, action, value=None):
+        if self.live_12_4_7:
+            return self._act_live_12_4_7(element, action, value)
         self.calls.append(("act", element.get("_label") or element.get("name")
                            or element.get("match_name"), action, value))
         if action == "press":
@@ -193,6 +235,34 @@ class FakeExportUI(MacUI):
             self.state[label][element["_part"]] = str(value)
         else:
             self.state[label] = value
+        return {"ok": True}
+
+    def _act_live_12_4_7(self, element, action, value):
+        # Like the JXA side, find the element by role + position only.
+        pos = (element.get("x"), element.get("y"))
+        self.calls.append(("act", element.get("_label") or self._buttons.get(pos)
+                           or element.get("match_name"), action, value))
+        if action == "press":
+            if self._buttons.get(pos) != "Export":
+                return {"ok": True}   # Cancel (or nothing): no save panel follows
+            self.open = False
+            return {"ok": True}
+        hit = self._by_pos.get(pos)
+        if hit is None:
+            return {"ok": False, "error": "element_not_found"}
+        label = hit["_label"]
+        if label in self.sticky:
+            return {"ok": True}
+        if action == "toggle":
+            assert hit["role"] == "AXButton"
+            self.state[label] = 1 if value else 0
+        elif action == "step":
+            assert hit["role"] == "AXSlider"
+            self.state[label][hit["_part"]] = int(value)
+        elif action == "choose":
+            self.state[label] = value
+        else:
+            return {"ok": False, "error": f"{action} unsupported on {hit['role']}"}
         return {"ok": True}
 
     def screenshot(self, path):
@@ -498,3 +568,57 @@ def test_real_ffmpeg_flags_cut_tails_clipping_and_silence(tmp_path):
     assert any("clipping" in f for f in clipped["failures"])
     silent = audio_metrics.verify(_wav(tmp_path / "silent.wav", amp=0.0))
     assert any("silent" in f for f in silent["failures"])
+
+
+# ── Live 12.4.7's real Export dialog shape (AX dump 10-28) ─────────────────
+
+LIVE_12_4_7_ROWS = [
+    {"role": "AXStaticText", "name": "Render Start", "value": "Render Start", "x": 631, "y": 243},
+    {"role": "AXSlider", "value": 1, "x": 815, "y": 243},
+    {"role": "AXStaticText", "name": ".", "value": ".", "x": 841, "y": 243},
+    {"role": "AXSlider", "value": 1, "x": 846, "y": 243},
+    {"role": "AXSlider", "value": 1, "x": 865, "y": 243},
+    {"role": "AXStaticText", "name": "Render Length", "value": "Render Length", "x": 631, "y": 265},
+    {"role": "AXSlider", "value": 0, "x": 815, "y": 265},
+    {"role": "AXSlider", "value": 0, "x": 846, "y": 265},
+    {"role": "AXSlider", "value": 1, "x": 865, "y": 265},
+    {"role": "AXStaticText", "name": "Normalize", "value": "Normalize", "x": 631, "y": 379},
+    {"role": "AXButton", "value": "Off", "x": 831, "y": 377},
+    {"role": "AXStaticText", "name": "Encode MP3 (CBR 320)", "value": "Encode MP3 (CBR 320)",
+     "x": 631, "y": 608},
+    {"role": "AXButton", "value": "Off", "x": 831, "y": 606},
+    {"role": "AXButton", "value": None, "x": 685, "y": 737},
+    {"role": "AXButton", "value": None, "x": 757, "y": 737},
+]
+
+
+def test_live_12_4_7_rows_map_sliders_buttons_and_suffixed_labels():
+    m = map_dialog_fields(LIVE_12_4_7_ROWS, ["Render Start", "Render Length",
+                                             "Normalize", "Encode MP3"])
+    assert m["missing"] == []
+    f = m["fields"]
+    assert [c["x"] for c in f["Render Start"]["controls"]] == [815, 846, 865]
+    assert [c["y"] for c in f["Render Length"]["controls"]] == [265, 265, 265]
+    assert f["Normalize"]["controls"][0]["role"] == "AXButton"
+    assert f["Encode MP3"]["controls"][0]["y"] == 606
+
+
+def test_on_off_and_integral_slider_values_read_back_normalized():
+    assert render._normalize_readback("On") == "1"
+    assert render._normalize_readback("Off") == "0"
+    assert render._normalize_readback(1.0) == "1"
+
+
+def test_nameless_export_button_is_the_left_of_the_bottom_pair():
+    assert render.export_button(LIVE_12_4_7_ROWS) == {"role": "AXButton", "x": 685, "y": 737}
+    assert render.export_button(LIVE_12_4_7_ROWS[:-1]) is None   # no pair: refuse, never guess
+
+
+def test_full_export_against_the_live_12_4_7_dialog(tmp_path):
+    ui = FakeExportUI(tmp_path, live_12_4_7=True)
+    result = _export(tmp_path, ui, mp3=True)
+    assert result["ok"] is True, result
+    assert ui.state["Render Length"] == [1, 0, 0]          # 4 beats in 4/4, stepped
+    assert ui.state["Encode MP3"] == 1 and ui.state["Normalize"] == 0
+    assert ("act", "Export", "press", None) in ui.calls
+    assert not any(c[:2] == ("act", "Cancel") for c in ui.calls)
