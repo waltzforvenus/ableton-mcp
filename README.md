@@ -191,7 +191,7 @@ available on `main` or in a released package.
 
 ### Added tools
 
-Upstream exposes 37 MCP tools; this fork exposes 68. The mixer, device control
+Upstream exposes 37 MCP tools; this fork exposes 69. The mixer, device control
 and routing tools are new here:
 
 | Area | Tools |
@@ -412,7 +412,7 @@ who holds it.
 
 ### Tool reference
 
-All 68 tools the server exposes. Tools marked **†** are added by this fork and
+All 69 tools the server exposes. Tools marked **†** are added by this fork and
 are not present upstream.
 
 #### Session & info
@@ -468,10 +468,11 @@ are not present upstream.
 |---|---|---|
 | `get_device_parameters` | `track_index`, `device_index`, `track_type`? | List every parameter on a device, with its current value, range and the |
 | `set_device_parameter` | `track_index`, `device_index`, `parameter`, `value`, `track_type`? | Set one parameter on a device. This is how you actually mix: pull a reverb's |
-| `set_device_parameters` † | `track_index`, `device_index`, `parameters`, `track_type`? | Set MANY parameters on one device in a single call — the batch form, preferred when dialling a device in |
+| `set_device_parameters` † | `track_index`, `device_index`, `parameters`, `track_type`? | Set MANY parameters on one device in a single call — the batch form, preferred when dialling a device in. Values may be raw numbers or display strings (`"3.6 s"`, `"-1.5 dB"`, `"35 %"`, a picker label) |
 | `get_plugin_presets` † | `track_index`, `device_index`, `track_type`? | List a hosted VST/VST3/AU plugin's factory presets and which one is selected — the way in to a plugin whose parameters Live does not expose |
 | `set_plugin_preset` † | `track_index`, `device_index`, `preset_index`?, `preset_name`?, `track_type`? | Select a plugin's factory preset by index or by name (exact, then an unambiguous fragment); refuses ambiguous names, out-of-range indices and devices without presets |
 | `delete_device` † | `track_index`, `device_index`, `track_type`? | Remove a device from a track's chain |
+| `load_devices` † | `track_index`, `uris`, `track_type`?, `expect_track_name`? | Load several browser items onto one track in order (a whole chain); stops at the first failure and returns the final device list |
 | `load_instrument_or_effect` | `track_index`, `uri`, `track_type`? | Load an instrument or effect onto a track using its URI |
 | `load_drum_kit` | `track_index`, `rack_uri`, `kit_path` | Load a drum rack and then load a specific drum kit into it |
 

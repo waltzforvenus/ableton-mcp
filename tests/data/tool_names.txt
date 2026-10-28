@@ -35,6 +35,7 @@ get_song_scale
 get_track_info
 get_track_routing
 jump_to_locator
+load_devices
 load_drum_kit
 load_instrument_or_effect
 move_arrangement_clip

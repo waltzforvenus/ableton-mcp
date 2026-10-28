@@ -180,6 +180,8 @@ class FakeDevice(object):
                                    if class_display_name is not None else name)
         self.can_have_drum_pads = False
         self.can_have_chains = False
+        # Device.is_active: False when the device or an enclosing rack is off.
+        self.is_active = True
         if parameters is None:
             parameters = [FakeParameter("Device On", 1.0, 0.0, 1.0,
                                         is_quantized=True)]

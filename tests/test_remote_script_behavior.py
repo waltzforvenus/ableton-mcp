@@ -417,7 +417,7 @@ def test_get_track_info():
     assert result["clip_slots"][2] == {"index": 2, "has_clip": False, "clip": None}
     assert result["devices"] == [
         {"index": 0, "name": "Operator", "class_name": "Operator",
-         "type": "unknown"},
+         "type": "unknown", "is_active": True, "device_on": True},
     ]
 
 

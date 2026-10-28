@@ -940,7 +940,7 @@ def get_device_parameters(ctx: Context, track_index: int, device_index: int,
 
 @tool
 def set_device_parameter(ctx: Context, track_index: int, device_index: int,
-                         value: float,
+                         value: Union[float, str],
                          parameter: Optional[str] = None,
                          track_type: str = "regular",
                          parameter_name: Optional[str] = None,
@@ -956,13 +956,21 @@ def set_device_parameter(ctx: Context, track_index: int, device_index: int,
     The value is clamped into the parameter's own range rather than erroring, so
     passing 0 always means "as low as this goes".
 
+    The value may also be what the device DISPLAYS, as text with its unit or
+    label: "3.6 s", "28 ms", "-1.5 dB", "35 %", "2.5 kHz", "Hi Quality". The
+    script finds the raw value that the parameter itself renders as that
+    (Live's mappings are log or curved, so this beats converting by hand)
+    and reports what it landed on. A bare number — even as text — is a raw
+    value; add the unit to mean the displayed one.
+
     Parameters:
     - track_index: The index of the track containing the device
     - device_index: The index of the device in that track's chain (0 = first)
     - parameter: The parameter's name as shown by get_device_parameters (e.g.
       "Dry/Wet"), or its integer index passed as a string (e.g. "3").
       Also accepted as parameter_name
-    - value: The value to set, in the parameter's own units
+    - value: The value to set: a raw number in the parameter's own units,
+      or a display string with its unit/label ("3.6 s", "-1.5 dB")
     - track_type: "regular" (default), "return" (track_index is then the
       return's index), or "master" (track_index is ignored)
     - expect_track_name: Optional safety net — refuse and change nothing
@@ -991,7 +999,7 @@ def set_device_parameter(ctx: Context, track_index: int, device_index: int,
 
 @tool
 def set_device_parameters(ctx: Context, track_index: int, device_index: int,
-                          parameters: Dict[str, float],
+                          parameters: Dict[str, Union[float, str]],
                           track_type: str = "regular",
                           expect_track_name: Optional[str] = None) -> str:
     """
@@ -1008,7 +1016,10 @@ def set_device_parameters(ctx: Context, track_index: int, device_index: int,
     Keys are parameter names exactly as get_device_parameters shows them, or
     an integer index written as a string ("3"); a name always wins over an
     index. Values are in the parameter's own units and each is clamped into
-    its own range, exactly as the singular tool clamps. One key that matches
+    its own range, exactly as the singular tool clamps — or display strings
+    with a unit or label ("Decay Time": "3.6 s", "Output": "-1.5 dB",
+    "Dry/Wet": "35 %"), matched against what each parameter renders, as the
+    singular tool documents. One key that matches
     nothing does NOT lose the others — it comes back as its own not-found
     row while every other write lands.
 
@@ -1021,7 +1032,8 @@ def set_device_parameters(ctx: Context, track_index: int, device_index: int,
     Parameters:
     - track_index: The index of the track containing the device
     - device_index: The index of the device in that track's chain (0 = first)
-    - parameters: {parameter name or index: value} — everything to set
+    - parameters: {parameter name or index: value or display string} —
+      everything to set
     - track_type: "regular" (default), "return" (track_index is then the
       return's index), or "master" (track_index is ignored)
     - expect_track_name: Optional safety net — refuse and change nothing
@@ -1528,6 +1540,35 @@ def load_instrument_or_effect(ctx: Context, track_index: int, uri: str,
     result = _deps(ctx).service.load_browser_item(track_index, uri, track_type,
                                                  expect_track_name)
     return presenters.load_instrument_or_effect(result, track_index, uri)
+
+
+@tool
+def load_devices(ctx: Context, track_index: int, uris: List[str],
+                 track_type: str = "regular",
+                 expect_track_name: Optional[str] = None) -> str:
+    """
+    Load SEVERAL browser items onto one track in order — a whole chain in one
+    call — and get the resulting device list back.
+
+    The batch form of load_instrument_or_effect: building three guitar chains
+    used to be 24 sequential load calls plus a read per track to confirm the
+    order. Each URI is loaded in the order given (each lands at the end of
+    the chain, as a single load does; an instrument replaces the track's
+    instrument). Loading stops at the first URI that fails, and the reply
+    says which ones landed, which failed and why, and the track's final
+    devices with their indices.
+
+    Parameters:
+    - track_index: The track to load onto
+    - uris: browser URIs, in chain order (as get_browser_items_at_path shows)
+    - track_type: "regular" (default), "return" or "master"
+    - expect_track_name: Optional safety net — every load is refused unless
+      the track at track_index is really named this (checked per load, so a
+      renumbering mid-batch stops the batch instead of loading elsewhere)
+    """
+    result = _deps(ctx).service.load_devices(track_index, uris, track_type,
+                                            expect_track_name)
+    return presenters.load_devices(result)
 
 
 @tool
