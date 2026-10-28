@@ -15,7 +15,7 @@ separately, and a script change means **re-run
   shipped additions, upstream ports, pending Live validation and planned work.
 - Corrected the README tool count and installation examples to use this fork.
 
-Ships Remote Script **1.24.0**. **Re-run `ableton-mcp-install-script` and
+Ships Remote Script **1.25.0**. **Re-run `ableton-mcp-install-script` and
 restart Live after upgrading** — the new commands live in the script half,
 and Live caches an already-imported script module, so re-selecting the
 control surface is not enough. This release is larger than usual on the
@@ -28,6 +28,22 @@ drove a complete track; the backlog it was mined from, with the measured
 counts, is `docs/IMPROVEMENTS.md`.
 
 ### Added (user-facing)
+
+- **Sound needs authorization — on by default.** `start_playback`,
+  `fire_clip` and `set_track_arm(armed=true)` are refused, before anything
+  is sent, unless the call passes `authorized=true`; disarming and
+  `stop_playback` never are. The rule "never make sound without the user's
+  OK" used to live only in agent prompts. `ABLETON_MCP_REQUIRE_AUDIO_AUTH=0`
+  turns the gate off. (The audible commands carry `audible=True` in the
+  registry; the check is in `AbletonService._send`, ahead of the lock.)
+- `get_mix_state` † (Remote Script **1.25.0**): the mixer in a few KB — per
+  track, return and the main track: volume and pan as Live displays them,
+  mute, solo, arm, every send as displayed, output routing, and device names
+  with "(off)" marks. Most snapshot calls were mixer checks.
+- `get_session_snapshot` takes `max_chars` (default **40000**; 0 = no
+  limit). Over budget, whole tracks are dropped from the end and listed in
+  `omitted_tracks`, and `continuation` holds the `tracks` argument that
+  fetches exactly them — instead of a reply the client cuts off mid-JSON.
 
 - **Rendering** (Remote Script **1.24.0**). `export_audio` † drives Live's
   own *File › Export Audio/Video* — the exact offline render, no playback —

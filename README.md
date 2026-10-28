@@ -191,7 +191,7 @@ available on `main` or in a released package.
 
 ### Added tools
 
-Upstream exposes 37 MCP tools; this fork exposes 79. The mixer, device control
+Upstream exposes 37 MCP tools; this fork exposes 80. The mixer, device control
 and routing tools are new here:
 
 | Area | Tools |
@@ -388,6 +388,14 @@ A few notes that apply to every install method:
 2. Make sure the MCP server is configured in your client
 3. The connection is established automatically when you interact with the assistant
 
+### Sound needs authorization (by default)
+
+`start_playback`, `fire_clip` and arming a track (`set_track_arm(armed=true)`)
+are refused unless the call passes `authorized=true` — the agent must have the
+user's OK before making sound or preparing to record. Disarming and
+`stop_playback` never need it. `ABLETON_MCP_REQUIRE_AUDIO_AUTH=0` turns the
+gate off for setups where nobody else is in the room.
+
 ### The Live lock (state-changing tools need it by default)
 
 Live is often shared — several agents, plus the person at the keyboard. Every
@@ -413,7 +421,7 @@ who holds it.
 
 ### Tool reference
 
-All 79 tools the server exposes. Tools marked **†** are added by this fork and
+All 80 tools the server exposes. Tools marked **†** are added by this fork and
 are not present upstream.
 
 #### Session & info
@@ -422,8 +430,9 @@ are not present upstream.
 |---|---|---|
 | `get_session_info` | — | Get detailed information about the current Ableton session |
 | `get_track_info` | `track_index` | Get detailed information about a specific track in Ableton |
-| `get_session_snapshot` | `include_notes`?, `include_params`?, `include_warp_markers`?, `include_rack_chains`?, `include_empty_slots`?, `tracks`? | Read project state in one call — scope it with `tracks` (names or indices); the three detail flags default off |
+| `get_session_snapshot` | `include_notes`?, `include_params`?, `include_warp_markers`?, `include_rack_chains`?, `include_empty_slots`?, `tracks`?, `max_chars`? | Read project state in one call — scope it with `tracks` (names or indices); the three detail flags default off |
 | `get_remote_script_info` | — | Report Ableton Remote Script version and capabilities (handshake) |
+| `get_mix_state` † | — | The mixer at a glance: per track/return/main — volume and pan as displayed, mute, solo, arm, sends, output routing, devices (with off state) — a few KB |
 | `get_live_status` † | — | One-call preflight: reachable, versions, transport/record, soloed/muted/armed tracks, last event time, the Live lock, and (macOS) set name, unsaved marker, modal dialog and user idle time |
 | `acquire_live_lock` † | `holder`, `task`? | Take the shared Live lock (required before state-changing tools unless `ABLETON_MCP_REQUIRE_LOCK=0`); adopts a lock already held under the same name |
 | `release_live_lock` † | `holder`, `set_path`?, `save_first`?, `allow_ui_automation`? | Release the lock only after a verified save (.als newer than the last edit; no unsaved marker or dialog) |

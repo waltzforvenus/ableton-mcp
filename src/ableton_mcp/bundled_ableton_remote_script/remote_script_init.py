@@ -37,7 +37,7 @@ EXPECTED_COMMAND_ERRORS = (ValueError, IndexError, KeyError)
 
 # Bumped whenever the TCP command surface changes; the MCP server compares
 # this to EXPECTED_REMOTE_SCRIPT_VERSION.
-SCRIPT_VERSION = "1.24.0"
+SCRIPT_VERSION = "1.25.0"
 PROTOCOL_VERSION = 1
 
 # The trim eraser (see _trim_arrangement_clip): a temporary Session clip
@@ -146,6 +146,7 @@ COMMANDS = {
     "get_script_info":            ("_get_script_info",            False, None, True),
     "get_session_info":           ("_get_session_info",           False, None, True),
     "get_live_status":            ("_get_live_status",            False, None, True),
+    "get_mix_state":              ("_get_mix_state",              False, None, True),
     "get_track_info":             ("_get_track_info",             False, None, True),
     "get_track_routing":          ("_get_track_routing",          False, None, True),
     "get_device_parameters":      ("_get_device_parameters",      False, None, True),
@@ -786,6 +787,69 @@ class AbletonMCP(ControlSurface):
         except Exception:
             pass
         return status
+
+    def _get_mix_state(self):
+        """The whole mixer in a few KB: one row per track/return/main.
+
+        Most snapshot calls in production were mixer checks, and the
+        snapshot's raw 0..1 volumes still needed converting; every level
+        here is what Live displays (str_for_value), next to the raw value
+        only where a caller might write it back."""
+        def shown(param):
+            try:
+                return str(param.str_for_value(param.value))
+            except Exception:
+                return None
+
+        def row(index, track, kind):
+            entry = {"index": index, "name": track.name, "track_type": kind}
+            mixer = getattr(track, "mixer_device", None)
+            try:
+                entry["volume"] = shown(mixer.volume)
+                entry["volume_raw"] = float(mixer.volume.value)
+            except Exception:
+                entry["volume"] = entry["volume_raw"] = None
+            try:
+                entry["pan"] = shown(mixer.panning)
+            except Exception:
+                entry["pan"] = None
+            for flag in ("mute", "solo"):
+                try:
+                    entry[flag] = bool(getattr(track, flag))
+                except Exception:
+                    entry[flag] = None
+            if kind == "track":
+                entry["arm"] = self._safe_arm(track)
+            sends = []
+            try:
+                returns = list(self._song.return_tracks)
+                for i, send in enumerate(mixer.sends):
+                    label = returns[i].name if i < len(returns) else str(i)
+                    sends.append({"to": label, "level": shown(send)})
+            except Exception:
+                pass
+            entry["sends"] = sends
+            try:
+                entry["output"] = str(track.output_routing_type.display_name)
+            except Exception:
+                entry["output"] = None
+            devices = []
+            try:
+                for d in track.devices:
+                    state = self._device_on_state(d)
+                    devices.append(d.name if state.get("is_active") is not False
+                                   else d.name + " (off)")
+            except Exception:
+                pass
+            entry["devices"] = devices
+            return entry
+
+        tracks = [row(i, t, "track") for i, t in enumerate(self._song.tracks)]
+        returns = [row(i, t, "return") for i, t in enumerate(self._song.return_tracks)]
+        master = row(0, self._song.master_track, "master")
+        master.pop("index", None)
+        return {"tempo": self._safe_song_property("tempo", float, None),
+                "tracks": tracks, "returns": returns, "master": master}
 
     def _create_midi_track(self, index=-1):
         """Create a new MIDI track at the specified index"""

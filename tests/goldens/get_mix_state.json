@@ -1,0 +1,85 @@
+{
+  "cases": [
+    {
+      "args": {},
+      "expect": "{\n  \"master\": {\n    \"devices\": [\n      \"Limiter\"\n    ],\n    \"mute\": null,\n    \"name\": \"Main\",\n    \"output\": \"1/2\",\n    \"pan\": \"C\",\n    \"sends\": [],\n    \"solo\": null,\n    \"track_type\": \"master\",\n    \"volume\": \"0.0 dB\",\n    \"volume_raw\": 0.85\n  },\n  \"returns\": [\n    {\n      \"devices\": [\n        \"Reverb\"\n      ],\n      \"index\": 0,\n      \"mute\": false,\n      \"name\": \"A-Reverb\",\n      \"output\": \"Main\",\n      \"pan\": \"C\",\n      \"sends\": [],\n      \"solo\": false,\n      \"track_type\": \"return\",\n      \"volume\": \"0.0 dB\",\n      \"volume_raw\": 0.85\n    }\n  ],\n  \"tempo\": 120.0,\n  \"tracks\": [\n    {\n      \"arm\": false,\n      \"devices\": [\n        \"Drum Buss\",\n        \"Utility (off)\"\n      ],\n      \"index\": 0,\n      \"mute\": false,\n      \"name\": \"DRUMS\",\n      \"output\": \"Main\",\n      \"pan\": \"C\",\n      \"sends\": [\n        {\n          \"level\": \"-12.0 dB\",\n          \"to\": \"A-Reverb\"\n        }\n      ],\n      \"solo\": false,\n      \"track_type\": \"track\",\n      \"volume\": \"-3.0 dB\",\n      \"volume_raw\": 0.8\n    }\n  ]\n}",
+      "name": "success",
+      "wire": [
+        {
+          "command": "get_mix_state",
+          "params": {},
+          "response": {
+            "master": {
+              "devices": [
+                "Limiter"
+              ],
+              "mute": null,
+              "name": "Main",
+              "output": "1/2",
+              "pan": "C",
+              "sends": [],
+              "solo": null,
+              "track_type": "master",
+              "volume": "0.0 dB",
+              "volume_raw": 0.85
+            },
+            "returns": [
+              {
+                "devices": [
+                  "Reverb"
+                ],
+                "index": 0,
+                "mute": false,
+                "name": "A-Reverb",
+                "output": "Main",
+                "pan": "C",
+                "sends": [],
+                "solo": false,
+                "track_type": "return",
+                "volume": "0.0 dB",
+                "volume_raw": 0.85
+              }
+            ],
+            "tempo": 120.0,
+            "tracks": [
+              {
+                "arm": false,
+                "devices": [
+                  "Drum Buss",
+                  "Utility (off)"
+                ],
+                "index": 0,
+                "mute": false,
+                "name": "DRUMS",
+                "output": "Main",
+                "pan": "C",
+                "sends": [
+                  {
+                    "level": "-12.0 dB",
+                    "to": "A-Reverb"
+                  }
+                ],
+                "solo": false,
+                "track_type": "track",
+                "volume": "-3.0 dB",
+                "volume_raw": 0.8
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "args": {},
+      "expect": "Error getting the mix state: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "get_mix_state",
+          "params": {},
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

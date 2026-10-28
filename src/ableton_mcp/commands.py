@@ -52,6 +52,10 @@ class CommandSpec:
     gated: bool = False
     min_script_version: str | None = None
     lock: str = "write"
+    # Makes sound, or prepares to record (S1). With the server's audio gate
+    # on (ABLETON_MCP_REQUIRE_AUDIO_AUTH, default on), such a command is
+    # refused unless the caller passed authorized=true.
+    audible: bool = False
 
 
 # Every command is gated (plan §6 PR10) so a user on an old Remote Script
@@ -97,6 +101,8 @@ COMMANDS: dict[str, CommandSpec] = {
     "get_clip_warp_markers": CommandSpec(gated=True),
     # 1.23.0 rack chains; new names, no floor.
     "get_rack_chains": CommandSpec(gated=True),
+    # 1.25.0: the compact mixer view (T1).
+    "get_mix_state": CommandSpec(gated=True),
     # 1.24.0 render support; new names, no floor.
     "get_track_render_state": CommandSpec(gated=True),
     "get_browser_tree": CommandSpec(),  # LEGACY floor — gate is a no-op
@@ -136,7 +142,7 @@ COMMANDS: dict[str, CommandSpec] = {
     "set_arrangement_clip_name": CommandSpec(modifying=True, gated=True),
     "set_tempo": CommandSpec(modifying=True),  # LEGACY floor — gate is a no-op
     "set_song_scale": CommandSpec(modifying=True, gated=True),
-    "fire_clip": CommandSpec(modifying=True),  # LEGACY floor — gate is a no-op
+    "fire_clip": CommandSpec(modifying=True, audible=True),  # LEGACY floor
     "stop_clip": CommandSpec(modifying=True),  # LEGACY floor — gate is a no-op
     "delete_clip": CommandSpec(modifying=True, gated=True),
     "delete_track": CommandSpec(modifying=True, gated=True),
@@ -159,7 +165,8 @@ COMMANDS: dict[str, CommandSpec] = {
     # Brand new, so no floor — same reasoning as get_plugin_presets above.
     "set_track_solo": CommandSpec(modifying=True, gated=True),
     "create_return_track": CommandSpec(modifying=True, gated=True),
-    "set_track_arm": CommandSpec(modifying=True, gated=True),
+    # Audible only when arming: disarming is always allowed (services.py).
+    "set_track_arm": CommandSpec(modifying=True, gated=True, audible=True),
     "set_track_monitoring": CommandSpec(modifying=True, gated=True),
     "save_set": CommandSpec(modifying=True, gated=True, lock="check"),
     "set_track_send": CommandSpec(modifying=True, gated=True),
@@ -171,7 +178,7 @@ COMMANDS: dict[str, CommandSpec] = {
     # 1.17.0; the whole batch runs in one main-thread task, capped at 256
     # edits script-side, so the default modifying budget covers it.
     "edit_clip_warp_markers": CommandSpec(modifying=True, gated=True),
-    "start_playback": CommandSpec(modifying=True),  # LEGACY floor — gate is a no-op
+    "start_playback": CommandSpec(modifying=True, audible=True),  # LEGACY floor
     # Exempt from the Live lock: whoever holds it, stopping sound must work.
     "stop_playback": CommandSpec(modifying=True, lock="exempt"),  # LEGACY floor
     # The load_* tools actually send load_browser_item; without a modifying
