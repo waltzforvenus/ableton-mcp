@@ -17,6 +17,7 @@ Runs anywhere: no Ableton, no network.
 """
 
 import json
+import threading
 
 from fake_ableton import (
     FakeApplication,
@@ -187,3 +188,112 @@ def test_browser_tree_standard_fixture_lists_first_level_items():
     assert "has_more" not in drums
     # Five roots with children, plus Synths one level down.
     assert result["total_folders"] == 6
+
+
+# ------------------------------------------------- main-thread dispatch safety
+
+def _deferred_harness(monkeypatch, command="delete_track", queue_timeout=0.05):
+    """A harness whose schedule_message queues tasks instead of running them,
+    standing in for a Live tick that has not come round yet, with the
+    command's queue timeout shrunk so the wait expires at once."""
+    harness = make_harness()
+    pending = []
+    harness.mcp.schedule_message = lambda delay, task: pending.append(task)
+    method, main_thread, _timeout, advertise = harness.module.COMMANDS[command]
+    monkeypatch.setitem(harness.module.COMMANDS, command,
+                        (method, main_thread, queue_timeout, advertise))
+    return harness, pending
+
+
+def test_a_timed_out_write_never_lands_later(monkeypatch):
+    """Upstream #140: a task still queued when the client is told 'timeout'
+    used to run on the next tick anyway, editing the set behind the
+    client's back."""
+    harness, pending = _deferred_harness(monkeypatch)
+    track_count = len(harness.song.tracks)
+
+    response = harness.process({"type": "delete_track",
+                                "params": {"track_index": 0}})
+    assert response["status"] == "error"
+    assert "not executed" in response["message"]
+
+    assert len(pending) == 1
+    pending[0]()  # Live's tick finally comes round
+    assert len(harness.song.tracks) == track_count
+    assert any("already timed out" in line for line in harness.logs)
+
+
+def test_a_write_that_started_before_the_timeout_reports_unknown(monkeypatch):
+    """A task already inside its handler when the wait expires cannot be
+    called back; the reply must say the outcome is unknown, not that the
+    command did not run."""
+    harness, _pending = _deferred_harness(monkeypatch)
+    real_delete = harness.mcp._delete_track
+    release = threading.Event()
+
+    def held_delete(**params):
+        release.wait(timeout=2.0)  # still working when the wait expires
+        return real_delete(**params)
+
+    harness.mcp._delete_track = held_delete
+    harness.mcp.schedule_message = (
+        lambda delay, task: threading.Thread(target=task, daemon=True).start())
+
+    response = harness.process({"type": "delete_track",
+                                "params": {"track_index": 0}})
+    release.set()
+    assert response["status"] == "error"
+    assert "outcome is unknown" in response["message"]
+
+
+def test_a_write_inside_its_budget_is_unaffected():
+    harness = make_harness()
+    response = harness.process({"type": "set_tempo", "params": {"tempo": 99.0}})
+    assert response["status"] == "success"
+    assert harness.song.tempo == 99.0
+
+
+# ----------------------------------------------------- expected-error logging
+
+def test_an_expected_refusal_logs_one_line_and_no_traceback():
+    """Upstream #141: a bad index is normal use, not a fault; a traceback
+    per refusal buried the real failures in Live's Log.txt."""
+    harness = make_harness()
+    response = harness.process({"type": "set_tempo_nonexistent", "params": {}})
+    assert response["status"] == "error"  # unknown command: no log at all
+
+    response = harness.process({"type": "delete_track",
+                                "params": {"track_index": 999}})
+    assert response["status"] == "error"
+    assert not any("Traceback" in line for line in harness.logs)
+    assert any(line.startswith("Error in main thread task")
+               for line in harness.logs)
+
+
+def test_a_real_fault_still_logs_its_traceback():
+    harness = make_harness()
+
+    def broken(**params):
+        raise RuntimeError("LOM went away")
+
+    harness.mcp._get_session_info = broken
+    response = harness.process({"type": "get_session_info", "params": {}})
+    assert response["status"] == "error"
+    assert response["message"] == "LOM went away"
+    assert any("Traceback" in line for line in harness.logs)
+
+
+def test_a_boost_argument_error_is_a_fault_not_a_refusal():
+    """Boost.Python's ArgumentError subclasses TypeError; it must keep its
+    traceback."""
+    harness = make_harness()
+
+    class ArgumentError(TypeError):
+        pass
+
+    def broken(**params):
+        raise ArgumentError("Python argument types did not match C++ signature")
+
+    harness.mcp._get_session_info = broken
+    harness.process({"type": "get_session_info", "params": {}})
+    assert any("Traceback" in line for line in harness.logs)

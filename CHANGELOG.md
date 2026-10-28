@@ -141,6 +141,20 @@ counts, is `docs/IMPROVEMENTS.md`.
   commands keep the 15 s they always effectively had. A failed connect
   now closes its socket instead of leaking it. Server-side only. Ported
   from upstream PR #139 (open), rewritten for this fork's transport.
+- A state-changing command that times out waiting for Live's main thread
+  no longer runs later anyway. Before, the task stayed scheduled and could
+  land on a later tick — a `delete_track` or `add_notes_to_clip` the caller
+  had been told failed, editing the set behind its back. Now a task that
+  had not started is cancelled and the error says "the command was not
+  executed and will not be"; one that had started says its outcome is
+  unknown and to read the state back before retrying. From upstream PR
+  #140 (open); only this part was taken (see Internal).
+- Routine refusals (bad index, missing clip, name guard) are now logged to
+  Live's `Log.txt` on one line without a traceback, so real faults stand
+  out. Faults, including Boost argument errors from the Live API, still log
+  their traceback. From upstream PR #141 (open), adapted: its
+  `set_device_parameter` range check was not taken, since this fork's
+  handler already clamps into range.
 
 ### Changed (user-facing)
 
