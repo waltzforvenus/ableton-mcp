@@ -97,6 +97,8 @@ COMMANDS: dict[str, CommandSpec] = {
     "get_clip_warp_markers": CommandSpec(gated=True),
     # 1.23.0 rack chains; new names, no floor.
     "get_rack_chains": CommandSpec(gated=True),
+    # 1.24.0 render support; new names, no floor.
+    "get_track_render_state": CommandSpec(gated=True),
     "get_browser_tree": CommandSpec(),  # LEGACY floor — gate is a no-op
     "get_browser_items_at_path": CommandSpec(),  # LEGACY floor — gate is a no-op
     # ── State-modifying commands (15 s default socket timeout) ───────────
@@ -181,6 +183,9 @@ COMMANDS: dict[str, CommandSpec] = {
     # 1.22.0; a new name, so the capability gate alone answers old scripts.
     "load_browser_item_by_path": CommandSpec(modifying=True, gated=True),
     "insert_rack_chain": CommandSpec(modifying=True, gated=True),
+    # Selection is not an edit of the set (no stamp), but it still needs
+    # the lock: it is what the next menu click acts on.
+    "select_track": CommandSpec(modifying=True, gated=True, lock="check"),
     "insert_chain_device": CommandSpec(modifying=True, gated=True),
     "set_chain_mixer": CommandSpec(modifying=True, gated=True),
     # Dispatchable on the Remote Script but never sent by any current tool

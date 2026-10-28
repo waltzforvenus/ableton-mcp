@@ -180,6 +180,13 @@ def _read_frames(path: str, first: int, count: int):
     return data.reshape(-1, channels)
 
 
+# Public names for the full-rate decoder, shared with audio_metrics.py (render
+# verification needs every sample — peaks and clipping — not the decimated
+# mono that warp analysis works on). One decoder, two users.
+file_info = _file_info
+read_frames = _read_frames
+
+
 def _decimate(x, factor: int):
     """Low-pass (windowed sinc) then keep every ``factor``-th sample."""
     np = _np()

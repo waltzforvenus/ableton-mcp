@@ -1,0 +1,22 @@
+{
+  "cases": [
+    {
+      "args": {
+        "expected_duration_s": 180.0,
+        "path": "/nonexistent/mix.wav"
+      },
+      "expect": "Error verifying audio: no such audio file: '/nonexistent/mix.wav'",
+      "name": "missing_file",
+      "wire": []
+    },
+    {
+      "args": {
+        "expected_duration_s": 180.0,
+        "path": "/nonexistent/mix.wav"
+      },
+      "expect": "Error verifying audio: no such audio file: '/nonexistent/mix.wav'",
+      "name": "error",
+      "wire": []
+    }
+  ]
+}

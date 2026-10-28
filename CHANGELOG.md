@@ -15,7 +15,7 @@ separately, and a script change means **re-run
   shipped additions, upstream ports, pending Live validation and planned work.
 - Corrected the README tool count and installation examples to use this fork.
 
-Ships Remote Script **1.23.0**. **Re-run `ableton-mcp-install-script` and
+Ships Remote Script **1.24.0**. **Re-run `ableton-mcp-install-script` and
 restart Live after upgrading** — the new commands live in the script half,
 and Live caches an already-imported script module, so re-selecting the
 control surface is not enough. This release is larger than usual on the
@@ -28,6 +28,33 @@ drove a complete track; the backlog it was mined from, with the measured
 counts, is `docs/IMPROVEMENTS.md`.
 
 ### Added (user-facing)
+
+- **Rendering** (Remote Script **1.24.0**). `export_audio` † drives Live's
+  own *File › Export Audio/Video* — the exact offline render, no playback —
+  over Accessibility, with consent (`allow_ui_automation` or
+  `ABLETON_MCP_ALLOW_UI=1`) and the Live lock. It refuses while the user is
+  active (HID idle < 30 s), while transport plays or records, or with a
+  dialog open; takes the range from Live (`last_event_time` + `tail_beats`,
+  default 8) instead of whatever the dialog last held; finds every field by
+  its on-screen label, sets it and reads it back (any mismatch cancels the
+  dialog and returns the diff — stale 22050 Hz and Normalize can no longer
+  slip through); presses Export by its button; fills the save panel's
+  folder and verifies the name; never replaces a file unless `overwrite`;
+  waits on the filesystem; then measures each file. `dry_run` sets and reads
+  back everything, screenshots it to `evidence_dir`, and cancels.
+  `bounce_track` † runs *Edit › Freeze Track / Bounce to New Track / Bounce
+  Track in Place* on a track selected and verified through the API (two new
+  script commands, `select_track` and `get_track_render_state`), confirms
+  the result through Live (frozen flag, track count, the new clip's file)
+  and measures the bounced file; bounce-in-place needs
+  `confirm_destructive=true` and checkpoints the set first.
+  `analyze_audio` † / `verify_audio` † measure any file offline with
+  ffmpeg/ffprobe (`ABLETON_MCP_FFMPEG`, PATH or Homebrew): duration, rate,
+  bit depth, LUFS-I, LRA, true peak, sample peak, RMS, clipped samples, L/R
+  balance and correlation, leading/trailing silence, silence %, and a cut
+  tail (still above -60 dBFS in the last 50 ms); `verify_audio` adds
+  pass/fail limits. Full-rate decoding reuses the warp-vision decoder
+  (`audio_analysis.read_frames`), so there is one decoder, not two.
 
 - **Rack chains** (Remote Script **1.23.0**): `get_rack_chains` †,
   `insert_rack_chain` †, `insert_chain_device` †, `set_chain_mixer` †.

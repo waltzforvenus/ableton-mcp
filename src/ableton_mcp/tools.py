@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Dict, Any, List, Optional, Union
 from . import presenters
 from .handshake import CapabilityError
 from .live_lock import LockError
+from .render import RenderRefused
 
 if TYPE_CHECKING:  # annotation-only: app.py imports this module at runtime
     from .app import Deps
@@ -59,6 +60,10 @@ def tool(fn):
             # A lock refusal is an answer, not a failure: worded by the View
             # (naming the holder), not wrapped in the tool's "Error ..." text.
             return presenters.lock_refusal(e)
+        except RenderRefused as e:
+            # Same for a render gate or readback: nothing was rendered, and
+            # the reply says exactly why.
+            return presenters.render_refusal(e)
         except Exception as e:
             text = presenters.error_text(fn.__name__, e)
             logger.error(text)
@@ -1540,6 +1545,153 @@ def load_instrument_or_effect(ctx: Context, track_index: int, uri: str,
     result = _deps(ctx).service.load_browser_item(track_index, uri, track_type,
                                                  expect_track_name)
     return presenters.load_instrument_or_effect(result, track_index, uri)
+
+
+@tool
+def analyze_audio(ctx: Context, path: str, start_s: Optional[float] = None,
+                  end_s: Optional[float] = None) -> str:
+    """
+    Measure an audio file — a bounce, a stem, an export — since nobody here
+    can listen: duration, sample rate, channels, bit depth, integrated
+    loudness (LUFS-I), loudness range, true peak (dBTP), sample peak, RMS,
+    clipped samples, L/R balance and correlation, leading/trailing silence,
+    silence %, and whether the tail was cut (still sounding in the last
+    50 ms). Use it to compare a render with the previous one, or to check a
+    file before handing it to the user. ``warnings`` names silence, clipping
+    and a cut tail plainly.
+
+    Parameters:
+    - path: absolute path of the audio file
+    - start_s / end_s: optional window within the file, in seconds
+
+    Uses ffmpeg/ffprobe (found on PATH or Homebrew, or ABLETON_MCP_FFMPEG);
+    without them, levels come from the optional analysis extra and loudness
+    and true peak are null. Offline: never talks to Live.
+    """
+    result = _deps(ctx).service.analyze_audio(path, start_s, end_s)
+    return presenters.analyze_audio(result)
+
+
+@tool
+def verify_audio(ctx: Context, path: str,
+                 expected_duration_s: Optional[float] = None,
+                 tolerance_s: float = 0.05, sample_rate: Optional[int] = None,
+                 bit_depth: Optional[int] = None,
+                 max_true_peak_dbtp: Optional[float] = None,
+                 min_lufs: Optional[float] = None, max_lufs: Optional[float] = None,
+                 allow_tail_cut: bool = False) -> str:
+    """
+    Pass/fail check of a rendered file: everything analyze_audio measures,
+    plus ``ok`` and the list of ``failures``. A file fails if it is silent,
+    clips, has a cut tail (unless allow_tail_cut), or misses any limit
+    given: duration within tolerance, sample rate, bit depth, a true-peak
+    ceiling, a loudness window. Use before telling the user a bounce is good.
+    """
+    result = _deps(ctx).service.verify_audio(
+        path, expected_duration_s=expected_duration_s, tolerance_s=tolerance_s,
+        sample_rate=sample_rate, bit_depth=bit_depth,
+        max_true_peak_dbtp=max_true_peak_dbtp, min_lufs=min_lufs,
+        max_lufs=max_lufs, allow_tail_cut=allow_tail_cut)
+    return presenters.verify_audio(result)
+
+
+@tool
+def export_audio(ctx: Context, output_dir: str, file_stem: str,
+                 scope: str = "main", track: Optional[int] = None,
+                 start_beat: float = 0.0, end_beat: Optional[float] = None,
+                 tail_beats: float = 8.0, sample_rate: int = 44100,
+                 bit_depth: int = 24, file_type: str = "wav", mp3: bool = False,
+                 normalize: bool = False, convert_to_mono: bool = False,
+                 include_return_and_main_fx: bool = True, dither: str = "none",
+                 overwrite: bool = False, allow_ui_automation: bool = False,
+                 require_user_idle_s: float = 30.0, dry_run: bool = False,
+                 evidence_dir: Optional[str] = None, strict_solo: bool = False,
+                 timeout_s: float = 900.0) -> str:
+    """
+    Render audio with Live's own File > Export Audio/Video — the exact
+    offline render, every plugin, return and master effect included, with
+    NO playback and no sound — and verify the file(s) it wrote.
+
+    Use this for the mix bounce and for stems (scope="all_tracks"); it is
+    the default way to get audio out of Live. It drives Live's dialog over
+    macOS Accessibility, so it needs consent (allow_ui_automation=true, or
+    the server's ABLETON_MCP_ALLOW_UI=1), takes over Live's window for the
+    duration, and refuses while the user is active (idle < 30 s, adjustable
+    with require_user_idle_s; 0 disables), while transport is playing or
+    recording, while a dialog is open, or without the Live lock.
+
+    What it does: reads transport and solo state from Live (soloed tracks
+    are reported, or refused with strict_solo); computes the range from
+    start_beat to end_beat (default: Live's last event + tail_beats, so
+    reverb and delay tails are not cut); opens the dialog by its menu title;
+    finds every field by its on-screen LABEL; sets it and READS IT BACK —
+    any mismatch cancels the dialog and returns the differences; presses
+    the Export button (never a blind Return); types the folder into the
+    save panel and verifies the name; never replaces an existing file
+    unless overwrite=true; waits for the file(s) on disk; then measures
+    each (duration against the range, rate, bit depth, LUFS, true peak,
+    silence, clipping, cut tail — as verify_audio).
+
+    Parameters:
+    - output_dir: absolute folder for the render (created if missing)
+    - file_stem: file name without extension; Live appends " <Track>" for stems
+    - scope: "main" (default), "all_tracks" (stems), or "track" (one track,
+      rendered as "Selected Tracks Only" — pass track=<index>)
+    - start_beat / end_beat / tail_beats: the range in quarter-note beats
+    - sample_rate, bit_depth (16/24/32), file_type ("wav"/"aiff"/"flac"),
+      mp3, normalize (default off — never on silently), convert_to_mono,
+      include_return_and_main_fx (stems), dither (16-bit only)
+    - dry_run: open, set and read back every field, screenshot if
+      evidence_dir is given, then Cancel — nothing is rendered
+    - evidence_dir: folder for a screenshot of the dialog before Export
+      (default ABLETON_MCP_EVIDENCE_DIR; avoid /tmp)
+    """
+    result = _deps(ctx).service.export_audio(
+        allow_ui_automation=allow_ui_automation, evidence_dir=evidence_dir,
+        scope=scope, track=track, start_beat=start_beat, end_beat=end_beat,
+        tail_beats=tail_beats, output_dir=output_dir, file_stem=file_stem,
+        sample_rate=sample_rate, bit_depth=bit_depth, file_type=file_type,
+        mp3=mp3, normalize=normalize, convert_to_mono=convert_to_mono,
+        include_return_and_main_fx=include_return_and_main_fx, dither=dither,
+        overwrite=overwrite, require_user_idle_s=require_user_idle_s,
+        dry_run=dry_run, timeout_s=timeout_s, strict_solo=strict_solo)
+    return presenters.export_audio(result)
+
+
+@tool
+def bounce_track(ctx: Context, track_index: int, mode: str = "bounce_to_new_track",
+                 allow_ui_automation: bool = False,
+                 expect_track_name: Optional[str] = None,
+                 confirm_destructive: bool = False) -> str:
+    """
+    Print one track's audio inside the set with Live's Edit menu — Freeze,
+    Bounce to New Track, or Bounce Track in Place — and verify it through
+    Live's API.
+
+    Use it to commit a plugin chain before editing, print an effect throw,
+    or make a per-track audio file the next step can use (the bounced
+    clip's file path comes back, measured as analyze_audio does). For the
+    whole mix or every stem at once, use export_audio.
+
+    Parameters:
+    - track_index: the track (selected through the API and verified before
+      the menu is clicked)
+    - mode: "bounce_to_new_track" (default; the original stays), "freeze",
+      "unfreeze", or "bounce_in_place" (DESTRUCTIVE: replaces the track's
+      clips and devices — needs confirm_destructive=true, and a
+      checkpoint_set copy is made first)
+    - allow_ui_automation: consent to click Live's menu (or
+      ABLETON_MCP_ALLOW_UI=1)
+    - expect_track_name: refuse unless the track is really named this
+
+    Refuses while transport is playing or recording, while a dialog is open,
+    or without the Live lock. One track per call.
+    """
+    result = _deps(ctx).service.bounce_track(
+        track_index, mode, allow_ui_automation=allow_ui_automation,
+        expect_track_name=expect_track_name,
+        confirm_destructive=confirm_destructive)
+    return presenters.bounce_track(result)
 
 
 @tool

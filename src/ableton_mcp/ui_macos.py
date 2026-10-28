@@ -147,6 +147,205 @@ else { JSON.stringify(false); }
 """
 
 
+_JXA_READ_WINDOW = """
+const se = Application("System Events");
+const ps = se.processes.whose({name: {_beginsWith: %(proc)s}});
+if (ps.length === 0) { JSON.stringify({ok: false, error: "live_not_running"}); } else {
+  const ws = ps[0].windows.whose({name: {_beginsWith: %(title)s}});
+  if (ws.length === 0) { JSON.stringify({ok: false, error: "no_window"}); } else {
+    const win = ws[0];
+    const out = [];
+    const els = win.entireContents();
+    for (let i = 0; i < els.length; i++) {
+      const e = els[i];
+      const rec = {role: null, name: null, value: null, desc: null,
+                   x: null, y: null, w: null, h: null, enabled: null};
+      try { rec.role = e.role(); } catch (x) {}
+      try { rec.name = e.name(); } catch (x) {}
+      try { const v = e.value(); rec.value = (v === null || typeof v !== "object") ? v : String(v); } catch (x) {}
+      try { rec.desc = e.description(); } catch (x) {}
+      try { const p = e.position(); rec.x = p[0]; rec.y = p[1]; } catch (x) {}
+      try { const z = e.size(); rec.w = z[0]; rec.h = z[1]; } catch (x) {}
+      try { rec.enabled = e.enabled(); } catch (x) {}
+      out.push(rec);
+    }
+    JSON.stringify({ok: true, title: win.name(), elements: out});
+  }
+}
+"""
+
+# Act on ONE element of a window, found again by role and position (within
+# 3 px) — stable for as long as the dialog stays open, and never an index
+# into a list whose order a Live update can change.
+_JXA_ACT = """
+const se = Application("System Events");
+const ps = se.processes.whose({name: {_beginsWith: %(proc)s}});
+const want = %(spec)s;
+function find(win) {
+  const els = win.entireContents();
+  for (let i = 0; i < els.length; i++) {
+    const e = els[i];
+    let r = null, p = null;
+    try { r = e.role(); } catch (x) { continue; }
+    if (r !== want.role) continue;
+    if (want.name !== undefined && want.name !== null) {
+      let n = null; try { n = e.name(); } catch (x) {}
+      if (n === want.name) return e;
+      continue;
+    }
+    try { p = e.position(); } catch (x) { continue; }
+    if (Math.abs(p[0] - want.x) <= 3 && Math.abs(p[1] - want.y) <= 3) return e;
+  }
+  return null;
+}
+if (ps.length === 0) { JSON.stringify({ok: false, error: "live_not_running"}); } else {
+  const p = ps[0];
+  const ws = p.windows.whose({name: {_beginsWith: want.window}});
+  if (ws.length === 0) { JSON.stringify({ok: false, error: "no_window"}); } else {
+    p.frontmost = true;
+    const e = find(ws[0]);
+    if (e === null) { JSON.stringify({ok: false, error: "element_not_found"}); } else {
+      let result = {ok: true};
+      if (want.action === "press") {
+        e.actions.byName("AXPress").perform();
+      } else if (want.action === "toggle") {
+        if (Boolean(e.value()) !== Boolean(want.value)) e.click();
+        result.value = e.value();
+      } else if (want.action === "choose") {
+        e.click(); delay(0.4);
+        const items = e.menus[0].menuItems();
+        let hit = null; const names = [];
+        for (let i = 0; i < items.length; i++) {
+          let n = null; try { n = items[i].name(); } catch (x) {}
+          if (n === null || n === "") continue;
+          names.push(n);
+          if (hit === null && n.toLowerCase() === String(want.value).toLowerCase()) hit = items[i];
+        }
+        if (hit === null) { se.keyCode(53); result = {ok: false, error: "option_not_found", options: names}; }
+        else { hit.click(); delay(0.2); result.value = e.value(); }
+      } else if (want.action === "text") {
+        e.focused = true; e.value = String(want.value); delay(0.1);
+        se.keyCode(48);  // Tab commits the field; Return could press Export
+        delay(0.1); result.value = e.value();
+      }
+      JSON.stringify(result);
+    }
+  }
+}
+"""
+
+# The native save panel Live opens after Export: name field, Go-to-folder,
+# Save, and the Replace alert. Driven by role/title, never by coordinates.
+_JXA_SAVE_PANEL = """
+const se = Application("System Events");
+const ps = se.processes.whose({name: {_beginsWith: %(proc)s}});
+const want = %(spec)s;
+function sheetOrWindow(p) {
+  const wins = p.windows();
+  for (let i = 0; i < wins.length; i++) {
+    try { if (wins[i].sheets.length) return wins[i].sheets[0]; } catch (x) {}
+  }
+  for (let i = 0; i < wins.length; i++) {
+    let sr = null; try { sr = wins[i].subrole(); } catch (x) {}
+    let n = ""; try { n = wins[i].name() || ""; } catch (x) {}
+    if (sr === "AXDialog" || n.indexOf("Save") === 0 || n.indexOf("Export") === 0) {
+      try { if (wins[i].textFields.length) return wins[i]; } catch (x) {}
+    }
+  }
+  return null;
+}
+if (ps.length === 0) { JSON.stringify({ok: false, error: "live_not_running"}); } else {
+  const p = ps[0];
+  p.frontmost = true;
+  const panel = sheetOrWindow(p);
+  if (panel === null) { JSON.stringify({ok: false, error: "no_save_panel"}); } else {
+    if (want.action === "fill") {
+      const name = panel.textFields[0];
+      name.value = want.filename; delay(0.2);
+      se.keystroke("g", {using: ["command down", "shift down"]}); delay(0.6);
+      se.keystroke(want.directory); delay(0.3);
+      se.keyCode(36); delay(0.8);           // Return in the Go-to-folder sheet only
+      let shownName = null; try { shownName = panel.textFields[0].value(); } catch (x) {}
+      JSON.stringify({ok: true, filename: shownName});
+    } else if (want.action === "save") {
+      const b = panel.buttons.whose({name: "Save"});
+      if (!b.length) { JSON.stringify({ok: false, error: "no_save_button"}); }
+      else { b[0].click(); delay(0.8);
+        // A Replace alert is a sheet on the panel's window.
+        let replace = null;
+        const wins = p.windows();
+        for (let i = 0; i < wins.length && replace === null; i++) {
+          try { const sh = wins[i].sheets(); for (let j = 0; j < sh.length; j++) {
+            const r = sh[j].buttons.whose({name: "Replace"}); if (r.length) replace = sh[j]; } } catch (x) {}
+        }
+        if (replace === null) { JSON.stringify({ok: true, replaced: false}); }
+        else if (want.overwrite) { replace.buttons.whose({name: "Replace"})[0].click();
+          JSON.stringify({ok: true, replaced: true}); }
+        else { replace.buttons.whose({name: "Cancel"})[0].click(); delay(0.3);
+          JSON.stringify({ok: false, error: "exists", replaced: false}); }
+      }
+    } else if (want.action === "cancel") {
+      const b = panel.buttons.whose({name: "Cancel"});
+      if (b.length) b[0].click();
+      JSON.stringify({ok: true});
+    }
+  }
+}
+"""
+
+# Roles that are a dialog field's editable control.
+CONTROL_ROLES = ("AXPopUpButton", "AXCheckBox", "AXTextField", "AXComboBox",
+                 "AXSlider", "AXIncrementor", "AXRadioButton")
+
+
+def map_dialog_fields(elements: List[Dict[str, Any]],
+                      labels: Sequence[str]) -> Dict[str, Any]:
+    """Pair each wanted label with the control(s) on its row.
+
+    The 10-23 export runs broke on positional lookups ("slider 6 ...
+    Invalid index"), so fields are found the way a person finds them: the
+    static text, then the control to its right on the same row (centre
+    within half a row height), nearest first. A checkbox titled with the
+    label itself wins outright; a row with several text fields (bar / beat /
+    sixteenth boxes) returns all of them, left to right. Missing labels are
+    listed, so a renamed field refuses instead of setting the wrong one.
+    """
+    def centre(e):
+        return (e.get("y") or 0) + (e.get("h") or 0) / 2.0
+
+    texts = [e for e in elements if e.get("role") == "AXStaticText"]
+    controls = [e for e in elements if e.get("role") in CONTROL_ROLES
+                and e.get("x") is not None]
+    found: Dict[str, Any] = {}
+    missing: List[str] = []
+    for label in labels:
+        low = label.lower()
+        titled = [c for c in controls
+                  if str(c.get("name") or c.get("desc") or "").strip().lower() == low]
+        if titled:
+            found[label] = {"controls": [titled[0]], "label": None}
+            continue
+        hits = [t for t in texts
+                if str(t.get("value") or t.get("name") or "").strip().rstrip(":").lower() == low]
+        if not hits:
+            missing.append(label)
+            continue
+        t = hits[0]
+        tol = max(8.0, (t.get("h") or 16) / 2.0 + 2)
+        row = [c for c in controls
+               if abs(centre(c) - centre(t)) <= tol and (c.get("x") or 0) >= (t.get("x") or 0)]
+        if not row:
+            missing.append(label)
+            continue
+        row.sort(key=lambda c: c.get("x") or 0)
+        if row[0].get("role") == "AXTextField":
+            row = [c for c in row if c.get("role") == "AXTextField"]
+        else:
+            row = row[:1]
+        found[label] = {"controls": row, "label": t}
+    return {"fields": found, "missing": missing}
+
+
 class MacUI:
     """macOS reads about Live, and the few title-addressed actions.
     ``available`` is False off darwin."""
@@ -259,6 +458,43 @@ class MacUI:
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
         code, _out, _err = self._run(["screencapture", "-x", "-t", "png", path], 15.0)
         return path if code == 0 and os.path.exists(path) else None
+
+    def read_window(self, title_prefix: str) -> Dict[str, Any]:
+        """Every AX element of Live's window titled ``title_prefix…``:
+        role, name, value, description, position and size."""
+        if not self.available:
+            return {"ok": False, "error": "not_macos"}
+        data = self._jxa(_JXA_READ_WINDOW % {
+            "proc": json.dumps(LIVE_PROCESS_PREFIX), "title": json.dumps(title_prefix)},
+            timeout=30.0)
+        return data if isinstance(data, dict) else {"ok": False, "error": "osascript_failed"}
+
+    def act(self, window: str, element: Dict[str, Any], action: str,
+            value: Any = None) -> Dict[str, Any]:
+        """``press`` / ``toggle`` / ``choose`` (a pop-up's item by name) /
+        ``text`` on the element of ``window`` with that role at that
+        position (or that name, for buttons)."""
+        if not self.available:
+            return {"ok": False, "error": "not_macos"}
+        spec = {"window": window, "role": element.get("role"),
+                "x": element.get("x"), "y": element.get("y"),
+                "name": element.get("match_name"), "action": action, "value": value}
+        data = self._jxa(_JXA_ACT % {"proc": json.dumps(LIVE_PROCESS_PREFIX),
+                                     "spec": json.dumps(spec)}, timeout=20.0)
+        return data if isinstance(data, dict) else {"ok": False, "error": "osascript_failed"}
+
+    def save_panel(self, action: str, directory: Optional[str] = None,
+                   filename: Optional[str] = None,
+                   overwrite: bool = False) -> Dict[str, Any]:
+        """``fill`` (name + Go-to-folder), ``save`` (then answer a Replace
+        alert per ``overwrite``) or ``cancel`` on the native save panel."""
+        if not self.available:
+            return {"ok": False, "error": "not_macos"}
+        spec = {"action": action, "directory": directory, "filename": filename,
+                "overwrite": bool(overwrite)}
+        data = self._jxa(_JXA_SAVE_PANEL % {"proc": json.dumps(LIVE_PROCESS_PREFIX),
+                                            "spec": json.dumps(spec)}, timeout=30.0)
+        return data if isinstance(data, dict) else {"ok": False, "error": "osascript_failed"}
 
     def wait_for(self, predicate: Callable[[], Any], timeout_s: float,
                  interval_s: float = 0.5) -> Any:

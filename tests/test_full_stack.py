@@ -105,7 +105,7 @@ def test_in_memory_session_matches_direct_calls():
     assert payload["note_count"] == 3
 
 
-def test_in_memory_session_lists_all_75_tools():
+def test_in_memory_session_lists_all_79_tools():
     deps, _harness = _make_deps()
     app = build_app(deps=deps)
 
@@ -114,7 +114,7 @@ def test_in_memory_session_lists_all_75_tools():
             return await session.list_tools()
 
     listed = asyncio.run(run())
-    assert len(listed.tools) == 75
+    assert len(listed.tools) == 79
 
 
 # --------------------------------------------------------------------------

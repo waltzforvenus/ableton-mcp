@@ -1,4 +1,4 @@
-"""Golden-case definitions for all 75 MCP tools (docs/REFACTOR_PLAN.md
+"""Golden-case definitions for all 79 MCP tools (docs/REFACTOR_PLAN.md
 section 5 Level 1, section 6 PR3).
 
 Each case names a tool, the arguments to call it with, and the exact ordered
@@ -991,6 +991,17 @@ BASE_CASES = [
     ]),
 
     # ── fire_clip ─────────────────────────────────────────────────────────
+    # ── rendering: offline measurement, and the UI tools' refusals ────────
+    # The runner wires no UI, so export/bounce freeze their "needs macOS"
+    # refusal; tests/test_render.py drives the dialogs against a fake UI.
+    _case("analyze_audio", "missing_file", {"path": "/nonexistent/mix.wav"}, []),
+    _case("verify_audio", "missing_file",
+          {"path": "/nonexistent/mix.wav", "expected_duration_s": 180.0}, []),
+    _case("export_audio", "no_ui",
+          {"output_dir": "/Users/x/Renders", "file_stem": "mix",
+           "allow_ui_automation": True}, []),
+    _case("bounce_track", "no_ui",
+          {"track_index": 2, "mode": "freeze", "allow_ui_automation": True}, []),
     # ── rack chains ───────────────────────────────────────────────────────
     _case("get_rack_chains", "success", {"track_index": 1, "device_index": 0}, [
         _ok("get_rack_chains", {"track_index": 1, "device_index": 0,

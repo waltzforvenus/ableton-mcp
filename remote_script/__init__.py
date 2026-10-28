@@ -37,7 +37,7 @@ EXPECTED_COMMAND_ERRORS = (ValueError, IndexError, KeyError)
 
 # Bumped whenever the TCP command surface changes; the MCP server compares
 # this to EXPECTED_REMOTE_SCRIPT_VERSION.
-SCRIPT_VERSION = "1.23.0"
+SCRIPT_VERSION = "1.24.0"
 PROTOCOL_VERSION = 1
 
 # The trim eraser (see _trim_arrangement_clip): a temporary Session clip
@@ -155,6 +155,7 @@ COMMANDS = {
     "get_clip_warp_markers":      ("_get_clip_warp_markers",      False, None, True),
     "get_session_snapshot":       ("_get_session_snapshot",       False, None, True),
     "get_rack_chains":            ("_get_rack_chains",            False, None, True),
+    "get_track_render_state":     ("_get_track_render_state",     False, None, True),
     "get_song_scale":             ("_get_song_scale",             False, None, True),
     "get_browser_item":           ("_get_browser_item",           False, None, False),
     "get_browser_tree":           ("get_browser_tree",            False, None, True),
@@ -200,6 +201,7 @@ COMMANDS = {
     "load_browser_item":          ("_load_browser_item",          True,  None, True),
     "load_browser_item_by_path":  ("_load_browser_item_by_path",  True,  None, True),
     "insert_rack_chain":          ("_insert_rack_chain",          True,  None, True),
+    "select_track":               ("_select_track",               True,  None, True),
     "insert_chain_device":        ("_insert_chain_device",        True,  None, True),
     "set_chain_mixer":            ("_set_chain_mixer",            True,  None, True),
     "load_instrument_or_effect":  ("_load_instrument_or_effect",  True,  None, True),
@@ -1339,6 +1341,53 @@ class AbletonMCP(ControlSurface):
         except Exception as e:
             self.log_message("Error setting device parameters: " + str(e))
             raise
+
+    # ── Render support (export / bounce are menu items; these are the LOM
+    # halves: choose the track the menu acts on, then verify what it did) ──
+
+    def _select_track(self, track_index=0, track_type="regular",
+                      expect_track_name=None):
+        """Make a track the selected one — what Live's Edit › Freeze /
+        Bounce and Export's "Selected Tracks Only" act on — and read it
+        back, so the menu is never clicked with the wrong track selected."""
+        track = self._resolve_track(track_index, track_type,
+                                    expect_track_name=expect_track_name)
+        self._song.view.selected_track = track
+        selected = self._song.view.selected_track
+        return {"track_index": track_index, "track_name": track.name,
+                "selected_track": selected.name if selected is not None else None,
+                "selected": selected == track}
+
+    def _get_track_render_state(self, track_index=0, track_type="regular"):
+        """What a freeze or bounce changed: frozen state, the track count
+        (a bounce adds a track), and the audio files behind the track's
+        clips (Clip.file_path) — the paths an agent needs next."""
+        track = self._resolve_track(track_index, track_type)
+        files = []
+        try:
+            for clip in track.arrangement_clips:
+                path = getattr(clip, "file_path", None)
+                if path:
+                    files.append({"name": clip.name, "file_path": path,
+                                  "start_time": float(clip.start_time),
+                                  "end_time": float(clip.end_time)})
+        except Exception:
+            pass
+        state = {"track_index": track_index, "track_name": track.name,
+                 "track_count": len(self._song.tracks),
+                 "is_frozen": None, "can_be_frozen": None,
+                 "arrangement_files": files}
+        for key in ("is_frozen", "can_be_frozen"):
+            try:
+                state[key] = bool(getattr(track, key))
+            except Exception:
+                pass
+        try:
+            selected = self._song.view.selected_track
+            state["selected_track"] = selected.name if selected is not None else None
+        except Exception:
+            state["selected_track"] = None
+        return state
 
     # ── Rack chains ───────────────────────────────────────────────────────
     # Parallel blends (two amp chains in one rack, one phase-inverted) were

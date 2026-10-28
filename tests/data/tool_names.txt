@@ -1,7 +1,9 @@
 acquire_live_lock
 add_notes_to_clip
+analyze_audio
 analyze_clip_audio
 back_to_arrangement
+bounce_track
 checkpoint_set
 clear_notes_from_clip
 create_audio_clip
@@ -19,6 +21,7 @@ duplicate_arrangement_clip
 duplicate_to_arrangement
 duplicate_track
 edit_clip_warp_markers
+export_audio
 fire_clip
 get_arrangement_clips
 get_browser_items_at_path
@@ -73,3 +76,4 @@ stop_playback
 suggest_warp_markers
 switch_to_arrangement_view
 trim_arrangement_clip
+verify_audio

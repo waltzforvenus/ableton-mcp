@@ -89,13 +89,19 @@ def _placeholder(annotation):
     return "x"
 
 
+# Tools that reach the wire only through Live's UI (a menu click between
+# the sends), so this wire-only probe cannot drive them; their guard is
+# asserted in tests/test_render.py, where a fake UI exists.
+UI_DRIVEN = frozenset({"bounce_track"})
+
+
 def _guarded_tools():
     """Every registered tool that offers the guard, with a callable set of
     arguments — the decorator keeps the real signature on ``__wrapped__``."""
     out = []
     for fn in tools.TOOLS:
         signature = inspect.signature(fn.__wrapped__)
-        if GUARD not in signature.parameters:
+        if GUARD not in signature.parameters or fn.__name__ in UI_DRIVEN:
             continue
         kwargs = {
             name: _placeholder(param.annotation)
