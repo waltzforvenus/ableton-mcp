@@ -933,6 +933,79 @@ class AbletonService:
         return self._send("load_browser_item",
                           _guarded(params, expect_track_name))
 
+    # Device placement and sidechain (Live 12)
+
+    def insert_device(self, track_index: int, device_name: str, index: int = -1,
+                      track_type: str = "regular",
+                      expect_track_name: Optional[str] = None) -> Dict[str, Any]:
+        return self._send("insert_device", _guarded({
+            "track_index": track_index, "device_name": device_name,
+            "index": index, "track_type": track_type}, expect_track_name))
+
+    def move_device(self, track_index: int, device_index: int, to_index: int,
+                    to_track_index: Optional[int] = None,
+                    track_type: str = "regular",
+                    to_track_type: Optional[str] = None,
+                    expect_track_name: Optional[str] = None) -> Dict[str, Any]:
+        params: Dict[str, Any] = {"track_index": track_index,
+                                  "device_index": device_index,
+                                  "to_index": to_index, "track_type": track_type}
+        if to_track_index is not None:
+            params["to_track_index"] = to_track_index
+        if to_track_type is not None:
+            params["to_track_type"] = to_track_type
+        return self._send("move_device", _guarded(params, expect_track_name))
+
+    def get_device_sidechain(self, track_index: int, device_index: int,
+                             track_type: str = "regular") -> Dict[str, Any]:
+        return self._send("get_device_sidechain", {
+            "track_index": track_index, "device_index": device_index,
+            "track_type": track_type})
+
+    def set_device_sidechain(self, track_index: int, device_index: int,
+                             source: str, channel: Optional[str] = None,
+                             enable: bool = True, track_type: str = "regular",
+                             expect_track_name: Optional[str] = None) -> Dict[str, Any]:
+        params: Dict[str, Any] = {"track_index": track_index,
+                                  "device_index": device_index, "source": source,
+                                  "enable": enable, "track_type": track_type}
+        if channel is not None:
+            params["channel"] = channel
+        return self._send("set_device_sidechain", _guarded(params, expect_track_name))
+
+    # Arrangement-native clips (Live 12)
+
+    def create_arrangement_audio_clip(self, track_index: int, path: str,
+                                      start_time: float, allow_overlap: bool = False,
+                                      name: Optional[str] = None,
+                                      expect_track_name: Optional[str] = None
+                                      ) -> Dict[str, Any]:
+        params: Dict[str, Any] = {"track_index": track_index,
+                                  "path": os.path.expanduser(path),
+                                  "start_time": start_time,
+                                  "allow_overlap": allow_overlap}
+        if name is not None:
+            params["name"] = name
+        return self._send("create_arrangement_audio_clip",
+                          _guarded(params, expect_track_name))
+
+    def create_arrangement_midi_clip(self, track_index: int, start_time: float,
+                                     length: float,
+                                     notes: Optional[List[Dict[str, Any]]] = None,
+                                     name: Optional[str] = None,
+                                     allow_overlap: bool = False,
+                                     expect_track_name: Optional[str] = None
+                                     ) -> Dict[str, Any]:
+        params: Dict[str, Any] = {"track_index": track_index,
+                                  "start_time": start_time, "length": length,
+                                  "allow_overlap": allow_overlap}
+        if notes:
+            params["notes"] = notes
+        if name is not None:
+            params["name"] = name
+        return self._send("create_arrangement_midi_clip",
+                          _guarded(params, expect_track_name))
+
     # Rack chains
 
     def get_rack_chains(self, track_index: int, device_index: int,

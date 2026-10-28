@@ -6,6 +6,8 @@ back_to_arrangement
 bounce_track
 checkpoint_set
 clear_notes_from_clip
+create_arrangement_audio_clip
+create_arrangement_midi_clip
 create_audio_clip
 create_audio_track
 create_clip
@@ -29,6 +31,7 @@ get_browser_tree
 get_clip_notes
 get_clip_warp_markers
 get_device_parameters
+get_device_sidechain
 get_live_status
 get_mix_state
 get_plugin_presets
@@ -41,6 +44,7 @@ get_song_scale
 get_track_info
 get_track_routing
 insert_chain_device
+insert_device
 insert_rack_chain
 jump_to_locator
 load_device_from_path
@@ -48,6 +52,7 @@ load_devices
 load_drum_kit
 load_instrument_or_effect
 move_arrangement_clip
+move_device
 release_live_lock
 save_set
 set_arrangement_clip_name
@@ -59,6 +64,7 @@ set_clip_warp
 set_count_in
 set_device_parameter
 set_device_parameters
+set_device_sidechain
 set_plugin_preset
 set_song_scale
 set_tempo

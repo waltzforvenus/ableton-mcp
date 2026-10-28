@@ -188,6 +188,21 @@ class FakeDevice(object):
         self.parameters = list(parameters)
 
 
+class FakeSidechainDevice(FakeDevice):
+    """A Compressor-like device with sidechain input routing (Live 12)."""
+
+    def __init__(self, name="Compressor", sources=("No Input", "1-Kick", "2-Bass"),
+                 channels=("Post FX", "Pre FX", "Post Mixer")):
+        super().__init__(name, parameters=[
+            FakeParameter("Device On", 1.0, 0.0, 1.0, is_quantized=True),
+            FakeParameter("S/C On", 0.0, 0.0, 1.0, is_quantized=True),
+            FakeParameter("Threshold", 0.5)])
+        self.available_input_routing_types = [FakeRoutingOption(s) for s in sources]
+        self.available_input_routing_channels = [FakeRoutingOption(c) for c in channels]
+        self.input_routing_type = self.available_input_routing_types[0]
+        self.input_routing_channel = self.available_input_routing_channels[0]
+
+
 class FakeChainMixer(object):
     """Chain.mixer_device: volume and panning as real parameters."""
 
@@ -707,6 +722,12 @@ class FakeTrack(object):
         self.clip_slots = [FakeClipSlot(self._config) for _ in range(num_slots)]
         self.devices = []
         self.arrangement_clips = []
+        # Live 12's arrangement-native creation and positional device insert;
+        # FakeLiveConfig(live12_track_api=False) removes them.
+        if getattr(self._config_for_api(config), "live12_track_api", True):
+            self.create_audio_clip = self._create_audio_clip
+            self.create_midi_clip = self._create_midi_clip
+            self.insert_device = self._insert_device
         # Live 11+ Track.delete_clip — bound only when the config says the
         # build has it, so the script's hasattr probe behaves as in Live.
         if self._config.track_delete_clip_api:
@@ -729,6 +750,44 @@ class FakeTrack(object):
         all_channels = FakeRoutingOption("All Channels")
         self.available_input_routing_channels = [all_channels]
         self.input_routing_channel = all_channels
+
+    @staticmethod
+    def _config_for_api(config):
+        return config
+
+    def _create_audio_clip(self, path, time):
+        import os as _os
+        if not _os.path.isfile(path):
+            raise RuntimeError("Invalid path")
+        clip = FakeClip(_os.path.splitext(_os.path.basename(path))[0], 8.0,
+                        midi=False, start_time=float(time))
+        clip.file_path = path
+        self._crop_under(clip)
+        self.arrangement_clips.append(clip)
+        self.arrangement_clips.sort(key=lambda c: c.start_time)
+        return clip
+
+    def _create_midi_clip(self, start, length):
+        clip = FakeClip("MIDI Clip", float(length), midi=True, start_time=float(start))
+        self._crop_under(clip)
+        self.arrangement_clips.append(clip)
+        self.arrangement_clips.sort(key=lambda c: c.start_time)
+        return clip
+
+    def _crop_under(self, new):
+        """Live crops what a new clip lands on; the fake drops overlapped
+        clips entirely, which is enough to make the change visible."""
+        self.arrangement_clips = [c for c in self.arrangement_clips
+                                  if not (c.start_time < new.end_time
+                                          and c.end_time > new.start_time)]
+
+    def _insert_device(self, device_name, target_index=-1):
+        device = FakeDevice(device_name)
+        if target_index is None or target_index < 0 or target_index >= len(self.devices):
+            self.devices.append(device)
+        else:
+            self.devices.insert(target_index, device)
+        return device
 
     # Live raises on *reading* arm for a track that has no arm state, not
     # only on writing it, and for group tracks as well as the master and the
@@ -866,6 +925,17 @@ class FakeSong(object):
         if self.config.save_owner == "song":
             self.save_calls = []
             self.save_set = lambda: self.save_calls.append("save_set")
+
+    def move_device(self, device, target, position):
+        """Song.move_device(device, target, position): remove from wherever
+        it is, insert into target's chain at position."""
+        for t in list(self.tracks) + list(self.return_tracks) + [self.master_track]:
+            if device in t.devices:
+                t.devices.remove(device)
+                break
+        position = max(0, min(int(position), len(target.devices)))
+        target.devices.insert(position, device)
+        return position
 
     # -- song key / scale (Live 12) ------------------------------------------
     # Properties whose getters raise AttributeError when the config says the

@@ -1,0 +1,83 @@
+{
+  "cases": [
+    {
+      "args": {
+        "length": 4.0,
+        "notes": [
+          {
+            "duration": 1.0,
+            "pitch": 60,
+            "start_time": 0.0
+          }
+        ],
+        "start_time": 16.0,
+        "track_index": 0
+      },
+      "expect": "Created MIDI clip 'MIDI Clip' on 'KEYS' at beats 16.0-20.0 (arrangement clip 1) with 1 notes (1 in the clip)",
+      "name": "with_notes",
+      "wire": [
+        {
+          "command": "create_arrangement_midi_clip",
+          "params": {
+            "allow_overlap": false,
+            "length": 4.0,
+            "notes": [
+              {
+                "duration": 1.0,
+                "pitch": 60,
+                "start_time": 0.0
+              }
+            ],
+            "start_time": 16.0,
+            "track_index": 0
+          },
+          "response": {
+            "clip_index": 1,
+            "clip_name": "MIDI Clip",
+            "clip_note_count": 1,
+            "end_time": 20.0,
+            "notes_added": 1,
+            "start_time": 16.0,
+            "track_index": 0,
+            "track_name": "KEYS"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "length": 4.0,
+        "notes": [
+          {
+            "duration": 1.0,
+            "pitch": 60,
+            "start_time": 0.0
+          }
+        ],
+        "start_time": 16.0,
+        "track_index": 0
+      },
+      "expect": "Error creating the arrangement MIDI clip: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "create_arrangement_midi_clip",
+          "params": {
+            "allow_overlap": false,
+            "length": 4.0,
+            "notes": [
+              {
+                "duration": 1.0,
+                "pitch": 60,
+                "start_time": 0.0
+              }
+            ],
+            "start_time": 16.0,
+            "track_index": 0
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

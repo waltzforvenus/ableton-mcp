@@ -1724,6 +1724,144 @@ def bounce_track(ctx: Context, track_index: int, mode: str = "bounce_to_new_trac
 
 
 @tool
+def insert_device(ctx: Context, track_index: int, device_name: str,
+                  index: int = -1, track_type: str = "regular",
+                  expect_track_name: Optional[str] = None) -> str:
+    """
+    Insert a Live device at a POSITION in a track's chain (Live 12's
+    Track.insert_device) — e.g. a Tuner first, or an EQ before the amp.
+    Loading from the browser always appends; this does not.
+
+    Parameters:
+    - track_index: the track
+    - device_name: a native Live device's name ("EQ Eight", "Utility",
+      "Compressor"); hosted plugins are not accepted by this Live call —
+      load them, then move_device
+    - index: position (0 = first; -1, the default, = end)
+    - track_type: "regular" (default), "return" or "master"
+    - expect_track_name: refuse unless the track is really named this
+    """
+    result = _deps(ctx).service.insert_device(track_index, device_name, index,
+                                             track_type, expect_track_name)
+    return presenters.insert_device(result)
+
+
+@tool
+def move_device(ctx: Context, track_index: int, device_index: int, to_index: int,
+                to_track_index: Optional[int] = None, track_type: str = "regular",
+                to_track_type: Optional[str] = None,
+                expect_track_name: Optional[str] = None) -> str:
+    """
+    Move a device to another position in its chain, or onto another track
+    (Live 12's Song.move_device) — reorder a chain without the UI.
+
+    Parameters:
+    - track_index / device_index: the device to move
+    - to_index: its new position (0 = first)
+    - to_track_index / to_track_type: another track to move it to (default:
+      the same track)
+    - track_type: "regular" (default), "return" or "master"
+    - expect_track_name: refuse unless the source track is really named this
+
+    Reports where the device landed and both chains afterwards. Device
+    indices after the move are different; re-read before addressing them.
+    """
+    result = _deps(ctx).service.move_device(
+        track_index, device_index, to_index, to_track_index, track_type,
+        to_track_type, expect_track_name)
+    return presenters.move_device(result)
+
+
+@tool
+def get_device_sidechain(ctx: Context, track_index: int, device_index: int,
+                         track_type: str = "regular") -> str:
+    """
+    Read a device's sidechain input — Compressor, Gate, Glue, Auto Filter and
+    other devices with an audio "from" selector: the current source and
+    channel, every source and channel Live offers, and whether sidechain is
+    switched on. ``supported: false`` means the device has no sidechain.
+    """
+    result = _deps(ctx).service.get_device_sidechain(track_index, device_index,
+                                                    track_type)
+    return presenters.get_device_sidechain(result)
+
+
+@tool
+def set_device_sidechain(ctx: Context, track_index: int, device_index: int,
+                         source: str, channel: Optional[str] = None,
+                         enable: bool = True, track_type: str = "regular",
+                         expect_track_name: Optional[str] = None) -> str:
+    """
+    Point a device's sidechain at a source — e.g. a bass compressor keyed by
+    the kick track — and switch sidechain on.
+
+    Parameters:
+    - track_index / device_index: the device (a Compressor, Gate, ...)
+    - source: the source as Live lists it (see get_device_sidechain), e.g.
+      "1-Kick"; a unique fragment ("Kick") also matches
+    - channel: optionally the tap point as listed ("Post FX", "Pre FX")
+    - enable: also turn the device's sidechain switch on (default True)
+    - track_type / expect_track_name: as for the other device tools
+
+    Reports the source, channel and switch as Live reads them back.
+    """
+    result = _deps(ctx).service.set_device_sidechain(
+        track_index, device_index, source, channel, enable, track_type,
+        expect_track_name)
+    return presenters.set_device_sidechain(result)
+
+
+@tool
+def create_arrangement_audio_clip(ctx: Context, track_index: int, path: str,
+                                  start_time: float, allow_overlap: bool = False,
+                                  name: Optional[str] = None,
+                                  expect_track_name: Optional[str] = None) -> str:
+    """
+    Put an audio file straight onto an audio track's ARRANGEMENT at a beat
+    (Live 12's Track.create_audio_clip) — no Session slot, no stamping.
+
+    Use this instead of create_audio_clip + duplicate_to_arrangement whenever
+    the goal is the timeline. Parameters:
+    - track_index: an audio track
+    - path: absolute path of the audio file
+    - start_time: song position in beats
+    - allow_overlap: by default a start inside an existing clip is refused;
+      true lets Live crop or replace what the new clip covers (reported)
+    - name / expect_track_name: optional
+    Returns the new clip's index, start/end and file path.
+    """
+    result = _deps(ctx).service.create_arrangement_audio_clip(
+        track_index, path, start_time, allow_overlap, name, expect_track_name)
+    return presenters.create_arrangement_audio_clip(result)
+
+
+@tool
+def create_arrangement_midi_clip(ctx: Context, track_index: int, start_time: float,
+                                 length: float = 4.0,
+                                 notes: Optional[List[Dict[str, Any]]] = None,
+                                 name: Optional[str] = None,
+                                 allow_overlap: bool = False,
+                                 expect_track_name: Optional[str] = None) -> str:
+    """
+    Create a MIDI clip directly on a MIDI track's ARRANGEMENT at a beat
+    (Live 12's Track.create_midi_clip), optionally filled with notes.
+
+    Parameters:
+    - track_index: a MIDI track
+    - start_time / length: song position and length in beats
+    - notes: optional [{pitch, start_time, duration, velocity, mute}] with
+      start_time relative to the clip (as add_notes_to_clip)
+    - allow_overlap: by default a region overlapping existing clips is
+      refused; true lets Live crop what it covers
+    - name / expect_track_name: optional
+    """
+    result = _deps(ctx).service.create_arrangement_midi_clip(
+        track_index, start_time, length, notes, name, allow_overlap,
+        expect_track_name)
+    return presenters.create_arrangement_midi_clip(result)
+
+
+@tool
 def get_rack_chains(ctx: Context, track_index: int, device_index: int,
                     track_type: str = "regular") -> str:
     """

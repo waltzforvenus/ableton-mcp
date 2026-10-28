@@ -1,0 +1,56 @@
+{
+  "cases": [
+    {
+      "args": {
+        "path": "/Users/x/Audio/take.wav",
+        "start_time": 64.0,
+        "track_index": 3
+      },
+      "expect": "Placed 'take' on 'VOCALS' at beats 64.0-80.0 (arrangement clip 2, file /Users/x/Audio/take.wav, warping off)",
+      "name": "success",
+      "wire": [
+        {
+          "command": "create_arrangement_audio_clip",
+          "params": {
+            "allow_overlap": false,
+            "path": "/Users/x/Audio/take.wav",
+            "start_time": 64.0,
+            "track_index": 3
+          },
+          "response": {
+            "clip_index": 2,
+            "clip_name": "take",
+            "cropped_or_replaced": [],
+            "end_time": 80.0,
+            "file_path": "/Users/x/Audio/take.wav",
+            "start_time": 64.0,
+            "track_index": 3,
+            "track_name": "VOCALS",
+            "warping": false
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "path": "/Users/x/Audio/take.wav",
+        "start_time": 64.0,
+        "track_index": 3
+      },
+      "expect": "Error placing the audio clip: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "create_arrangement_audio_clip",
+          "params": {
+            "allow_overlap": false,
+            "path": "/Users/x/Audio/take.wav",
+            "start_time": 64.0,
+            "track_index": 3
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

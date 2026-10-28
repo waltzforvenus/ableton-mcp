@@ -406,6 +406,56 @@ def set_device_parameters(result: Dict[str, Any]) -> str:
 
 
 get_rack_chains = as_json
+get_device_sidechain = as_json
+
+
+def insert_device(result: Dict[str, Any]) -> str:
+    chain = ", ".join(f"{i} {n}" for i, n in enumerate(result.get("devices_after") or []))
+    return (f"Inserted '{result.get('device_name')}' at position "
+            f"{result.get('device_index')} on '{result.get('track_name')}'. "
+            f"Devices now: {chain}")
+
+
+def move_device(result: Dict[str, Any]) -> str:
+    chain = ", ".join(f"{i} {n}" for i, n in enumerate(result.get("devices_after") or []))
+    where = ("" if result.get("from_track") == result.get("to_track")
+             else f" from '{result.get('from_track')}'")
+    return (f"Moved '{result.get('device_name')}'{where} to position "
+            f"{result.get('to_index')} on '{result.get('to_track')}'. "
+            f"Devices now: {chain}")
+
+
+def set_device_sidechain(result: Dict[str, Any]) -> str:
+    switch = ""
+    if result.get("enable_parameter"):
+        switch = (f"; {result.get('enable_parameter')} "
+                  f"{'on' if result.get('enabled') else 'off'}")
+    channel = f" ({result.get('channel')})" if result.get("channel") else ""
+    return (f"Sidechain of '{result.get('device_name')}' on "
+            f"'{result.get('track_name')}' now reads {result.get('source')}"
+            f"{channel}{switch}")
+
+
+def create_arrangement_audio_clip(result: Dict[str, Any]) -> str:
+    text = (f"Placed '{result.get('clip_name')}' on '{result.get('track_name')}' "
+            f"at beats {result.get('start_time')}-{result.get('end_time')} "
+            f"(arrangement clip {result.get('clip_index')}, file "
+            f"{result.get('file_path')}, warping "
+            f"{'on' if result.get('warping') else 'off'})")
+    replaced = result.get("cropped_or_replaced") or []
+    if replaced:
+        text += f". Live cropped or replaced: {replaced}"
+    return text
+
+
+def create_arrangement_midi_clip(result: Dict[str, Any]) -> str:
+    text = (f"Created MIDI clip '{result.get('clip_name')}' on "
+            f"'{result.get('track_name')}' at beats {result.get('start_time')}-"
+            f"{result.get('end_time')} (arrangement clip {result.get('clip_index')})")
+    if result.get("notes_added") is not None:
+        text += (f" with {result.get('notes_added')} notes "
+                 f"({result.get('clip_note_count')} in the clip)")
+    return text
 analyze_audio = as_json
 verify_audio = as_json
 export_audio = as_json
@@ -1125,6 +1175,12 @@ ERROR_PHRASES: Dict[str, str] = {
     "load_devices": "loading devices",
     "load_device_from_path": "loading the preset file",
     "get_rack_chains": "reading rack chains",
+    "insert_device": "inserting the device",
+    "move_device": "moving the device",
+    "get_device_sidechain": "reading the sidechain",
+    "set_device_sidechain": "setting the sidechain",
+    "create_arrangement_audio_clip": "placing the audio clip",
+    "create_arrangement_midi_clip": "creating the arrangement MIDI clip",
     "analyze_audio": "analysing audio",
     "verify_audio": "verifying audio",
     "export_audio": "exporting audio",

@@ -1,0 +1,55 @@
+{
+  "cases": [
+    {
+      "args": {
+        "device_name": "EQ Eight",
+        "index": 0,
+        "track_index": 1
+      },
+      "expect": "Inserted 'EQ Eight' at position 0 on 'GTR'. Devices now: 0 EQ Eight, 1 Amp",
+      "name": "success",
+      "wire": [
+        {
+          "command": "insert_device",
+          "params": {
+            "device_name": "EQ Eight",
+            "index": 0,
+            "track_index": 1,
+            "track_type": "regular"
+          },
+          "response": {
+            "device_index": 0,
+            "device_name": "EQ Eight",
+            "devices_after": [
+              "EQ Eight",
+              "Amp"
+            ],
+            "track_index": 1,
+            "track_name": "GTR"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "device_name": "EQ Eight",
+        "index": 0,
+        "track_index": 1
+      },
+      "expect": "Error inserting the device: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "insert_device",
+          "params": {
+            "device_name": "EQ Eight",
+            "index": 0,
+            "track_index": 1,
+            "track_type": "regular"
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}
