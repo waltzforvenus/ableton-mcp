@@ -35,7 +35,7 @@ EXPECTED_COMMAND_ERRORS = (ValueError, IndexError, KeyError)
 
 # Bumped whenever the TCP command surface changes; the MCP server compares
 # this to EXPECTED_REMOTE_SCRIPT_VERSION.
-SCRIPT_VERSION = "1.19.0"
+SCRIPT_VERSION = "1.20.0"
 PROTOCOL_VERSION = 1
 
 # The trim eraser (see _trim_arrangement_clip): a temporary Session clip
@@ -212,8 +212,9 @@ class AbletonMCP(ControlSurface):
         self.server_thread = None
         self.running = False
         
-        # Cache the song reference for easier access
-        self._song = self.song()
+        # No cached Song: self._song re-resolves on every access (see the
+        # property below), so a set opened after this script loaded is the
+        # set every command sees.
         
         # Start the socket server
         self.start_server()
@@ -223,6 +224,35 @@ class AbletonMCP(ControlSurface):
         # Show a message in Ableton
         self.show_message("AbletonMCP: Listening for commands on port " + str(DEFAULT_PORT))
     
+    def _current_song(self):
+        """The CURRENT Live Set's Song, resolved on every access (self._song).
+
+        This used to be cached once in __init__. After the user opened a
+        different set, unscoped get_session_snapshot calls then died with
+        Boost.Python's "Python argument types in None.None(Song) did not
+        match C++ signature: None(TPyHandle<ASong>)" while scoped calls and
+        get_session_info still worked -- the signature of a handle to a
+        Song that is no longer the document. ControlSurface.song() is a
+        cheap accessor that always answers for the open document, so ask it
+        each time. The stored value is only a fallback for a host whose
+        song() returns nothing (the test harness assigns one).
+        """
+        try:
+            song = self.song()
+        except Exception:
+            song = None
+        if song is not None:
+            return song
+        return self.__dict__.get("_song_fallback")
+
+    def _store_song_fallback(self, value):
+        self.__dict__["_song_fallback"] = value
+
+    # A property built from two distinctly named methods: the guardrail that
+    # rejects a method name defined twice in a class (the 2026-08 silent
+    # override) would flag the @property/@setter pair spelling.
+    _song = property(_current_song, _store_song_fallback)
+
     def disconnect(self):
         """Called when Ableton closes or the control surface is removed"""
         self.log_message("AbletonMCP disconnecting...")
@@ -5350,95 +5380,73 @@ class AbletonMCP(ControlSurface):
         """
         try:
             selected = self._snapshot_track_selection(tracks)
-            session = self._get_session_info()
-            # The Set's key and scale (Live 12), None on a Live without the
-            # API. Additive keys, so the schema name stays v3.
-            scale = self._read_song_scale() or {}
-            for key in ("root_note", "scale_name", "scale_mode"):
-                session[key] = scale.get(key)
+            # One failing section must not cost the caller the whole dump:
+            # each top-level section and each track is read in isolation, and
+            # a failure becomes an entry in section_errors (with the
+            # exception's type, which is what pins a Boost.Python signature
+            # mismatch to the member that raised it) instead of an error
+            # response. Additive key, present only when something failed.
+            section_errors = []
+
+            def guarded(section, fn, fallback):
+                try:
+                    return fn()
+                except Exception as e:
+                    section_errors.append({
+                        "section": section,
+                        "error": "%s: %s" % (type(e).__name__, e),
+                    })
+                    self.log_message("Snapshot section %s failed: %s" % (section, e))
+                    return fallback
+
+            def read_session():
+                info = self._get_session_info()
+                # The Set's key and scale (Live 12), None on a Live without
+                # the API. Additive keys, so the schema name stays v3.
+                scale = self._read_song_scale() or {}
+                for key in ("root_note", "scale_name", "scale_mode"):
+                    info[key] = scale.get(key)
+                return info
+
+            session = guarded("session", read_session, {})
             tracks_out = []
-            for track_index, track in enumerate(self._song.tracks):
+            song_tracks = guarded("tracks", lambda: list(self._song.tracks), [])
+            for track_index, track in enumerate(song_tracks):
                 if selected is not None and track_index not in selected:
                     continue
-
-                clip_slots = []
-                for slot_index, slot in enumerate(track.clip_slots):
-                    has_clip = bool(slot.has_clip)
-                    # A Live set has as many slots per track as it has scenes,
-                    # and most of them are empty forever. Dropping them costs
-                    # nothing readable: each surviving entry carries its own
-                    # index and the track carries the total.
-                    if not has_clip and not include_empty_slots:
-                        continue
-                    clip_info = None
-                    if has_clip:
-                        clip_info = self._serialize_session_clip(
-                            slot.clip, include_notes=include_notes,
-                            include_warp_markers=include_warp_markers
-                        )
-                    clip_slots.append({
-                        "index": slot_index,
-                        "has_clip": has_clip,
-                        "clip": clip_info,
-                    })
-
-                devices = []
-                for device_index, device in enumerate(track.devices):
-                    devices.append(
-                        self._serialize_device(
-                            device, device_index, include_params=include_params,
-                            include_rack_chains=include_rack_chains
-                        )
-                    )
-
-                arrangement_clips = []
-                try:
-                    for clip in track.arrangement_clips:
-                        arrangement_clips.append(
-                            self._serialize_arrangement_clip(
-                                clip, include_notes=include_notes,
-                                include_warp_markers=include_warp_markers
-                            )
-                        )
-                except Exception as e:
-                    self.log_message(
-                        "arrangement_clips unavailable on track %d: %s"
-                        % (track_index, str(e))
-                    )
-
-                tracks_out.append({
-                    "index": track_index,
-                    "name": track.name,
-                    "is_audio_track": bool(track.has_audio_input),
-                    "is_midi_track": bool(track.has_midi_input),
-                    "mute": bool(track.mute),
-                    "solo": bool(track.solo),
-                    "arm": self._safe_arm(track),
-                    "volume": float(track.mixer_device.volume.value),
-                    "panning": float(track.mixer_device.panning.value),
-                    "sends": self._serialize_sends(track),
-                    # Total slots, so an omitted empty slot is never mistaken
-                    # for a slot index that is out of range.
-                    "clip_slot_count": len(track.clip_slots),
-                    "clip_slots": clip_slots,
-                    "devices": devices,
-                    "arrangement_clips": arrangement_clips,
-                })
+                entry = guarded(
+                    "tracks[%d]" % track_index,
+                    lambda: self._snapshot_track(
+                        track_index, track, include_notes, include_params,
+                        include_warp_markers, include_rack_chains,
+                        include_empty_slots),
+                    None)
+                if entry is None:
+                    try:
+                        name = track.name
+                    except Exception:
+                        name = None
+                    entry = {"index": track_index, "name": name, "error": True}
+                tracks_out.append(entry)
 
             result = {
                 "schema": "ableton_mcp_snapshot_v3",
                 "session": session,
                 "tracks": tracks_out,
-                "scenes": self._serialize_scenes(),
-                "return_tracks": self._serialize_return_tracks(
-                    include_params=include_params,
-                    include_rack_chains=include_rack_chains
-                ),
-                "master_track": self._serialize_master_track(
-                    include_params=include_params,
-                    include_rack_chains=include_rack_chains
-                ),
-                "cue_points": self._serialize_cue_points(),
+                "scenes": guarded("scenes", self._serialize_scenes, []),
+                "return_tracks": guarded(
+                    "return_tracks",
+                    lambda: self._serialize_return_tracks(
+                        include_params=include_params,
+                        include_rack_chains=include_rack_chains),
+                    []),
+                "master_track": guarded(
+                    "master_track",
+                    lambda: self._serialize_master_track(
+                        include_params=include_params,
+                        include_rack_chains=include_rack_chains),
+                    None),
+                "cue_points": guarded("cue_points", self._serialize_cue_points, []),
                 "include_notes": bool(include_notes),
                 "include_params": bool(include_params),
                 "include_warp_markers": bool(include_warp_markers),
@@ -5450,10 +5458,80 @@ class AbletonMCP(ControlSurface):
             # exactly which ones the caller is looking at.
             if selected is not None:
                 result["tracks_selected"] = list(selected)
+            if section_errors:
+                result["section_errors"] = section_errors
             return result
         except Exception as e:
             self.log_message("Error getting session snapshot: " + str(e))
             raise
+
+    def _snapshot_track(self, track_index, track, include_notes,
+                        include_params, include_warp_markers,
+                        include_rack_chains, include_empty_slots):
+        """One song track's snapshot entry (schema v3)."""
+        clip_slots = []
+        for slot_index, slot in enumerate(track.clip_slots):
+            has_clip = bool(slot.has_clip)
+            # A Live set has as many slots per track as it has scenes,
+            # and most of them are empty forever. Dropping them costs
+            # nothing readable: each surviving entry carries its own
+            # index and the track carries the total.
+            if not has_clip and not include_empty_slots:
+                continue
+            clip_info = None
+            if has_clip:
+                clip_info = self._serialize_session_clip(
+                    slot.clip, include_notes=include_notes,
+                    include_warp_markers=include_warp_markers
+                )
+            clip_slots.append({
+                "index": slot_index,
+                "has_clip": has_clip,
+                "clip": clip_info,
+            })
+
+        devices = []
+        for device_index, device in enumerate(track.devices):
+            devices.append(
+                self._serialize_device(
+                    device, device_index, include_params=include_params,
+                    include_rack_chains=include_rack_chains
+                )
+            )
+
+        arrangement_clips = []
+        try:
+            for clip in track.arrangement_clips:
+                arrangement_clips.append(
+                    self._serialize_arrangement_clip(
+                        clip, include_notes=include_notes,
+                        include_warp_markers=include_warp_markers
+                    )
+                )
+        except Exception as e:
+            self.log_message(
+                "arrangement_clips unavailable on track %d: %s"
+                % (track_index, str(e))
+            )
+
+        return {
+            "index": track_index,
+            "name": track.name,
+            "is_audio_track": bool(track.has_audio_input),
+            "is_midi_track": bool(track.has_midi_input),
+            "mute": bool(track.mute),
+            "solo": bool(track.solo),
+            "arm": self._safe_arm(track),
+            "volume": float(track.mixer_device.volume.value),
+            "panning": float(track.mixer_device.panning.value),
+            "sends": self._serialize_sends(track),
+            # Total slots, so an omitted empty slot is never mistaken
+            # for a slot index that is out of range.
+            "clip_slot_count": len(track.clip_slots),
+            "clip_slots": clip_slots,
+            "devices": devices,
+            "arrangement_clips": arrangement_clips,
+        }
 
     def get_browser_tree(self, category_type="all"):
         """
