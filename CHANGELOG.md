@@ -260,6 +260,14 @@ counts, is `docs/IMPROVEMENTS.md`.
   Tool surface 57 → 61; goldens: four new files, and
   get_remote_script_info.json / set_track_volume.json re-recorded for the
   version string only.
+- `tests/test_no_private_names.py`: a guardrail that scans every tracked
+  file for private project details (song titles, collaborator names, track
+  names from real sets, personal paths). The denylist itself is never
+  committed: it is read from `$ABLETON_MCP_PRIVATE_DENYLIST` or the
+  gitignored `tests/.private-names.txt`, and the scan skips where neither
+  exists (CI). Failures name the file and line, never the matched entry.
+  Example names in docs and goldens were replaced with generic ones.
+
 - `scripts/push_notes.py`: a standard-library-only CLI that pushes MIDI
   notes from JSON files — a note list, or a manifest of files → track/clip
   targets — straight to the Remote Script socket, in chunks of at most 110

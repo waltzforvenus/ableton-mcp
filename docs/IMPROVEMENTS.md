@@ -1,7 +1,7 @@
 # Improvement backlog
 
 Derived from a four-day production session (2026-08-25 to 08-28) in which this fork drove a
-complete shoegaze track: arrangement, drum programming, mixing, and the vocal and bass rigs.
+complete track: arrangement, drum programming, mixing, and the vocal and bass rigs.
 Eight agents mined the session transcript for friction, so every item below is grounded in
 something that actually cost time or caused a bug, with measured counts where they exist.
 A skeptic pass then checked each proposal against the real Live Object Model and this codebase.
@@ -165,7 +165,7 @@ the version pair, the bundled script, the README table and `tests/data/tool_name
 - Undo batching — probe before building. begin_undo_step/end_undo_step are documented but never called by this fork, they take NO label argument (the proposal's 'labelled by command name' is not possible), whether they merge LOM writes into one Live undo entry on 12.4.3 must be verified in Live rather than against the fake, and begin_batch/end_batch as separate wire commands leaves an undo step open across ticks — this user both clicked the drums mid-edit and quit Live mid-edit, so it needs a timeout. Medium effort minimum, not small: it modifies _process_command.
 - Precision warp-marker writes (Clip.clear_all_warp_markers / add_warp_marker / move_warp_marker / remove_warp_marker) — unverified on this build, and the six-stems incident is already solved by the shipped set_clip_warp turning warping off, with none of the .asd donor map's ~1.8% error. This is a tier-2 alignment feature, not a rescue. If the members do not resolve, add them to the dead-end registry instead.
 - place_notes_in_arrangement — largely superseded once arrangement note writes and batched stamps land; the residual win is just the 102 create_clip/delete_clip round-trips. Critically, do NOT implement borrow-and-restore: a borrowed slot's audio clip, warp markers, envelopes, launch settings, colour and name cannot be faithfully restored, so it would quietly lose data. Refuse when no slot is free and point at create_scene.
-- track: Union[int, str] across all ~40 tools — same protection as the expect_track_name guard for far more cost (~40 changed JSON schemas the model reads, ~40 goldens, and a numeric-string ambiguity rule). Two Elizabeth vocal tracks existed in this session and Live auto-names duplicates, so 'errors on ambiguity' will fire often. Do the guard first, then add names only to the tools that carry a batch.
+- track: Union[int, str] across all ~40 tools — same protection as the expect_track_name guard for far more cost (~40 changed JSON schemas the model reads, ~40 goldens, and a numeric-string ambiguity rule). Two lead-vocal tracks with the same name existed in this session and Live auto-names duplicates, so 'errors on ambiguity' will fire often. Do the guard first, then add names only to the tools that carry a batch.
 
 ## Confirmed dead ends
 
@@ -186,7 +186,7 @@ Verified inert on real Live 12.4.3 and shipped inert through scripts 1.9.0-1.11.
 
 ### Creating group tracks
 
-No LOM function creates one and Track.group_track is read-only. The GUITARS / BASS / ELIZABETH buses built with set_track_routing are the only path, and they are also why routing survived every index shift in the session.
+No LOM function creates one and Track.group_track is read-only. The GUITARS / BASS / VOCALS buses built with set_track_routing are the only path, and they are also why routing survived every index shift in the session.
 
 ### Render, export, and save_set on 12.4.3
 

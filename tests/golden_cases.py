@@ -1290,7 +1290,7 @@ BASE_CASES = [
           {"track_index": 0, "start_times": [64.0, 96.0]}, [
         _ok("delete_arrangement_clip",
             {"track_index": 0, "start_times": [64.0, 96.0]},
-            {"track_index": 0, "track_name": "ELIZABETH", "success": True,
+            {"track_index": 0, "track_name": "VOCALS", "success": True,
              "requested_count": 2, "deleted_count": 2, "failed_count": 0,
              "arrangement_clip_count": 4,
              "deletions": [
