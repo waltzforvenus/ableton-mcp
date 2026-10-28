@@ -66,6 +66,10 @@ MAX_STAMP_PLACEMENTS = 128
 # what such a plugin sounds like. See _get_plugin_presets / _set_plugin_preset.
 PLUGIN_DEVICE_CLASS_NAMES = ("PluginDevice", "AuPluginDevice")
 
+# Song.root_note is an int 0-11 with 0 = C; these are the names the replies
+# use for it (sharps, as Live's own key chooser spells them).
+NOTE_NAMES = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
+
 # Wire-command dispatch table: every command _process_command accepts, in one
 # place. Each row is
 #
@@ -106,6 +110,7 @@ COMMANDS = {
     "get_arrangement_clips":      ("_get_arrangement_clips",      False, None, True),
     "get_clip_notes":             ("_get_clip_notes",             False, None, True),
     "get_session_snapshot":       ("_get_session_snapshot",       False, None, True),
+    "get_song_scale":             ("_get_song_scale",             False, None, True),
     "get_browser_item":           ("_get_browser_item",           False, None, False),
     "get_browser_tree":           ("get_browser_tree",            False, None, True),
     "get_browser_items_at_path":  ("get_browser_items_at_path",   False, None, True),
@@ -121,6 +126,7 @@ COMMANDS = {
     "set_clip_name":              ("_set_clip_name",              True,  None, False),
     "set_arrangement_clip_name":  ("_set_arrangement_clip_name",  True,  None, True),
     "set_tempo":                  ("_set_tempo",                  True,  None, False),
+    "set_song_scale":             ("_set_song_scale",             True,  None, True),
     "fire_clip":                  ("_fire_clip",                  True,  None, False),
     "stop_clip":                  ("_stop_clip",                  True,  None, False),
     "delete_clip":                ("_delete_clip",                True,  None, True),
@@ -2064,6 +2070,135 @@ class AbletonMCP(ControlSurface):
             return result
         except Exception as e:
             self.log_message("Error setting tempo: " + str(e))
+            raise
+
+    def _read_song_scale(self):
+        """The song-wide key and scale, or None on a Live without them.
+
+        Live 12 made key and scale a property of the Set (Song.root_note,
+        Song.scale_name, the Scale Mode toggle Song.scale_mode, and the
+        read-only Song.scale_intervals). Each is probed separately rather
+        than inferred from a version number: root_note and scale_name are
+        the core, and a build that has those but not scale_mode or
+        scale_intervals reports None / omits them instead of failing the
+        whole read.
+        """
+        song = self._song
+        if not (hasattr(song, "root_note") and hasattr(song, "scale_name")):
+            return None
+        root = int(song.root_note)
+        state = {
+            "root_note": root,
+            "root_name": NOTE_NAMES[root % 12],
+            "scale_name": str(song.scale_name),
+            "scale_mode": (bool(song.scale_mode)
+                           if hasattr(song, "scale_mode") else None),
+        }
+        intervals = self._safe_attr(song, "scale_intervals", list, None)
+        if intervals is not None:
+            state["scale_intervals"] = [int(i) for i in intervals]
+        return state
+
+    def _require_song_scale(self):
+        state = self._read_song_scale()
+        if state is None:
+            raise Exception(
+                "This Live version does not expose the song's key and scale "
+                "through its API (Song.root_note / Song.scale_name); that "
+                "needs Ableton Live 12. Nothing was read or changed.")
+        return state
+
+    def _get_song_scale(self):
+        """Read the Set's key and scale (Live 12)."""
+        try:
+            return self._require_song_scale()
+        except Exception as e:
+            self.log_message("Error getting song scale: " + str(e))
+            raise
+
+    def _set_song_scale(self, root_note=None, scale_name=None, scale_mode=None):
+        """Set any of the Set's root note, scale name and Scale Mode, then
+        read all of it back.
+
+        Presence-driven: only what was given is written. Everything is
+        validated before the first write, and scale_name — the one value
+        Live may reject, because there is no list of valid names in the
+        API to check it against — is written first, so a rejection leaves
+        the root and Scale Mode untouched. Live's acceptance of a name is
+        judged by reading it back (`verified`, compared ignoring case and
+        surrounding space), never assumed from the write returning.
+        """
+        try:
+            if root_note is None and scale_name is None and scale_mode is None:
+                raise ValueError(
+                    "Give at least one of root_note, scale_name or "
+                    "scale_mode; nothing was changed.")
+            previous = self._require_song_scale()
+            song = self._song
+
+            requested = {}
+            if root_note is not None:
+                if isinstance(root_note, bool) or not isinstance(root_note, int):
+                    raise ValueError(
+                        "root_note must be an integer 0-11 (0 = C); got %r. "
+                        "Nothing was changed." % (root_note,))
+                if root_note < 0 or root_note > 11:
+                    raise ValueError(
+                        "root_note must be 0-11 (0 = C, 11 = B); got %d. "
+                        "Nothing was changed." % root_note)
+                requested["root_note"] = root_note
+                requested["root_name"] = NOTE_NAMES[root_note]
+            if scale_name is not None:
+                name = str(scale_name).strip()
+                if not name:
+                    raise ValueError(
+                        "scale_name must not be empty; nothing was changed.")
+                requested["scale_name"] = name
+            if scale_mode is not None:
+                if not hasattr(song, "scale_mode"):
+                    raise Exception(
+                        "This Live version exposes the song's key and scale "
+                        "but not the Scale Mode toggle (Song.scale_mode); "
+                        "nothing was changed.")
+                requested["scale_mode"] = bool(scale_mode)
+
+            if "scale_name" in requested:
+                try:
+                    song.scale_name = requested["scale_name"]
+                except Exception as e:
+                    raise Exception(
+                        "Live rejected scale_name '%s' (%s); nothing was "
+                        "changed. Use a name exactly as Live's Scale chooser "
+                        "shows it, e.g. 'Major', 'Minor', 'Dorian'."
+                        % (requested["scale_name"], e))
+            if "root_note" in requested:
+                song.root_note = requested["root_note"]
+            if "scale_mode" in requested:
+                song.scale_mode = requested["scale_mode"]
+
+            current = self._require_song_scale()
+            mismatched = []
+            if ("root_note" in requested
+                    and current["root_note"] != requested["root_note"]):
+                mismatched.append("root_note")
+            if ("scale_name" in requested
+                    and current["scale_name"].strip().lower()
+                    != requested["scale_name"].lower()):
+                mismatched.append("scale_name")
+            if ("scale_mode" in requested
+                    and current["scale_mode"] != requested["scale_mode"]):
+                mismatched.append("scale_mode")
+
+            result = dict(current)
+            result["previous"] = dict(
+                (k, previous[k]) for k in
+                ("root_note", "root_name", "scale_name", "scale_mode"))
+            result["requested"] = requested
+            result["verified"] = not mismatched
+            result["mismatched"] = mismatched
+            return result
+        except Exception as e:
+            self.log_message("Error setting song scale: " + str(e))
             raise
     
     def _fire_clip(self, track_index=0, clip_index=0, expect_track_name=None):
@@ -4821,6 +4956,11 @@ class AbletonMCP(ControlSurface):
         try:
             selected = self._snapshot_track_selection(tracks)
             session = self._get_session_info()
+            # The Set's key and scale (Live 12), None on a Live without the
+            # API. Additive keys, so the schema name stays v3.
+            scale = self._read_song_scale() or {}
+            for key in ("root_note", "scale_name", "scale_mode"):
+                session[key] = scale.get(key)
             tracks_out = []
             for track_index, track in enumerate(self._song.tracks):
                 if selected is not None and track_index not in selected:

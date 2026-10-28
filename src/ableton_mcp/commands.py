@@ -80,6 +80,8 @@ COMMANDS: dict[str, CommandSpec] = {
     # markers and rack chains unconditionally — the same call returns a
     # materially different payload, which is the second half of the floor.
     "get_session_snapshot": CommandSpec(gated=True, min_script_version="1.15.0"),
+    # Live 12's song key/scale; brand new, so no floor (see get_plugin_presets).
+    "get_song_scale": CommandSpec(gated=True),
     "get_browser_tree": CommandSpec(),  # LEGACY floor — gate is a no-op
     "get_browser_items_at_path": CommandSpec(),  # LEGACY floor — gate is a no-op
     # ── State-modifying commands (15 s default socket timeout) ───────────
@@ -116,6 +118,7 @@ COMMANDS: dict[str, CommandSpec] = {
     "set_clip_name": CommandSpec(modifying=True),  # LEGACY floor — gate is a no-op
     "set_arrangement_clip_name": CommandSpec(modifying=True, gated=True),
     "set_tempo": CommandSpec(modifying=True),  # LEGACY floor — gate is a no-op
+    "set_song_scale": CommandSpec(modifying=True, gated=True),
     "fire_clip": CommandSpec(modifying=True),  # LEGACY floor — gate is a no-op
     "stop_clip": CommandSpec(modifying=True),  # LEGACY floor — gate is a no-op
     "delete_clip": CommandSpec(modifying=True, gated=True),

@@ -257,3 +257,43 @@ def test_refusal_wording_comes_from_the_presenter(fake_conn):
     # phrase, so the presenter's sentence is what sits inside it.
     assert presenters.alias_conflict("path", "/tmp/a.wav",
                                      "file_path", "/tmp/b.wav") in out
+
+
+# --------------------------------------------------------------------------
+# set_song_scale: root_note as Live's 0-11 or as a note name
+# --------------------------------------------------------------------------
+# Another argument with two natural spellings — a musician's "F#" and the
+# LOM's 6 — coerced at the boundary so the wire only ever carries 0-11.
+
+@pytest.mark.parametrize("given,expected", [
+    (0, 0), (11, 11), ("7", 7), (" 3 ", 3),
+    ("C", 0), ("c", 0), ("C#", 1), ("c#", 1), ("Db", 1), ("db", 1),
+    ("F#", 6), ("Gb", 6), ("Bb", 10), ("bb", 10), ("b", 11), ("A#", 10),
+    ("B#", 0), ("Cb", 11), ("E#", 5), ("Fb", 4), ("C##", 2), ("Ebb", 2),
+    ("F♯", 6), ("B♭", 10),
+])
+def test_root_note_reaches_the_wire_as_0_to_11(fake_conn, given, expected):
+    conn = fake_conn(response={"verified": True})
+    out = tools.set_song_scale(conn.ctx, root_note=given)
+    assert not out.startswith("Error"), out
+    assert _params(conn, "set_song_scale") == {"root_note": expected}
+
+
+@pytest.mark.parametrize("given", [12, -1, "12", "H", "C#m", "C###", "",
+                                   "do", True, 2.5])
+def test_a_root_note_that_is_no_key_is_refused_before_the_wire(fake_conn,
+                                                               given):
+    conn = fake_conn()
+    out = tools.set_song_scale(conn.ctx, root_note=given, scale_name="Major")
+    assert conn.sent == []
+    assert out.startswith("Error setting song scale: root_note=")
+    assert "nothing was sent to Ableton" in out
+
+
+def test_set_song_scale_sends_only_what_was_given(fake_conn):
+    conn = fake_conn(response={"verified": True})
+    tools.set_song_scale(conn.ctx, scale_mode=False)
+    assert _params(conn, "set_song_scale") == {"scale_mode": False}
+    conn = fake_conn(response={"verified": True})
+    tools.set_song_scale(conn.ctx, scale_name="  Minor ")
+    assert _params(conn, "set_song_scale") == {"scale_name": "Minor"}

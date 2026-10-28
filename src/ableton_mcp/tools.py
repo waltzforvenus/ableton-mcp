@@ -99,6 +99,42 @@ def _one_value(canonical: str, primary: Any, **aliases: Any) -> Any:
     return value
 
 
+# Semitones above C for each note letter, and what each accidental adds.
+_NOTE_LETTERS = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
+_ACCIDENTALS = {"#": 1, "\u266f": 1, "b": -1, "\u266d": -1}
+
+
+def _root_note_number(value: Any) -> Optional[int]:
+    """Coerce set_song_scale's root_note to Live's 0-11 (0 = C), or None.
+
+    Accepted: an int 0-11, its digit string, or a note name — a letter A-G,
+    case-insensitively, followed by up to two sharps ("#", "♯") or flats
+    ("b", "♭"). Enharmonics wrap ("B#" is C, "Cb" is B). Anything else is
+    refused here, before the wire, with the accepted forms named — a
+    musician's "F#" and a programmer's 6 are both right, and a typo must not
+    become a key change.
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        raise ValueError(presenters.invalid_root_note(value))
+    if isinstance(value, int):
+        if 0 <= value <= 11:
+            return value
+        raise ValueError(presenters.invalid_root_note(value))
+    if isinstance(value, str):
+        text = value.strip()
+        if text.isdigit():
+            return _root_note_number(int(text))
+        if text and text[0].upper() in _NOTE_LETTERS and len(text) <= 3:
+            accidentals = text[1:]
+            if all(ch in _ACCIDENTALS for ch in accidentals):
+                semitone = (_NOTE_LETTERS[text[0].upper()]
+                            + sum(_ACCIDENTALS[ch] for ch in accidentals))
+                return semitone % 12
+    raise ValueError(presenters.invalid_root_note(value))
+
+
 # Core Tool endpoints
 
 @tool
@@ -1088,6 +1124,64 @@ def set_tempo(ctx: Context, tempo: float) -> str:
     """
     _deps(ctx).service.set_tempo(tempo)
     return presenters.set_tempo(tempo)
+
+
+@tool
+def get_song_scale(ctx: Context) -> str:
+    """
+    Read the Live Set's key and scale (Live 12+): the root note, the scale
+    name, whether Scale Mode is on, and the scale's intervals.
+
+    Call this before writing a melody, bassline or chords, so the notes fit
+    the key the Set is already in instead of one you guessed — and before
+    set_song_scale, to see the exact spelling Live uses for scale names.
+
+    The reply carries root_note (0-11, 0 = C), root_name ("C", "C#", ...),
+    scale_name (e.g. "Major", "Minor", "Dorian"), scale_mode (the Scale Mode
+    toggle that folds Live's MIDI editor to the scale; null if this build
+    does not expose it) and scale_intervals (semitones above the root, e.g.
+    [0, 2, 4, 5, 7, 9, 11] for Major) when Live reports them. On a Live
+    older than 12 it refuses rather than guessing.
+    """
+    result = _deps(ctx).service.get_song_scale()
+    return presenters.get_song_scale(result)
+
+
+@tool
+def set_song_scale(ctx: Context, root_note: Optional[Union[int, str]] = None,
+                   scale_name: Optional[str] = None,
+                   scale_mode: Optional[bool] = None) -> str:
+    """
+    Set the Live Set's key and scale (Live 12+) — any of root note, scale
+    name and Scale Mode; what you leave out is left alone.
+
+    Use it when the user names a key ("put this in D Dorian") or before
+    generating parts, so Live's scale-aware MIDI tools, Scale Mode
+    highlighting and devices that follow the Set's scale agree with the
+    notes you write. It changes no existing notes.
+
+    The reply says what Live reads back and whether it matched what you
+    asked for (verified). Live's API offers no list of valid scale names,
+    so the name is checked by reading it back: an unverified scale_name
+    usually means Live did not recognise it — use the spelling get_song_scale
+    reports or Live's Scale chooser shows ("Major", "Minor", "Dorian",
+    "Mixolydian", ...).
+
+    Parameters:
+    - root_note: The key's root — 0-11 (0 = C, 11 = B) or a note name: "C",
+      "F#", "Bb", "c#" (case-insensitive, sharps or flats)
+    - scale_name: The scale's name as Live spells it, e.g. "Major", "Minor"
+    - scale_mode: True to turn Live's Scale Mode on, False to turn it off
+    """
+    root = _root_note_number(root_note)
+    if scale_name is not None:
+        scale_name = scale_name.strip()
+        if not scale_name:
+            raise ValueError(presenters.song_scale_empty_name())
+    if root is None and scale_name is None and scale_mode is None:
+        raise ValueError(presenters.song_scale_nothing_to_set())
+    result = _deps(ctx).service.set_song_scale(root, scale_name, scale_mode)
+    return presenters.set_song_scale(result)
 
 
 @tool

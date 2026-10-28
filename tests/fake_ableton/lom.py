@@ -21,6 +21,11 @@ that have only ever executed inside Live can be tested on both sides:
   per-field-hasattr attributes (probability, note_id, ...).
 - ``exclusive_solo`` — ``Song.exclusive_solo`` (Live's Exclusive Solo
   preference) reads True / False, or is absent altogether (None).
+- ``song_scale_api`` / ``song_scale_mode_api`` — Live 12's song-wide key
+  and scale (``Song.root_note`` / ``scale_name`` / ``scale_intervals``, and
+  separately the Scale Mode toggle ``Song.scale_mode``) present or absent;
+  ``unknown_scale_name`` says what a write of a name the fake does not know
+  does ("ignore": returns but reads back unchanged, "raise", "accept").
 
 Arrangement physics follow what was verified on real Live 12.4.3: writing a
 clip's content markers never moves its Arrangement footprint, while
@@ -40,6 +45,15 @@ import wave
 _NOTE_API_GENERATIONS = ("legacy", "both", "extended_only")
 _SAVE_OWNERS = ("song", "application", None)
 _TRANSPORT_LAG_MODES = (False, "once", "always")
+_UNKNOWN_SCALE_NAME_MODES = ("ignore", "raise", "accept")
+
+# A few of Live 12's scales and their intervals — enough for the fake's
+# read-only Song.scale_intervals to follow the selected scale.
+_FAKE_SCALE_INTERVALS = {
+    "Major": (0, 2, 4, 5, 7, 9, 11),
+    "Minor": (0, 2, 3, 5, 7, 8, 10),
+    "Dorian": (0, 2, 3, 5, 7, 9, 10),
+}
 
 
 def _wav_duration_seconds(path):
@@ -62,7 +76,8 @@ class FakeLiveConfig(object):
                  save_owner="song", warp_markers=False,
                  extended_note_fields=False, track_delete_clip_api=True,
                  transport_write_lag=False, device_delete_lands=True,
-                 exclusive_solo=False):
+                 exclusive_solo=False, song_scale_api=True,
+                 song_scale_mode_api=True, unknown_scale_name="ignore"):
         if note_api not in _NOTE_API_GENERATIONS:
             raise ValueError("note_api must be one of %r" % (_NOTE_API_GENERATIONS,))
         if save_owner not in _SAVE_OWNERS:
@@ -97,6 +112,15 @@ class FakeLiveConfig(object):
         # because whether a scripted solo honours the preference is exactly
         # the unverified part the handler reads back instead of assuming.
         self.exclusive_solo = exclusive_solo
+        if unknown_scale_name not in _UNKNOWN_SCALE_NAME_MODES:
+            raise ValueError("unknown_scale_name must be one of %r"
+                             % (_UNKNOWN_SCALE_NAME_MODES,))
+        # Live 12's song key/scale. Which names real Live accepts, and what
+        # it does with one it does not know, is unverified offline — hence
+        # the three modes and the handler's read-back.
+        self.song_scale_api = song_scale_api
+        self.song_scale_mode_api = song_scale_mode_api
+        self.unknown_scale_name = unknown_scale_name
 
 
 # ── Parameters, devices, mixer ───────────────────────────────────────────────
@@ -674,12 +698,71 @@ class FakeSong(object):
         if self.config.exclusive_solo is not None:
             self.exclusive_solo = bool(self.config.exclusive_solo)
         self._count_in_duration = 1
+        # Live 12 song key / scale backing state (see the properties below):
+        # a new Set is C Major with Scale Mode off.
+        self._root_note = 0
+        self._scale_name = "Major"
+        self._scale_mode = False
         self.cue_points = []
         self.scenes = []
         self.view = _FakeSongView()
         if self.config.save_owner == "song":
             self.save_calls = []
             self.save_set = lambda: self.save_calls.append("save_set")
+
+    # -- song key / scale (Live 12) ------------------------------------------
+    # Properties whose getters raise AttributeError when the config says the
+    # build lacks the API: hasattr() is then False, exactly as on an older
+    # Live, which is what the script's probes branch on. Setters are strict
+    # on purpose, so the handler's own validation is what tests exercise.
+
+    def _require_scale_api(self, attr, flag="song_scale_api"):
+        if not getattr(self.config, flag):
+            raise AttributeError("'Song' object has no attribute '%s'" % attr)
+
+    @property
+    def root_note(self):
+        self._require_scale_api("root_note")
+        return self._root_note
+
+    @root_note.setter
+    def root_note(self, value):
+        self._require_scale_api("root_note")
+        if isinstance(value, bool) or not isinstance(value, int) \
+                or not 0 <= value <= 11:
+            raise RuntimeError("Invalid root note %r" % (value,))
+        self._root_note = value
+
+    @property
+    def scale_name(self):
+        self._require_scale_api("scale_name")
+        return self._scale_name
+
+    @scale_name.setter
+    def scale_name(self, value):
+        self._require_scale_api("scale_name")
+        if value not in _FAKE_SCALE_INTERVALS:
+            mode = self.config.unknown_scale_name
+            if mode == "raise":
+                raise RuntimeError("Unknown scale name '%s'" % value)
+            if mode == "ignore":
+                return
+        self._scale_name = value
+
+    @property
+    def scale_intervals(self):
+        self._require_scale_api("scale_intervals")
+        return _FAKE_SCALE_INTERVALS.get(self._scale_name, (0,))
+
+    @property
+    def scale_mode(self):
+        self._require_scale_api("scale_mode", "song_scale_mode_api")
+        return self._scale_mode
+
+    @scale_mode.setter
+    def scale_mode(self, value):
+        self._require_scale_api("scale_mode", "song_scale_mode_api")
+        self._scale_mode = bool(value)
 
     # count_in_duration is a property so the Live 12.3.2 read-only behavior
     # ("property of 'Song' object has no setter") can be emulated faithfully.

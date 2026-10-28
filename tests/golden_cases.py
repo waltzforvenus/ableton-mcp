@@ -1,4 +1,4 @@
-"""Golden-case definitions for all 58 MCP tools (docs/REFACTOR_PLAN.md
+"""Golden-case definitions for all 60 MCP tools (docs/REFACTOR_PLAN.md
 section 5 Level 1, section 6 PR3).
 
 Each case names a tool, the arguments to call it with, and the exact ordered
@@ -761,6 +761,63 @@ BASE_CASES = [
     _case("set_tempo", "success", {"tempo": 98.5}, [
         _ok("set_tempo", {"tempo": 98.5}, {"tempo": 98.5}),
     ]),
+
+    # ── get_song_scale (Live 12) ──────────────────────────────────────────
+    _case("get_song_scale", "success", {}, [
+        _ok("get_song_scale", {},
+            {"root_note": 2, "root_name": "D", "scale_name": "Dorian",
+             "scale_mode": True,
+             "scale_intervals": [0, 2, 3, 5, 7, 9, 10]}),
+    ]),
+    # A script without the command (an install predating it) gets the
+    # installer message from the gate, and nothing touches the wire.
+    _case("get_song_scale", "gated_script_without_it", {}, [],
+          script_info={"script_version": EXPECTED_REMOTE_SCRIPT_VERSION,
+                       "capabilities": ["get_session_info"]}),
+
+    # ── set_song_scale (Live 12) ──────────────────────────────────────────
+    # A note name is coerced to Live's 0-11 at the boundary; only the
+    # fields given go on the wire.
+    _case("set_song_scale", "success_note_name_and_scale",
+          {"root_note": "Bb", "scale_name": " Minor "}, [
+        _ok("set_song_scale", {"root_note": 10, "scale_name": "Minor"},
+            {"root_note": 10, "root_name": "A#", "scale_name": "Minor",
+             "scale_mode": False,
+             "scale_intervals": [0, 2, 3, 5, 7, 8, 10],
+             "previous": {"root_note": 0, "root_name": "C",
+                          "scale_name": "Major", "scale_mode": False},
+             "requested": {"root_note": 10, "root_name": "A#",
+                           "scale_name": "Minor"},
+             "verified": True, "mismatched": []}),
+    ]),
+    _case("set_song_scale", "success_scale_mode_only_no_intervals",
+          {"scale_mode": True}, [
+        _ok("set_song_scale", {"scale_mode": True},
+            {"root_note": 7, "root_name": "G", "scale_name": "Mixolydian",
+             "scale_mode": True,
+             "previous": {"root_note": 7, "root_name": "G",
+                          "scale_name": "Mixolydian", "scale_mode": False},
+             "requested": {"scale_mode": True},
+             "verified": True, "mismatched": []}),
+    ]),
+    # Live has no list of scale names to validate against: a name it does
+    # not know shows up only as an unverified read-back.
+    _case("set_song_scale", "scale_name_not_verified",
+          {"root_note": 2, "scale_name": "dorian"}, [
+        _ok("set_song_scale", {"root_note": 2, "scale_name": "dorian"},
+            {"root_note": 2, "root_name": "D", "scale_name": "Major",
+             "scale_mode": None,
+             "previous": {"root_note": 0, "root_name": "C",
+                          "scale_name": "Major", "scale_mode": None},
+             "requested": {"root_note": 2, "root_name": "D",
+                           "scale_name": "dorian"},
+             "verified": False, "mismatched": ["scale_name"]}),
+    ]),
+    # Boundary refusals: nothing reaches the wire.
+    _case("set_song_scale", "invalid_root_note", {"root_note": "H"}, []),
+    _case("set_song_scale", "root_note_out_of_range", {"root_note": 12}, []),
+    _case("set_song_scale", "nothing_to_set", {}, []),
+    _case("set_song_scale", "empty_scale_name", {"scale_name": "  "}, []),
 
     # ── load_instrument_or_effect (sends load_browser_item) ──────────────
     _case("load_instrument_or_effect", "success_new_devices",

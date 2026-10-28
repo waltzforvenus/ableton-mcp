@@ -185,7 +185,7 @@ On top of that:
 
 ### Added tools
 
-Upstream exposes 37 MCP tools; this fork exposes 58. The mixer, device control
+Upstream exposes 37 MCP tools; this fork exposes 60. The mixer, device control
 and routing tools are new here:
 
 | Area | Tools |
@@ -195,7 +195,7 @@ and routing tools are new here:
 | **Sends & buses** | `create_return_track`, `set_track_send` — one shared reverb instead of a copy per track |
 | **Routing** | `set_track_routing`, `get_track_routing` |
 | **Clips & tracks** | `set_clip_gain`, `set_clip_warp`, `duplicate_track`, `delete_track` |
-| **Transport & session** | `back_to_arrangement`, `set_count_in`, `save_set` |
+| **Transport & session** | `back_to_arrangement`, `set_count_in`, `save_set`, `get_song_scale` / `set_song_scale` (Live 12's song-wide key and scale) |
 
 ### Security fix
 
@@ -380,7 +380,7 @@ A few notes that apply to every install method:
 
 ### Tool reference
 
-All 58 tools the server exposes. Tools marked **†** are added by this fork and
+All 60 tools the server exposes. Tools marked **†** are added by this fork and
 are not present upstream.
 
 #### Session & info
@@ -392,6 +392,8 @@ are not present upstream.
 | `get_session_snapshot` | `include_notes`?, `include_params`?, `include_warp_markers`?, `include_rack_chains`?, `include_empty_slots`?, `tracks`? | Read project state in one call — scope it with `tracks` (names or indices); the three detail flags default off |
 | `get_remote_script_info` | — | Report Ableton Remote Script version and capabilities (handshake) |
 | `set_tempo` | `tempo` | Set the tempo of the Ableton session |
+| `get_song_scale` † | — | Read the Set's key and scale (Live 12+): root note, scale name, Scale Mode and intervals |
+| `set_song_scale` † | `root_note`?, `scale_name`?, `scale_mode`? | Set the Set's root (0-11 or a note name like `"F#"` / `"Bb"`), scale name and Scale Mode (Live 12+); reports what Live reads back and whether it matched |
 | `save_set` † | — | Save the open Live Set, if this Live build exposes a save through its API |
 
 #### Tracks

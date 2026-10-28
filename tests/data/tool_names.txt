@@ -25,6 +25,7 @@ get_plugin_presets
 get_remote_script_info
 get_session_info
 get_session_snapshot
+get_song_scale
 get_track_info
 get_track_routing
 jump_to_locator
@@ -41,6 +42,7 @@ set_count_in
 set_device_parameter
 set_device_parameters
 set_plugin_preset
+set_song_scale
 set_tempo
 set_track_arm
 set_track_monitoring
