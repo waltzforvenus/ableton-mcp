@@ -376,6 +376,7 @@ def test_the_matrix_is_not_vacuous():
         "duplicate_track",
         "edit_clip_warp_markers",
         "get_clip_warp_markers",
+        "get_live_status",
         "get_plugin_presets",
         "get_song_scale",
         "jump_to_locator",

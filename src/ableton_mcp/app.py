@@ -20,7 +20,9 @@ from mcp.server.fastmcp import FastMCP
 from . import tools
 from .connection import AbletonClient
 from .handshake import ScriptHandshake
+from .live_lock import DEFAULT_LOCK_FILE, LiveLock
 from .services import AbletonService
+from .ui_macos import MacUI
 
 logger = logging.getLogger("AbletonMCPServer")
 
@@ -31,12 +33,22 @@ class Settings:
 
     host: str = "localhost"
     port: int = 9877
+    # The shared Live lock (live_lock.py). ABLETON_MCP_REQUIRE_LOCK defaults
+    # ON: a state-changing tool is refused until this server holds the lock
+    # (acquire_live_lock). Single-user setups opt out with
+    # ABLETON_MCP_REQUIRE_LOCK=0 — a lock someone ELSE holds is still
+    # honoured then; only the "nobody holds it" case stops refusing.
+    lock_file: str = DEFAULT_LOCK_FILE
+    require_lock: bool = True
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] = os.environ) -> "Settings":
         return cls(
             host=env.get("ABLETON_HOST", "localhost"),
             port=int(env.get("ABLETON_PORT", "9877")),
+            lock_file=env.get("ABLETON_MCP_LOCK_FILE") or DEFAULT_LOCK_FILE,
+            require_lock=env.get("ABLETON_MCP_REQUIRE_LOCK", "1").strip().lower()
+            not in ("0", "false", "no", "off"),
         )
 
 
@@ -66,7 +78,8 @@ def build_deps(settings: Settings) -> Deps:
     handshake = ScriptHandshake()
     client = AbletonClient(settings.host, settings.port,
                            on_reconnect=handshake.invalidate)
-    service = AbletonService(client, handshake)
+    lock = LiveLock(settings.lock_file, require=settings.require_lock)
+    service = AbletonService(client, handshake, lock=lock, ui=MacUI())
     return Deps(client=client, handshake=handshake, service=service)
 
 

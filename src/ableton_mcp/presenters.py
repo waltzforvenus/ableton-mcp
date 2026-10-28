@@ -31,6 +31,76 @@ def as_json(result: Dict[str, Any]) -> str:
 get_session_info = as_json
 get_remote_script_info = as_json
 get_track_info = as_json
+get_live_status = as_json
+
+
+def _holder_text(lock: Any) -> str:
+    if not isinstance(lock, dict):
+        return "someone"
+    text = f"'{lock.get('holder')}'"
+    if lock.get("task"):
+        text += f" (task: {lock.get('task')})"
+    if lock.get("acquired"):
+        text += f", since {lock.get('acquired')}"
+    return text
+
+
+def acquire_live_lock(result: Dict[str, Any]) -> str:
+    lock = result.get("lock") or {}
+    if result.get("adopted"):
+        return (f"You already held the Live lock as '{lock.get('holder')}'; this "
+                f"server now writes under it. Release it with release_live_lock "
+                f"after saving.")
+    return (f"Acquired the Live lock as '{lock.get('holder')}'. It never "
+            f"expires: save, then release it with release_live_lock.")
+
+
+def release_live_lock(result: Dict[str, Any]) -> str:
+    if not result.get("released"):
+        return "No Live lock was held; nothing to release."
+    return (f"Released the Live lock; the set is saved at "
+            f"{result.get('saved_set')}.")
+
+
+_UNSAVED_PROBLEMS = {
+    "different_set": "Live's window does not show that set — a different set is open, or the path is wrong",
+    "unsaved_marker": "Live's title still shows unsaved changes (*)",
+    "dialog_open": "a Save or Export dialog is open in Live",
+}
+
+
+def lock_refusal(e: Any) -> str:
+    """The wording of every ``LockError`` (live_lock.py)."""
+    d = getattr(e, "details", {}) or {}
+    reason = getattr(e, "reason", str(e))
+    command = d.get("command")
+    doing = f" ({command} was not sent; nothing changed)" if command else ""
+    if reason == "held_by_other":
+        return (f"Refused: Live is locked by {_holder_text(d.get('lock'))}. Do not "
+                f"touch Live until they release it — ask them or the user; the lock "
+                f"never expires and is not yours to take over{doing}.")
+    if reason == "not_held":
+        return (f"Refused: this server does not hold the Live lock. Call "
+                f"get_live_status to check nobody else is working in Live, then "
+                f"acquire_live_lock(holder=...) before editing{doing}. (Single-user "
+                f"setups can set ABLETON_MCP_REQUIRE_LOCK=0.)")
+    if reason == "not_holder":
+        return (f"Refused: the Live lock is held by {_holder_text(d.get('lock'))}, "
+                f"not by you; it stays held.")
+    if reason == "set_missing":
+        return (f"Refused: no saved set at {d.get('set_path')!r}. Save the set and "
+                f"pass the absolute .als path; the lock stays held.")
+    if reason == "set_older_than_edit":
+        return (f"Refused: {d.get('set_path')} is older than your last edit "
+                f"(file {d.get('set_mtime'):.0f}, last edit {d.get('last_edit_ts'):.0f}). "
+                f"Save first; the lock stays held.")
+    if reason == "live_unsaved":
+        problem = _UNSAVED_PROBLEMS.get(d.get("problem"), d.get("problem"))
+        return (f"Refused: {problem}. Live's windows: {d.get('live_windows')}. "
+                f"The lock stays held.")
+    if reason == "disabled":
+        return "The Live lock is not configured in this server process."
+    return f"Refused by the Live lock: {reason}"
 get_clip_notes = as_json
 get_session_snapshot = as_json
 
@@ -865,6 +935,9 @@ ERROR_PHRASES: Dict[str, str] = {
     "get_session_info": "getting session info",
     "get_remote_script_info": "getting remote script info",
     "get_track_info": "getting track info",
+    "get_live_status": "getting Live status",
+    "acquire_live_lock": "acquiring the Live lock",
+    "release_live_lock": "releasing the Live lock",
     "get_clip_notes": "getting clip notes",
     "get_session_snapshot": "getting session snapshot",
     "create_midi_track": "creating MIDI track",

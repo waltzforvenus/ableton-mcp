@@ -191,7 +191,7 @@ available on `main` or in a released package.
 
 ### Added tools
 
-Upstream exposes 37 MCP tools; this fork exposes 64. The mixer, device control
+Upstream exposes 37 MCP tools; this fork exposes 67. The mixer, device control
 and routing tools are new here:
 
 | Area | Tools |
@@ -203,6 +203,7 @@ and routing tools are new here:
 | **Clips & tracks** | `set_clip_gain`, `set_clip_warp`, `duplicate_track`, `delete_track` |
 | **Warp vision** | `analyze_clip_audio` (spectrogram + waveform image with the clip's warp markers, transients and the song grid, plus JSON), `suggest_warp_markers` (dry-run proposals with a before/after image; `apply=True` executes and verifies), `edit_clip_warp_markers` (batch add/move/remove, read back and verified), `get_clip_warp_markers` — needs the optional `analysis` extra for the two audio tools |
 | **Transport & session** | `back_to_arrangement`, `set_count_in`, `save_set`, `get_song_scale` / `set_song_scale` (Live 12's song-wide key and scale) |
+| **Shared-Live safety** | `get_live_status` (one-call preflight: transport/record, soloed/muted/armed tracks, set name and unsaved marker, modal dialogs, user idle, lock holder), `acquire_live_lock` / `release_live_lock` (one editor at a time; release only after a verified save) |
 
 ### Security fix
 
@@ -385,9 +386,32 @@ A few notes that apply to every install method:
 2. Make sure the MCP server is configured in your client
 3. The connection is established automatically when you interact with the assistant
 
+### The Live lock (state-changing tools need it by default)
+
+Live is often shared — several agents, plus the person at the keyboard. Every
+tool that changes Live's state is therefore checked against a shared lock file
+before anything is sent:
+
+- **Held by someone else** → refused, naming the holder and their task.
+- **Held by nobody** → refused until this server calls
+  `acquire_live_lock(holder, task)` — unless the server runs with
+  `ABLETON_MCP_REQUIRE_LOCK=0`, the opt-out for single-user setups (a lock
+  someone else holds is still honoured then).
+- The lock **never expires**. `release_live_lock(holder, set_path)` succeeds
+  only once the saved `.als` is at least as new as the holder's last edit and,
+  on macOS, Live's window shows that set with no unsaved `*` and no Save or
+  Export dialog.
+- `stop_playback` is never refused; reads never need the lock.
+
+The file is plain JSON at `ABLETON_MCP_LOCK_FILE` (default
+`~/.ableton-mcp/live.lock`) with an flock'd `<file>.mutex`, so command-line
+helpers can share it: take the lock there under a name, then call
+`acquire_live_lock` with the same name to adopt it. `get_live_status` shows
+who holds it.
+
 ### Tool reference
 
-All 64 tools the server exposes. Tools marked **†** are added by this fork and
+All 67 tools the server exposes. Tools marked **†** are added by this fork and
 are not present upstream.
 
 #### Session & info
@@ -398,6 +422,9 @@ are not present upstream.
 | `get_track_info` | `track_index` | Get detailed information about a specific track in Ableton |
 | `get_session_snapshot` | `include_notes`?, `include_params`?, `include_warp_markers`?, `include_rack_chains`?, `include_empty_slots`?, `tracks`? | Read project state in one call — scope it with `tracks` (names or indices); the three detail flags default off |
 | `get_remote_script_info` | — | Report Ableton Remote Script version and capabilities (handshake) |
+| `get_live_status` † | — | One-call preflight: reachable, versions, transport/record, soloed/muted/armed tracks, last event time, the Live lock, and (macOS) set name, unsaved marker, modal dialog and user idle time |
+| `acquire_live_lock` † | `holder`, `task`? | Take the shared Live lock (required before state-changing tools unless `ABLETON_MCP_REQUIRE_LOCK=0`); adopts a lock already held under the same name |
+| `release_live_lock` † | `holder`, `set_path` | Release the lock only after a verified save (.als newer than the last edit; no unsaved marker or dialog) |
 | `set_tempo` | `tempo` | Set the tempo of the Ableton session |
 | `get_song_scale` † | — | Read the Set's key and scale (Live 12+): root note, scale name, Scale Mode and intervals |
 | `set_song_scale` † | `root_note`?, `scale_name`?, `scale_mode`? | Set the Set's root (0-11 or a note name like `"F#"` / `"Bb"`), scale name and Scale Mode (Live 12+); reports what Live reads back and whether it matched |

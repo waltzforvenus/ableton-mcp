@@ -38,12 +38,20 @@ class CommandSpec:
     - ``min_script_version``: the gate additionally requires at least this
       script version — capability names alone cannot tell a repaired install
       from a broken one that already advertises the name (plan §4).
+    - ``lock``: how a ``modifying`` command meets the shared Live lock
+      (live_lock.py). ``"write"`` (the default) is checked before sending
+      and stamps ``last_edit_ts`` afterwards; ``"check"`` is checked but
+      does not stamp (save_set — a save stamping itself as an edit would
+      make the save it just did look stale to release); ``"exempt"`` is
+      never refused (stop_playback — stopping sound must always work, lock
+      or no lock). Ignored for read-only rows, which never need the lock.
     """
 
     modifying: bool = False
     timeout: float | None = None
     gated: bool = False
     min_script_version: str | None = None
+    lock: str = "write"
 
 
 # Every command is gated (plan §6 PR10) so a user on an old Remote Script
@@ -60,6 +68,8 @@ COMMANDS: dict[str, CommandSpec] = {
     # it is the probe the gate itself answers from, so it stays ungated.
     "get_script_info": CommandSpec(),
     "get_session_info": CommandSpec(),  # LEGACY floor — gate is a no-op
+    # New in 1.19.0 (the Live-lock preflight); brand new, so no floor.
+    "get_live_status": CommandSpec(gated=True),
     "get_track_info": CommandSpec(),  # LEGACY floor — gate is a no-op
     "get_track_routing": CommandSpec(gated=True),
     # 1.7.0 scripts advertise the device-parameter pair but serve broken
@@ -147,7 +157,7 @@ COMMANDS: dict[str, CommandSpec] = {
     "create_return_track": CommandSpec(modifying=True, gated=True),
     "set_track_arm": CommandSpec(modifying=True, gated=True),
     "set_track_monitoring": CommandSpec(modifying=True, gated=True),
-    "save_set": CommandSpec(modifying=True, gated=True),
+    "save_set": CommandSpec(modifying=True, gated=True, lock="check"),
     "set_track_send": CommandSpec(modifying=True, gated=True),
     "set_count_in": CommandSpec(modifying=True, gated=True),
     "back_to_arrangement": CommandSpec(modifying=True, gated=True),
@@ -158,7 +168,8 @@ COMMANDS: dict[str, CommandSpec] = {
     # edits script-side, so the default modifying budget covers it.
     "edit_clip_warp_markers": CommandSpec(modifying=True, gated=True),
     "start_playback": CommandSpec(modifying=True),  # LEGACY floor — gate is a no-op
-    "stop_playback": CommandSpec(modifying=True),  # LEGACY floor — gate is a no-op
+    # Exempt from the Live lock: whoever holds it, stopping sound must work.
+    "stop_playback": CommandSpec(modifying=True, lock="exempt"),  # LEGACY floor
     # The load_* tools actually send load_browser_item; without a modifying
     # row it got the short read-only socket timeout and appeared to fail
     # while Live was in fact still loading the device. Every historical

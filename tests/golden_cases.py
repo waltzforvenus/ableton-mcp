@@ -1,4 +1,4 @@
-"""Golden-case definitions for all 64 MCP tools (docs/REFACTOR_PLAN.md
+"""Golden-case definitions for all 67 MCP tools (docs/REFACTOR_PLAN.md
 section 5 Level 1, section 6 PR3).
 
 Each case names a tool, the arguments to call it with, and the exact ordered
@@ -137,6 +137,31 @@ BASE_CASES = [
             "devices": [{"index": 0, "name": "Reverb", "class_name": "Reverb"}],
         }),
     ]),
+
+    # ── get_live_status / the Live lock ───────────────────────────────────
+    # The golden runner wires no lock and no UI, so these freeze the
+    # Live half of the status and the "not configured" wording; the lock
+    # itself is covered by tests/test_live_lock.py against real files.
+    _case("get_live_status", "success", {}, [
+        _ok("get_live_status", {}, {
+            "is_playing": False, "record_mode": False, "session_record": False,
+            "tempo": 120.0, "signature_numerator": 4,
+            "signature_denominator": 4, "song_length": 192.0,
+            "current_song_time": 0.0, "last_event_time": 160.0,
+            "exclusive_solo": True, "live_version": "12.4.7",
+            "track_count": 3, "return_track_count": 1,
+            "soloed": [{"index": 1, "name": "BASS", "track_type": "track"}],
+            "muted": [], "armed": [],
+            "selected_track": "BASS"}),
+    ]),
+    _case("get_live_status", "unreachable", {}, [
+        _boom("get_live_status", {},
+              "Could not connect to Ableton. Make sure the Remote Script is running."),
+    ]),
+    _case("acquire_live_lock", "lock_not_configured",
+          {"holder": "session-a", "task": "mix pass"}, []),
+    _case("release_live_lock", "lock_not_configured",
+          {"holder": "session-a", "set_path": "/nonexistent/song.als"}, []),
 
     # ── get_clip_notes (gated) ────────────────────────────────────────────
     _case("get_clip_notes", "success", {"track_index": 0, "clip_index": 2}, [
@@ -1493,6 +1518,12 @@ def _generated_error_cases(base_cases):
         if tool in seen:
             continue
         seen.append(tool)
+        if not case["wire"]:
+            # A tool that never touches the wire (the lock tools without a
+            # lock configured) has no send to fail; its "error" case freezes
+            # that it still answers, rather than being skipped.
+            out.append(_case(tool, "error", case["args"], []))
+            continue
         first_step = case["wire"][0]
         out.append(_case(
             tool, "error", case["args"],

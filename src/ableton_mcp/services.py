@@ -20,8 +20,10 @@ from typing import Any, Dict, List, Optional, Union
 
 from . import warp_vision
 from .commands import COMMANDS
-from .handshake import ScriptHandshake
+from .handshake import CapabilityError, ScriptHandshake
+from .live_lock import LiveLock, LockError
 from .remote_script_install import EXPECTED_REMOTE_SCRIPT_VERSION
+from .ui_macos import MacUI, summarize_windows
 
 
 def _guarded(params: Dict[str, Any],
@@ -66,9 +68,16 @@ class AbletonService:
     type hint.
     """
 
-    def __init__(self, client: Any, handshake: ScriptHandshake) -> None:
+    def __init__(self, client: Any, handshake: ScriptHandshake,
+                 lock: Optional[LiveLock] = None,
+                 ui: Optional[MacUI] = None) -> None:
         self._client = client
         self._handshake = handshake
+        # Both optional so test doubles that predate them keep working: no
+        # lock means no lock enforcement (the composition root always wires
+        # one in production), no ui means every UI read is "unknown".
+        self._lock = lock
+        self._ui = ui
 
     def _send(self, name: str,
               params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -83,10 +92,29 @@ class AbletonService:
         them, plan §4).
         """
         spec = COMMANDS[name]
+        guarded = (self._lock is not None and spec.modifying
+                   and spec.lock != "exempt")
+        if guarded:
+            # Before the gate and the wire: a refusal here must leave Live
+            # exactly as it was.
+            self._lock.check_write(name)
         if spec.gated:
             self._handshake.require(name, spec.min_script_version,
                                     send_command=self._client.send_command)
-        return self._client.send_command(name, params or {})
+        try:
+            return self._client.send_command(name, params or {})
+        finally:
+            # Stamped even when the send raised: a timed-out main-thread task
+            # may still have changed the set, and an over-eager stamp only
+            # asks for one more save, while a missed one could let release
+            # accept a file older than the last edit.
+            if guarded and spec.lock == "write":
+                self._lock.touch()
+
+    def _require_lock(self) -> LiveLock:
+        if self._lock is None:
+            raise LockError("disabled")
+        return self._lock
 
     # Core commands
 
@@ -107,6 +135,49 @@ class AbletonService:
 
     def get_track_info(self, track_index: int) -> Dict[str, Any]:
         return self._send("get_track_info", {"track_index": track_index})
+
+    # Live lock and preflight
+
+    def get_live_status(self) -> Dict[str, Any]:
+        """One call answering "may I touch Live right now, and how is it?".
+
+        Assembled from three independent sources so that any one failing
+        still leaves the others: the Remote Script (transport, solos, arms),
+        the lock file, and the macOS UI (window title → set name and unsaved
+        marker, modal dialogs, user idle time). Nothing here changes state.
+        """
+        status: Dict[str, Any] = {"connected": False, "live": None,
+                                  "live_error": None}
+        try:
+            status["live"] = self._send("get_live_status")
+            status["connected"] = True
+        except CapabilityError as e:
+            # Reachable but too old to answer: say so, keep the rest.
+            status["connected"] = True
+            status["live_error"] = str(e)
+        except Exception as e:
+            status["live_error"] = str(e)
+        info = self._handshake.info() or {}
+        status["script_version"] = info.get("script_version")
+        status["expected_script_version"] = EXPECTED_REMOTE_SCRIPT_VERSION
+        status["lock"] = self._lock.status() if self._lock is not None else None
+        if self._ui is not None and self._ui.available:
+            status["ui"] = summarize_windows(self._ui.live_windows())
+            status["user_idle_s"] = self._ui.user_idle_s()
+        else:
+            status["ui"] = summarize_windows(None)
+            status["user_idle_s"] = None
+        return status
+
+    def acquire_live_lock(self, holder: str, task: str) -> Dict[str, Any]:
+        return self._require_lock().acquire(holder, task)
+
+    def release_live_lock(self, holder: str, set_path: str) -> Dict[str, Any]:
+        lock = self._require_lock()
+        titles = None
+        if self._ui is not None and self._ui.available:
+            titles = self._ui.window_titles()
+        return lock.release(holder, set_path, live_windows=titles)
 
     def get_clip_notes(self, track_index: int, clip_index: int,
                        arrangement: bool = False) -> Dict[str, Any]:

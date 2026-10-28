@@ -59,6 +59,9 @@ class AllCapabilitiesHandshake(ScriptHandshake):
     def require(self, name, min_version=None, *, send_command=None):
         return None
 
+    def info(self):
+        return None
+
 
 class FakeWireClient:
     """Scripted Ableton client double (satisfies the AbletonClient seam).
