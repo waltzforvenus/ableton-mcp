@@ -29,6 +29,10 @@ HOST = "127.0.0.1"
 # Generous enough for a large add_notes_to_clip payload. (Upstream 7e90cd6.)
 MAX_REQUEST_BYTES = 16 * 1024 * 1024
 
+# Exceptions a command raises on purpose to refuse bad input; logged on one
+# line without a traceback (see _log_command_error).
+EXPECTED_COMMAND_ERRORS = (ValueError, IndexError, KeyError)
+
 # Bumped whenever the TCP command surface changes; the MCP server compares
 # this to EXPECTED_REMOTE_SCRIPT_VERSION.
 SCRIPT_VERSION = "1.16.0"
@@ -390,8 +394,25 @@ class AbletonMCP(ControlSurface):
             # thread. Use a thread-safe approach with a response queue.
             response_queue = queue.Queue()
 
+            # A task still waiting on Live's tick when the queue wait below
+            # times out must never run afterwards: the client has already been
+            # told the command failed and may retry or move on, and a late
+            # delete_track or add_notes_to_clip landing then edits the set
+            # behind its back. The flag is checked and set under one lock, so
+            # either the task has started (outcome unknown, reported as such)
+            # or it never will. (Upstream PR #140's cancel-on-timeout.)
+            task_state = {"cancelled": False, "started": False}
+            task_state_lock = threading.Lock()
+
             # Define a function to execute on the main thread
             def main_thread_task():
+                with task_state_lock:
+                    if task_state["cancelled"]:
+                        self.log_message(
+                            "Skipped %s: its caller already timed out"
+                            % command_type)
+                        return
+                    task_state["started"] = True
                 try:
                     # The handler call happens inside the task so a bad
                     # parameter set (TypeError) reports through the same
@@ -400,8 +421,7 @@ class AbletonMCP(ControlSurface):
                     # Put the result in the queue
                     response_queue.put({"status": "success", "result": result})
                 except Exception as e:
-                    self.log_message("Error in main thread task: " + str(e))
-                    self.log_message(traceback.format_exc())
+                    self._log_command_error("Error in main thread task", e)
                     response_queue.put({"status": "error", "message": str(e)})
 
             # Schedule the task to run on the main thread
@@ -425,16 +445,45 @@ class AbletonMCP(ControlSurface):
                 else:
                     response["result"] = task_response.get("result", {})
             except queue.Empty:
+                with task_state_lock:
+                    task_state["cancelled"] = True
+                    started = task_state["started"]
                 response["status"] = "error"
-                response["message"] = "Timeout waiting for operation to complete"
+                if started:
+                    response["message"] = (
+                        "Timeout waiting for operation to complete; it had "
+                        "started, so its outcome is unknown: read the state "
+                        "back before retrying")
+                else:
+                    response["message"] = (
+                        "Timeout waiting for operation to complete; the "
+                        "command was not executed and will not be")
         except Exception as e:
-            self.log_message("Error processing command: " + str(e))
-            self.log_message(traceback.format_exc())
+            self._log_command_error("Error processing command", e)
             response["status"] = "error"
             response["message"] = str(e)
         
         return response
     
+    def _log_command_error(self, context, error):
+        """Log a failed command: one line always, the traceback only when it
+        is a real fault.
+
+        Deliberate refusals -- a bad index, a missing clip, a name guard, the
+        loop-phase refusals -- are part of normal use and arrive as
+        ValueError / IndexError / KeyError or a plain Exception (this script
+        raises bare Exception for its refusals). Writing a traceback for each
+        buried the real failures in Live's Log.txt. TypeError is
+        deliberately NOT treated as expected: Boost.Python's ArgumentError
+        (a LOM call rejecting its arguments) subclasses it, and that is
+        exactly the kind of fault that needs the traceback. (Upstream PR
+        #141, adapted.)
+        """
+        self.log_message("{0}: {1}".format(context, error))
+        if not (isinstance(error, EXPECTED_COMMAND_ERRORS)
+                or type(error) is Exception):
+            self.log_message(traceback.format_exc())
+
     # Command implementations
 
     def _get_script_info(self):
