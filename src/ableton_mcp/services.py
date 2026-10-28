@@ -21,6 +21,7 @@ import json
 import os
 import re
 import shutil
+import threading
 import time
 from typing import Any, Dict, List, Optional, Union
 
@@ -1047,11 +1048,96 @@ class AbletonService:
         params.update({k: v for k, v in settings.items() if v is not None})
         return self._send("set_chain_mixer", _guarded(params, expect_track_name))
 
+    def _send_cue(self, command: str, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Send a cue command with one fresh-tick retry.
+
+        The script parks the playhead and verifies before it toggles a cue,
+        and right after a stop the read-back can stay stale for the rest of
+        the tick even though the write landed (verified on Live 12.4.x - see
+        _park_playhead). Its refusal says so - "Transport did not settle
+        ... retry in a moment" - and is side-effect free. One retry on the
+        next tick clears it; anything else is a real error and propagates.
+        """
+        try:
+            return self._send(command, params)
+        except LockError:
+            raise
+        except Exception as e:
+            if "did not settle" not in str(e) or "retry" not in str(e):
+                raise
+            time.sleep(0.25)
+            return self._send(command, params)
+
+    def _send_with_alert_watchdog(self, command: str, params: Dict[str, Any],
+                                  timeout_s: float = 45.0) -> Dict[str, Any]:
+        """Send a load command while watching for a Live alert.
+
+        A preset Live cannot load answers with a MODAL ALERT on Live's main
+        thread: the Remote Script never replies, every later command times
+        out, and Live stays wedged until someone clicks the alert away. The
+        watchdog polls the UI while the send is in flight; when an alert
+        that was not there before appears, it presses OK (dismissing only
+        what this command itself opened) and either returns the reply that
+        unblocked, or raises `live_alert` naming the alert's own text.
+        """
+        ui = getattr(self, "_ui", None)
+        if ui is None or not getattr(ui, "available", False):
+            return self._send(command, params)
+        before = ui.modal_alerts() or []
+        if before:
+            raise render.RenderRefused("modal_open", modal_dialog=before[0])
+        outcome: Dict[str, Any] = {}
+        failure: List[Any] = []
+
+        def _worker() -> None:
+            try:
+                outcome["value"] = self._send(command, params)
+            except Exception as e:  # surfaced by the watchdog loop
+                failure.append(e)
+
+        worker = threading.Thread(target=_worker, daemon=True)
+        worker.start()
+        alert = None
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            worker.join(0.25)
+            if not worker.is_alive():
+                break
+            alerts = ui.modal_alerts() or []
+            fresh = [a for a in alerts if a not in before]
+            if fresh:
+                alert = fresh[0]
+                press = ui.dismiss_modal_alert("OK")
+                if not press.get("ok"):
+                    press = ui.dismiss_modal_alert("Cancel")
+                if press.get("text") and not alert.get("text"):
+                    alert["text"] = press["text"]
+                worker.join(5.0)
+                break
+        if alert is not None:
+            if worker.is_alive() or failure:
+                raise render.RenderRefused(
+                    "live_alert", alert_text=alert.get("text") or "",
+                    buttons=alert.get("buttons") or [],
+                    detail=("no reply from Live after the alert was "
+                            "dismissed" if worker.is_alive()
+                            else str(failure[0])[:200]))
+            outcome["value"]["alert"] = alert.get("text") or ""
+            return outcome["value"]
+        worker.join(1.0)
+        if worker.is_alive():
+            raise render.RenderRefused(
+                "live_alert", alert_text="", buttons=[],
+                detail="no reply from Live and no alert seen")
+        if failure:
+            raise failure[0]
+        return outcome["value"]
+
     def load_device_from_path(self, track_index: int, path: str,
                               track_type: str = "regular",
                               expect_track_name: Optional[str] = None
                               ) -> Dict[str, Any]:
-        return self._send("load_browser_item_by_path", _guarded({
+        return self._send_with_alert_watchdog("load_browser_item_by_path", _guarded({
             "track_index": track_index,
             "path": os.path.expanduser(path),
             "track_type": track_type,
@@ -1230,10 +1316,7 @@ class AbletonService:
                           _guarded(params, expect_track_name))
 
     def create_locator(self, name: str, time: float) -> Dict[str, Any]:
-        return self._send(
-            "create_locator",
-            {"name": name, "time": time}
-        )
+        return self._send_cue("create_locator", {"name": name, "time": time})
 
     def delete_locator(self, name: str = "",
                        time: Optional[float] = None) -> Dict[str, Any]:
@@ -1257,7 +1340,7 @@ class AbletonService:
             params["name"] = name
         if time is not None:
             params["time"] = time
-        return self._send("jump_to_locator", params)
+        return self._send_cue("jump_to_locator", params)
 
     def trim_arrangement_clip(self, track_index: int, clip_index: int,
                               start_time: Optional[float] = None,

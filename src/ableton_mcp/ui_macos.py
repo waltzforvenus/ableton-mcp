@@ -573,6 +573,105 @@ class MacUI:
         return value
 
 
+    def modal_alerts(self) -> Optional[List[Dict[str, Any]]]:
+        """Live's modal alert windows: title, subrole, joined text and the
+        buttons they offer. None when Live (or the permission) is missing -
+        unknown, not 'no alerts'."""
+        if not self.available:
+            return None
+        data = self._jxa(_JXA_MODAL_ALERTS % json.dumps(LIVE_PROCESS_PREFIX))
+        return data if isinstance(data, list) else None
+
+    def dismiss_modal_alert(self, button: str = "OK") -> Dict[str, Any]:
+        """Press `button` (matched against name or description,
+        case-insensitively) on the first modal alert that has it, and
+        return {ok, text} - `text` being the alert's own words, which the
+        caller folds into the error that usually follows. An alert this
+        server's own command opened is the only thing this ever dismisses;
+        no other window is touched."""
+        if not self.available:
+            return {"ok": False, "error": "not_macos"}
+        data = self._jxa(_JXA_DISMISS_ALERT % (
+            json.dumps(LIVE_PROCESS_PREFIX), json.dumps(button.lower())))
+        return data if isinstance(data, dict) else {"ok": False,
+                                                    "error": "osascript_failed"}
+
+_JXA_MODAL_ALERTS = """
+const se = Application("System Events");
+const ps = se.processes.whose({name: {_beginsWith: %s}});
+if (ps.length === 0) { JSON.stringify([]); } else {
+  const p = ps[0];
+  const out = [];
+  const ws = p.windows();
+  for (let i = 0; i < ws.length; i++) {
+    let sr = null;
+    try { sr = ws[i].subrole(); } catch (e) {}
+    if (sr !== "AXDialog" && sr !== "AXSystemDialog") continue;
+    let t = null;
+    try { t = ws[i].name(); } catch (e) {}
+    const texts = [];
+    const buttons = [];
+    (function walk(el, depth) {
+      if (depth > 8) return;
+      let kids = [];
+      try { kids = el.uiElements(); } catch (e) { return; }
+      for (const k of kids) {
+        let r = null, n = null, d = null, v = null;
+        try { r = k.role(); } catch (e) {}
+        try { n = k.name(); } catch (e) {}
+        try { d = k.description(); } catch (e) {}
+        try { v = k.value(); } catch (e) {}
+        if (r === "AXStaticText" && v) texts.push(String(v));
+        if (r === "AXButton") buttons.push(n || d || null);
+        walk(k, depth + 1);
+      }
+    })(ws[i], 0);
+    out.push({title: t, subrole: sr, text: texts.join(" ").trim(),
+              buttons: buttons});
+  }
+  JSON.stringify(out);
+}
+"""
+
+_JXA_DISMISS_ALERT = """
+const se = Application("System Events");
+const ps = se.processes.whose({name: {_beginsWith: %s}});
+if (ps.length === 0) { JSON.stringify({ok: false, error: "no_live"}); } else {
+  const p = ps[0];
+  const want = %s;
+  const ws = p.windows();
+  let clicked = null;
+  let alertText = "";
+  for (let i = 0; i < ws.length && !clicked; i++) {
+    let sr = null;
+    try { sr = ws[i].subrole(); } catch (e) {}
+    if (sr !== "AXDialog" && sr !== "AXSystemDialog") continue;
+    (function walk(el, depth) {
+      if (depth > 8 || clicked) return;
+      let kids = [];
+      try { kids = el.uiElements(); } catch (e) { return; }
+      for (const k of kids) {
+        if (clicked) return;
+        let r = null, n = null, d = null, v = null;
+        try { r = k.role(); } catch (e) {}
+        try { n = k.name(); } catch (e) {}
+        try { d = k.description(); } catch (e) {}
+        try { v = k.value(); } catch (e) {}
+        if (r === "AXStaticText" && v) alertText += String(v) + " ";
+        if (r === "AXButton") {
+          const label = String(n || d || "");
+          if (label.toLowerCase() === want) { clicked = k; return; }
+        }
+        walk(k, depth + 1);
+      }
+    })(ws[i], 0);
+  }
+  if (!clicked) { JSON.stringify({ok: false, error: "button_not_found",
+                                  text: alertText.trim()}); }
+  else { clicked.click(); JSON.stringify({ok: true, text: alertText.trim()}); }
+}
+"""
+
 def summarize_windows(data: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """The status view of ``MacUI.live_windows()``: the main window parsed,
     any modal dialog named, and every title (plugin windows included)."""

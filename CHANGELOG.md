@@ -321,6 +321,26 @@ counts, is `docs/IMPROVEMENTS.md`.
 
 ### Fixed (user-facing)
 
+- **A preset Live cannot load wedged every later command.** `load_device_from_path`
+  on a preset Live rejects (a missing sample source, say) answers with a
+  modal alert on Live's main thread: the Remote Script never replied, the
+  command timed out as `No data received`, and every command after it died
+  the same way until someone clicked OK (seen live, 10-28: every GM
+  rompler preset in the User Library alerts). The server now polls Live's
+  UI while the load is in flight; an alert that was not there before is
+  pressed OK (dismissing only what our own command opened), the reply that
+  unblocks is returned with the alert's own text folded in as `alert`, and
+  a load that still fails raises `live_alert` naming that text instead of
+  leaving Live blocked. A modal that is already open refuses up front as
+  `modal_open`, like the render gate.
+
+- **Cue commands no longer fail on a stale transport read.** The script
+  parks the playhead and verifies before toggling a cue, and right after a
+  stop the read-back can stay stale for the rest of the tick even though
+  the write landed; its refusal (`Transport did not settle ... retry in a
+  moment`) is side-effect free, and `create_locator` / `jump_to_locator`
+  now take that one retry on a fresh tick instead of surfacing it.
+
 - **`export_audio`'s dialog handling on Live 12.4.7 + macOS 26.** The
   dialog's AX shape differs from the fixture the driver was written
   against: toggles are nameless AXButtons reading On/Off, the
