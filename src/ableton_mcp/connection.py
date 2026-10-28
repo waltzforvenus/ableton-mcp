@@ -34,10 +34,10 @@ class AbletonConnection:
     port: int
     sock: socket.socket = None
 
-    # The receive-side socket timeout. This was a hardcoded 15.0 inside
-    # receive_full_response before the transport moved; it is a field so the
-    # Level-2 transport tests can use a sub-second budget instead of stalling
-    # the suite for 15 s per timeout case. Production always uses the default.
+    # The default per-exchange socket timeout, for every command whose
+    # registry row has no explicit ``timeout``. It is a field so the Level-2
+    # transport tests can use a sub-second budget instead of stalling the
+    # suite for 15 s per timeout case. Production always uses the default.
     receive_timeout: float = 15.0
 
     # One socket, several threads: tool calls run on the MCP worker while the
@@ -59,7 +59,9 @@ class AbletonConnection:
             return True
         except Exception as e:
             logger.error(f"Failed to connect to Ableton at {self.host}:{self.port}: {str(e)}")
-            self.sock = None
+            # Close, not just forget: a failed connect() still owns a
+            # descriptor (upstream #139).
+            self._drop_socket()
             return False
 
     def disconnect(self):
@@ -94,7 +96,10 @@ class AbletonConnection:
     def receive_full_response(self, sock, buffer_size=8192):
         """Receive the complete response, potentially in multiple chunks"""
         chunks = []
-        sock.settimeout(self.receive_timeout)
+        # The caller has already set this exchange's timeout from the
+        # commands.py registry. Resetting it here to receive_timeout is what
+        # silently capped every command at 15 s, create_audio_clip's 65 s
+        # budget included (upstream #139).
 
         try:
             while True:
@@ -172,11 +177,14 @@ class AbletonConnection:
             self.sock.sendall(json.dumps(command).encode('utf-8'))
             logger.info(f"Command sent, waiting for response...")
 
-            # Set timeout based on command type
+            # A registry override wins (65 s audio import, 35 s stamp);
+            # everything else gets receive_timeout, the 15 s every command
+            # actually ran with before the override was honoured, so no
+            # read gets a shorter budget than it had.
             if spec is not None and spec.timeout is not None:
                 timeout = spec.timeout
             else:
-                timeout = 15.0 if spec is not None and spec.modifying else 10.0
+                timeout = self.receive_timeout
             self.sock.settimeout(timeout)
 
             # Receive the response

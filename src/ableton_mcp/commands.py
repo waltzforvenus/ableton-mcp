@@ -26,10 +26,13 @@ from dataclasses import dataclass
 class CommandSpec:
     """Metadata for one wire command.
 
-    - ``modifying``: the Remote Script runs it on Live's main thread, so the
-      transport gives it the longer 15 s socket timeout instead of 10 s.
-    - ``timeout``: explicit socket-timeout override in seconds (wins over the
-      modifying/read-only default).
+    - ``modifying``: the Remote Script runs it on Live's main thread (the
+      cross-half contract checks both halves agree).
+    - ``timeout``: explicit socket-timeout override in seconds. Without one
+      the transport uses its 15 s default, read-only or not: the old 10 s
+      read-only budget was never actually applied (the receive loop reset
+      every timeout to 15 s, which also capped the overrides below until
+      upstream #139's fix was ported), so 15 s is what reads have always had.
     - ``gated``: the tool must pass the Remote Script capability gate
       (``ScriptHandshake.require``) before sending.
     - ``min_script_version``: the gate additionally requires at least this
@@ -52,7 +55,7 @@ class CommandSpec:
 # gating them is a semantic no-op. test_cross_half_contract.py pins this:
 # a new row cannot be added ungated without being in the floor.
 COMMANDS: dict[str, CommandSpec] = {
-    # ── Read-only commands (10 s socket timeout) ─────────────────────────
+    # ── Read-only commands (15 s default socket timeout) ─────────────────
     # get_script_info is sent by the handshake (handshake.py), not by a tool;
     # it is the probe the gate itself answers from, so it stays ungated.
     "get_script_info": CommandSpec(),
@@ -79,7 +82,7 @@ COMMANDS: dict[str, CommandSpec] = {
     "get_session_snapshot": CommandSpec(gated=True, min_script_version="1.15.0"),
     "get_browser_tree": CommandSpec(),  # LEGACY floor — gate is a no-op
     "get_browser_items_at_path": CommandSpec(),  # LEGACY floor — gate is a no-op
-    # ── State-modifying commands (15 s socket timeout) ───────────────────
+    # ── State-modifying commands (15 s default socket timeout) ───────────
     "create_midi_track": CommandSpec(modifying=True),  # LEGACY floor — gate is a no-op
     "create_audio_track": CommandSpec(modifying=True, gated=True),
     "duplicate_track": CommandSpec(modifying=True, gated=True),
