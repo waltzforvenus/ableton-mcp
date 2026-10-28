@@ -16,6 +16,11 @@ string, success and error alike, belongs to the View (presenters.py).
 
 from __future__ import annotations
 
+import hashlib
+import os
+import re
+import shutil
+import time
 from typing import Any, Dict, List, Optional, Union
 
 from . import warp_vision
@@ -59,6 +64,14 @@ def _guarded(params: Dict[str, Any],
     return params
 
 
+def _sha256(path: str) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
 class AbletonService:
     """The Model: constructed once, in the composition root (app.build_deps).
 
@@ -70,7 +83,9 @@ class AbletonService:
 
     def __init__(self, client: Any, handshake: ScriptHandshake,
                  lock: Optional[LiveLock] = None,
-                 ui: Optional[MacUI] = None) -> None:
+                 ui: Optional[MacUI] = None,
+                 allow_ui: bool = False,
+                 evidence_dir: Optional[str] = None) -> None:
         self._client = client
         self._handshake = handshake
         # Both optional so test doubles that predate them keep working: no
@@ -78,6 +93,10 @@ class AbletonService:
         # one in production), no ui means every UI read is "unknown".
         self._lock = lock
         self._ui = ui
+        # Server-wide consent to drive Live's UI (ABLETON_MCP_ALLOW_UI);
+        # without it each UI-driving call must pass allow_ui_automation.
+        self._allow_ui = allow_ui
+        self._evidence_dir = evidence_dir
 
     def _send(self, name: str,
               params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -172,12 +191,31 @@ class AbletonService:
     def acquire_live_lock(self, holder: str, task: str) -> Dict[str, Any]:
         return self._require_lock().acquire(holder, task)
 
-    def release_live_lock(self, holder: str, set_path: str) -> Dict[str, Any]:
+    def release_live_lock(self, holder: str, set_path: Optional[str] = None,
+                          save_first: bool = False,
+                          allow_ui_automation: bool = False) -> Dict[str, Any]:
+        """Release after a verified save; with ``save_first`` the save is
+        done here (save_set's API-then-menu path) and its .als is the one
+        checked. Without a ``set_path`` the window title's set is looked up
+        (passively) — the lock still refuses unless that resolves."""
         lock = self._require_lock()
+        save = None
+        if save_first:
+            save = self.save_set(allow_ui_automation=allow_ui_automation,
+                                 set_path=set_path)
+            if not save.get("saved"):
+                raise LockError("save_failed", save=save)
+            set_path = set_path or (save.get("verified") or {}).get("set_path")
         titles = None
         if self._ui is not None and self._ui.available:
             titles = self._ui.window_titles()
-        return lock.release(holder, set_path, live_windows=titles)
+            if not set_path:
+                windows = summarize_windows(self._ui.live_windows())
+                set_path = self._resolve_set_path(windows, None)["set_path"]
+        result = lock.release(holder, set_path or "", live_windows=titles)
+        if save is not None:
+            result["save"] = save
+        return result
 
     def get_clip_notes(self, track_index: int, clip_index: int,
                        arrangement: bool = False) -> Dict[str, Any]:
@@ -349,8 +387,175 @@ class AbletonService:
             "value": value
         }, expect_track_name))
 
-    def save_set(self) -> Dict[str, Any]:
-        return self._send("save_set", {})
+    def _ui_allowed(self, allow_ui_automation: bool) -> bool:
+        return bool(self._ui is not None and self._ui.available
+                    and (allow_ui_automation or self._allow_ui))
+
+    def _resolve_set_path(self, windows: Dict[str, Any],
+                          set_path: Optional[str]) -> Dict[str, Any]:
+        """The .als to verify against: the caller's, else the one Spotlight
+        finds for the window title's set name (only if it is unambiguous)."""
+        if set_path:
+            path = os.path.expanduser(set_path)
+            return {"set_path": path, "candidates": [path], "source": "caller"}
+        candidates = None
+        if self._ui is not None and windows.get("set_name"):
+            candidates = self._ui.find_set_paths(windows["set_name"],
+                                                 windows.get("project"))
+        candidates = candidates or []
+        project = windows.get("project")
+        in_project = [c for c in candidates
+                      if project and os.path.basename(os.path.dirname(c)) == project]
+        pick = (in_project if len(in_project) == 1
+                else candidates if len(candidates) == 1 else [])
+        return {"set_path": pick[0] if pick else None, "candidates": candidates,
+                "source": "spotlight" if pick else None}
+
+    def save_set(self, allow_ui_automation: bool = False,
+                 set_path: Optional[str] = None,
+                 timeout_s: float = 30.0) -> Dict[str, Any]:
+        """Save the open set: Live's API first, then File › Save Live Set.
+
+        Live 12's Python API exposes no save (every probe has returned
+        ``Tried: []`` on 12.4.x), so the reliable path is the menu item, clicked
+        by title over Accessibility — only with the caller's (or the
+        server's) consent, because it brings Live to the front. Success is
+        not "the click happened": it is the window title losing its unsaved
+        marker and, when the .als is known, its mtime advancing. A Save
+        panel appearing means the set was never saved (Untitled) — that is
+        cancelled with Escape and refused rather than saved somewhere
+        arbitrary.
+        """
+        result = dict(self._send("save_set", {}))  # lock-checked ("check")
+        result.setdefault("attempts", [])
+        if result.get("saved"):
+            result["verified"] = None  # the API said so; nothing to read back
+            return result
+        if not self._ui_allowed(allow_ui_automation):
+            result["ui_path"] = ("not_macos" if self._ui is None or not self._ui.available
+                                 else "not_allowed")
+            return result
+        return self._save_via_menu(set_path, timeout_s, result["attempts"])
+
+    def _save_via_menu(self, set_path: Optional[str], timeout_s: float,
+                       attempts: List[str]) -> Dict[str, Any]:
+        ui = self._ui
+        before = summarize_windows(ui.live_windows())
+        out: Dict[str, Any] = {"saved": False, "method": None,
+                               "attempts": attempts, "ui_path": "tried"}
+        if not before["readable"]:
+            out["error"] = "ui_unreadable"
+            return out
+        if before["modal_dialog"]:
+            out.update(error="modal_open", modal_dialog=before["modal_dialog"])
+            return out
+        target = self._resolve_set_path(before, set_path)
+        path = target["set_path"]
+        mtime_before = (os.path.getmtime(path)
+                        if path and os.path.isfile(path) else None)
+        previous_app = ui.frontmost_app()
+        click = ui.click_menu_item("File", "Save Live Set",
+                                   exclude=("Save Live Set As",))
+        out["menu"] = click
+        if not click.get("ok"):
+            if click.get("error") == "item_disabled" and before["unsaved"] is False:
+                # Nothing to save: Live greys the item out on a clean set.
+                out.update(saved=True, method="none needed (no unsaved changes)")
+            else:
+                out["error"] = "menu_" + str(click.get("error"))
+            out["verified"] = self._save_verification(before, before, target,
+                                                      mtime_before)
+            return out
+
+        def settled():
+            now = summarize_windows(ui.live_windows())
+            if now["modal_dialog"]:
+                return ("dialog", now)
+            mtime = (os.path.getmtime(path)
+                     if path and os.path.isfile(path) else None)
+            advanced = path is None or (mtime is not None and (
+                mtime_before is None or mtime > mtime_before))
+            if now["readable"] and now["unsaved"] is False and advanced:
+                return ("saved", now)
+            return None
+
+        outcome = ui.wait_for(settled, timeout_s)
+        after = summarize_windows(ui.live_windows())
+        if outcome and outcome[0] == "dialog":
+            # A Save panel: the set is Untitled. Never type a path into it
+            # here — cancel and say so.
+            ui.press_escape()
+            out.update(error="save_panel_opened", modal_dialog=outcome[1]["modal_dialog"])
+        verified = self._save_verification(before, after, target, mtime_before)
+        out["verified"] = verified
+        if outcome and outcome[0] == "saved":
+            out.update(saved=True, method="ui: File > " + str(click.get("clicked")))
+        elif "error" not in out:
+            out["error"] = "not_confirmed"
+        if previous_app and not previous_app.startswith("Live"):
+            ui.activate(previous_app)
+        return out
+
+    @staticmethod
+    def _save_verification(before: Dict[str, Any], after: Dict[str, Any],
+                           target: Dict[str, Any],
+                           mtime_before: Optional[float]) -> Dict[str, Any]:
+        path = target.get("set_path")
+        mtime_after = os.path.getmtime(path) if path and os.path.isfile(path) else None
+        return {
+            "set_name": after.get("set_name") or before.get("set_name"),
+            "title_before": next(iter(before.get("titles") or []), None),
+            "unsaved_before": before.get("unsaved"),
+            "unsaved_after": after.get("unsaved"),
+            "set_path": path,
+            "set_path_source": target.get("source"),
+            "set_path_candidates": target.get("candidates"),
+            "mtime_before": mtime_before,
+            "mtime_after": mtime_after,
+            "mtime_advanced": (mtime_after is not None and (
+                mtime_before is None or mtime_after > mtime_before)),
+        }
+
+    def checkpoint_set(self, label: str, set_path: Optional[str] = None,
+                       allow_ui_automation: bool = False,
+                       checkpoint_dir: Optional[str] = None) -> Dict[str, Any]:
+        """Save, then copy the .als to ``<set folder>/Checkpoints/`` as
+        ``<timestamp>-<label>.als`` and prove the copy is byte-identical.
+
+        "Put it back how it was" needs a file from before the change; Live's
+        own Backup/ folder rotates and is named by time only. A labelled
+        checkpoint is one save plus one copy, and the sha256 lets a later
+        diff or restore be sure which state it holds."""
+        save = self.save_set(allow_ui_automation=allow_ui_automation,
+                             set_path=set_path)
+        out: Dict[str, Any] = {"checkpointed": False, "save": save}
+        if not save.get("saved"):
+            out["error"] = "save_failed"
+            return out
+        verified = save.get("verified") or {}
+        path = verified.get("set_path") or (os.path.expanduser(set_path)
+                                            if set_path else None)
+        if not path or not os.path.isfile(path):
+            out.update(error="set_path_unknown",
+                       candidates=verified.get("set_path_candidates"))
+            return out
+        slug = re.sub(r"[^A-Za-z0-9._-]+", "-", label or "").strip("-.")[:60] or "checkpoint"
+        folder = os.path.expanduser(checkpoint_dir) if checkpoint_dir else os.path.join(
+            os.path.dirname(path), "Checkpoints")
+        os.makedirs(folder, exist_ok=True)
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        dest = os.path.join(folder, f"{stamp}-{slug}.als")
+        n = 2
+        while os.path.exists(dest):
+            dest = os.path.join(folder, f"{stamp}-{slug}-{n}.als")
+            n += 1
+        shutil.copy2(path, dest)
+        src_hash, dest_hash = _sha256(path), _sha256(dest)
+        out.update(checkpointed=src_hash == dest_hash, checkpoint_path=dest,
+                   set_path=path, sha256=dest_hash, bytes=os.path.getsize(dest))
+        if src_hash != dest_hash:
+            out["error"] = "copy_mismatch"
+        return out
 
     def create_return_track(self) -> Dict[str, Any]:
         return self._send("create_return_track", {})

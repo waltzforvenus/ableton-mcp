@@ -29,6 +29,23 @@ counts, is `docs/IMPROVEMENTS.md`.
 
 ### Added (user-facing)
 
+- **`save_set` † now actually saves on Live 12** (macOS, with consent), and
+  `checkpoint_set` † keeps labelled copies. Live's Python API has no save
+  (every probe on 12.4.x returned an empty list), so after the API probe
+  `save_set(allow_ui_automation=true)` clicks Live's own *File › Save Live
+  Set* by title over Accessibility (never by position, never *Save As*),
+  then reports a save only once Live's title has lost its unsaved `*` and
+  the `.als` mtime has advanced. The file is the caller's `set_path` or the
+  one Spotlight finds for the title's set name (ambiguity is reported, not
+  guessed). An Untitled set's Save panel is cancelled and refused. Focus is
+  handed back to the previous app. Consent is per call or server-wide with
+  **`ABLETON_MCP_ALLOW_UI=1`**; without it nothing but the API is tried.
+  `checkpoint_set(label)` saves, copies the set to
+  `<set folder>/Checkpoints/<YYYYmmdd-HHMMSS>-<label>.als` and verifies the
+  copy's sha256. `release_live_lock(save_first=true)` saves and releases in
+  one call; `set_path` is optional there now (looked up from the title).
+  Server-side only — no Remote Script change.
+
 - **The shared Live lock — state-changing tools now need it by default.**
   `acquire_live_lock(holder, task)` †, `release_live_lock(holder, set_path)` †
   and `get_live_status` †. Every state-changing tool is checked against a

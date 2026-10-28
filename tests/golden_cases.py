@@ -1,4 +1,4 @@
-"""Golden-case definitions for all 67 MCP tools (docs/REFACTOR_PLAN.md
+"""Golden-case definitions for all 68 MCP tools (docs/REFACTOR_PLAN.md
 section 5 Level 1, section 6 PR3).
 
 Each case names a tool, the arguments to call it with, and the exact ordered
@@ -467,6 +467,12 @@ BASE_CASES = [
     ]),
 
     # ── save_set ──────────────────────────────────────────────────────────
+    # The golden runner wires no UI, so checkpoint_set's save stops at the
+    # API probe; the File-menu path is tests/test_save_checkpoint.py's.
+    _case("checkpoint_set", "save_unavailable", {"label": "before-mix"}, [
+        _ok("save_set", {}, {"saved": False, "method": None,
+                             "attempts": ["song.save_set() raised boom"]}),
+    ]),
     _case("save_set", "success_saved", {}, [
         _ok("save_set", {}, {"saved": True, "method": "song.save_set"}),
     ]),

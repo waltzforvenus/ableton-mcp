@@ -191,7 +191,7 @@ available on `main` or in a released package.
 
 ### Added tools
 
-Upstream exposes 37 MCP tools; this fork exposes 67. The mixer, device control
+Upstream exposes 37 MCP tools; this fork exposes 68. The mixer, device control
 and routing tools are new here:
 
 | Area | Tools |
@@ -203,6 +203,7 @@ and routing tools are new here:
 | **Clips & tracks** | `set_clip_gain`, `set_clip_warp`, `duplicate_track`, `delete_track` |
 | **Warp vision** | `analyze_clip_audio` (spectrogram + waveform image with the clip's warp markers, transients and the song grid, plus JSON), `suggest_warp_markers` (dry-run proposals with a before/after image; `apply=True` executes and verifies), `edit_clip_warp_markers` (batch add/move/remove, read back and verified), `get_clip_warp_markers` — needs the optional `analysis` extra for the two audio tools |
 | **Transport & session** | `back_to_arrangement`, `set_count_in`, `save_set`, `get_song_scale` / `set_song_scale` (Live 12's song-wide key and scale) |
+| **Saving** | `save_set` (API, else Live's File menu with consent; verified), `checkpoint_set` (labelled, hash-verified copies) |
 | **Shared-Live safety** | `get_live_status` (one-call preflight: transport/record, soloed/muted/armed tracks, set name and unsaved marker, modal dialogs, user idle, lock holder), `acquire_live_lock` / `release_live_lock` (one editor at a time; release only after a verified save) |
 
 ### Security fix
@@ -411,7 +412,7 @@ who holds it.
 
 ### Tool reference
 
-All 67 tools the server exposes. Tools marked **†** are added by this fork and
+All 68 tools the server exposes. Tools marked **†** are added by this fork and
 are not present upstream.
 
 #### Session & info
@@ -424,11 +425,12 @@ are not present upstream.
 | `get_remote_script_info` | — | Report Ableton Remote Script version and capabilities (handshake) |
 | `get_live_status` † | — | One-call preflight: reachable, versions, transport/record, soloed/muted/armed tracks, last event time, the Live lock, and (macOS) set name, unsaved marker, modal dialog and user idle time |
 | `acquire_live_lock` † | `holder`, `task`? | Take the shared Live lock (required before state-changing tools unless `ABLETON_MCP_REQUIRE_LOCK=0`); adopts a lock already held under the same name |
-| `release_live_lock` † | `holder`, `set_path` | Release the lock only after a verified save (.als newer than the last edit; no unsaved marker or dialog) |
+| `release_live_lock` † | `holder`, `set_path`?, `save_first`?, `allow_ui_automation`? | Release the lock only after a verified save (.als newer than the last edit; no unsaved marker or dialog) |
 | `set_tempo` | `tempo` | Set the tempo of the Ableton session |
 | `get_song_scale` † | — | Read the Set's key and scale (Live 12+): root note, scale name, Scale Mode and intervals |
 | `set_song_scale` † | `root_note`?, `scale_name`?, `scale_mode`? | Set the Set's root (0-11 or a note name like `"F#"` / `"Bb"`), scale name and Scale Mode (Live 12+); reports what Live reads back and whether it matched |
-| `save_set` † | — | Save the open Live Set, if this Live build exposes a save through its API |
+| `save_set` † | `allow_ui_automation`?, `set_path`? | Save the open set — Live's API if it has one, else File › Save Live Set over Accessibility (macOS, with consent); verified by the title's unsaved marker and the .als mtime |
+| `checkpoint_set` † | `label`, `set_path`?, `allow_ui_automation`?, `checkpoint_dir`? | Save, then keep a sha256-verified copy at `<set folder>/Checkpoints/<timestamp>-<label>.als` |
 
 #### Tracks
 
@@ -674,7 +676,7 @@ The long form, with line references, is in `docs/IMPROVEMENTS.md`.
 | **Any in-tick retry or same-tick readback** | A write and a re-read inside one Live callback return the same stale value by construction — the read can stay stale for the whole tick even though the write landed. There is no yield primitive, and sleeping on Live's main thread blocks audio and UI. Only a later tick can clear. |
 | **Moving an Arrangement clip's footprint by writing markers** | `start_marker` / `end_marker` writes land but never move the footprint. They do change what plays, which is why marker writes are still useful on *Session* clips — but nothing resizes an arrangement clip except the stamp path. |
 | **Creating group tracks** | No LOM function creates one and `Track.group_track` is read-only. Buses built with `set_track_routing` are the only path. |
-| **Render, export, and `save_set` on 12.4.3** | Rendering and export are UI-only with no LOM entry point; `save_set` reports that it found nothing to try on this build. Both are permanent. |
+| **Render, export, and saving through the LOM (12.4.x)** | The Python API has no save, render or export entry point. Saving now goes through Live's File menu instead (`save_set(allow_ui_automation=true)`, macOS); render/export stay UI-only. |
 | **Detecting Live's edition by probing** | The LOM exposes no edition or product property, so Intro's track / return / scene caps cannot be read ahead of time. They surface only as a raise, which is why every tool that can hit a cap catches and reports it instead of pre-checking. |
 | **A gapless `split_arrangement_clip`** | There is no LOM split and no zero-width stamp, so any eraser-based split leaves a gap of the eraser's own width. |
 

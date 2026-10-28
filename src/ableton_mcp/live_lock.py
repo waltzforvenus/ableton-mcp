@@ -63,7 +63,8 @@ class LockError(Exception):
     Reasons: ``held_by_other``, ``not_held`` (no lock and one is required),
     ``not_holder`` (release by someone who does not hold it),
     ``set_missing``, ``set_older_than_edit``, ``live_unsaved``,
-    ``disabled`` (no lock configured in this process)."""
+    ``save_failed`` (release's own save_first failed), ``disabled`` (no
+    lock configured in this process)."""
 
     def __init__(self, reason: str, **details: Any) -> None:
         super().__init__(reason)

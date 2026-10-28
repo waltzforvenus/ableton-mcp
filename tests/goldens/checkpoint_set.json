@@ -1,0 +1,38 @@
+{
+  "cases": [
+    {
+      "args": {
+        "label": "before-mix"
+      },
+      "expect": "No checkpoint: Could NOT save \u2014 this Live build exposes no callable save through the Python API. Tried: ['song.save_set() raised boom']. The File-menu fallback needs macOS.",
+      "name": "save_unavailable",
+      "wire": [
+        {
+          "command": "save_set",
+          "params": {},
+          "response": {
+            "attempts": [
+              "song.save_set() raised boom"
+            ],
+            "method": null,
+            "saved": false
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "label": "before-mix"
+      },
+      "expect": "Error checkpointing the set: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "save_set",
+          "params": {},
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

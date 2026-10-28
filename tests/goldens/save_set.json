@@ -17,7 +17,7 @@
     },
     {
       "args": {},
-      "expect": "Could NOT save \u2014 this Live build exposes no callable save through the Python API. Tried: ['song.save_set', 'song.save', 'app.save_document']. The set must be saved from Live's UI.",
+      "expect": "Could NOT save \u2014 this Live build exposes no callable save through the Python API. Tried: ['song.save_set', 'song.save', 'app.save_document']. The File-menu fallback needs macOS.",
       "name": "success_not_saved",
       "wire": [
         {
