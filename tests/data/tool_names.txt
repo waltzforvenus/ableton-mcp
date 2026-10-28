@@ -28,6 +28,7 @@ get_clip_warp_markers
 get_device_parameters
 get_live_status
 get_plugin_presets
+get_plugin_state
 get_remote_script_info
 get_session_info
 get_session_snapshot
@@ -35,6 +36,7 @@ get_song_scale
 get_track_info
 get_track_routing
 jump_to_locator
+load_device_from_path
 load_devices
 load_drum_kit
 load_instrument_or_effect

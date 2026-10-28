@@ -37,7 +37,7 @@ EXPECTED_COMMAND_ERRORS = (ValueError, IndexError, KeyError)
 
 # Bumped whenever the TCP command surface changes; the MCP server compares
 # this to EXPECTED_REMOTE_SCRIPT_VERSION.
-SCRIPT_VERSION = "1.21.0"
+SCRIPT_VERSION = "1.22.0"
 PROTOCOL_VERSION = 1
 
 # The trim eraser (see _trim_arrangement_clip): a temporary Session clip
@@ -197,6 +197,7 @@ COMMANDS = {
     "start_playback":             ("_start_playback",             True,  None, False),
     "stop_playback":              ("_stop_playback",              True,  None, False),
     "load_browser_item":          ("_load_browser_item",          True,  None, True),
+    "load_browser_item_by_path":  ("_load_browser_item_by_path",  True,  None, True),
     "load_instrument_or_effect":  ("_load_instrument_or_effect",  True,  None, True),
     "switch_to_arrangement_view": ("_switch_to_arrangement_view", True,  None, True),
     "set_current_song_time":      ("_set_current_song_time",      True,  None, True),
@@ -4768,6 +4769,114 @@ class AbletonMCP(ControlSurface):
             self.log_message(traceback.format_exc())
             raise
     
+    def _browser_item_for_path(self, browser, path):
+        """The browser item for a file under the User Library or one of the
+        browser's user folders ("Places"), found by walking names.
+
+        Live's BrowserItem has no file path, only a name and a URI whose
+        encoding is undocumented, so an absolute path is mapped onto the
+        browser's own tree: everything after ".../User Library/" is walked
+        from browser.user_library, and a path inside a folder added to
+        Places is walked from that folder's item. Names are matched as
+        shown (Live may hide a preset's extension), case-insensitively.
+        A miss names the level it failed at and what was there — the usual
+        cause is a file saved moments ago that Live has not indexed yet.
+        """
+        norm = path.replace("\\", "/")
+        starts = []
+        marker = "/User Library/"
+        if marker in norm:
+            root = getattr(browser, "user_library", None)
+            if root is not None:
+                starts.append(("User Library", root,
+                               norm.split(marker, 1)[1].split("/")))
+        try:
+            folders = list(getattr(browser, "user_folders", None) or [])
+        except Exception:
+            folders = []
+        for folder in folders:
+            token = "/" + folder.name + "/"
+            if token in norm:
+                starts.append((folder.name, folder,
+                               norm.split(token, 1)[1].split("/")))
+        if not starts:
+            raise ValueError(
+                "'%s' is not inside the User Library or a folder in Live's "
+                "Places; Live can only load files its browser can see" % path)
+
+        def matches(item_name, part):
+            a, b = item_name.strip().lower(), part.strip().lower()
+            return a == b or a == os.path.splitext(b)[0] or os.path.splitext(a)[0] == os.path.splitext(b)[0]
+
+        misses = []
+        for label, item, parts in starts:
+            parts = [p for p in parts if p]
+            walked = [label]
+            for part in parts:
+                children = list(getattr(item, "children", None) or [])
+                exact = [c for c in children if c.name.strip().lower() == part.strip().lower()]
+                found = exact or [c for c in children if matches(c.name, part)]
+                if not found:
+                    misses.append("%s: no '%s' (has: %s)" % (
+                        "/".join(walked), part,
+                        ", ".join(c.name for c in children[:25]) or "nothing"))
+                    item = None
+                    break
+                item = found[0]
+                walked.append(item.name)
+            if item is not None:
+                return item
+        raise ValueError(
+            "'%s' was not found in Live's browser. %s. A file saved just now "
+            "may not be indexed yet: open its folder in Live's browser, or "
+            "retry in a moment." % (path, "; ".join(misses)))
+
+    def _load_browser_item_by_path(self, track_index=0, path="",
+                                   track_type="regular", expect_track_name=None):
+        """Load a preset file (.adv/.adg/.vstpreset/.aupreset/...) by its
+        absolute path, through the browser item Live shows for it.
+
+        A Live device preset (.adv) stores the device's whole state —
+        for a hosted plugin, the plugin's own state blob, model and IR
+        file paths included — so a configured amp or synth saved once
+        reloads exactly, with no plugin window or file chooser involved.
+        """
+        try:
+            track = self._resolve_track(track_index, track_type,
+                                        expect_track_name=expect_track_name)
+            if not path:
+                raise ValueError("path must be the preset file's absolute path")
+            app = self.application()
+            item = self._browser_item_for_path(app.browser, path)
+            if not getattr(item, "is_loadable", False):
+                raise ValueError("'%s' is in the browser but is not loadable "
+                                 "(a folder?)" % item.name)
+            self._song.view.selected_track = track
+            devices_before = [d.name for d in track.devices]
+            app.browser.load_item(item)
+            devices_after = [d.name for d in track.devices]
+            remaining = {}
+            for name in devices_before:
+                remaining[name] = remaining.get(name, 0) + 1
+            new_devices = []
+            for name in devices_after:
+                if remaining.get(name, 0) > 0:
+                    remaining[name] -= 1
+                else:
+                    new_devices.append(name)
+            return {
+                "loaded": True,
+                "item_name": item.name,
+                "track_name": track.name,
+                "path": path,
+                "uri": getattr(item, "uri", None),
+                "new_devices": new_devices,
+                "devices_after": devices_after,
+            }
+        except Exception as e:
+            self.log_message("Error loading by path: {0}".format(str(e)))
+            raise
+
     # Substring markers that point a URI at a likely root. Unmatched URIs fall
     # back to the default search order.
     _URI_ROOT_HINTS = (

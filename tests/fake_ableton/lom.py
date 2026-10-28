@@ -969,9 +969,17 @@ class FakeBrowser(object):
     song's selected track — the observable effect loading has in Live."""
 
     def __init__(self, song=None, instruments=None, sounds=None, drums=None,
-                 audio_effects=None, midi_effects=None):
+                 audio_effects=None, midi_effects=None, user_library=None,
+                 user_folders=None):
         self._song = song
         self.loads = []
+        # Live's user_library root and the folders added to Places — only
+        # when a test supplies them, so the category enumeration over dir()
+        # (get_browser_tree) sees exactly the five required roots otherwise.
+        if user_library is not None:
+            self.user_library = user_library
+        if user_folders is not None:
+            self.user_folders = list(user_folders)
         empty = lambda name, uri: FakeBrowserItem(name, uri=uri)
         self.instruments = instruments or empty("Instruments", "query:Instruments")
         self.sounds = sounds or empty("Sounds", "query:Sounds")

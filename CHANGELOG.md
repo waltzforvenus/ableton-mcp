@@ -15,7 +15,7 @@ separately, and a script change means **re-run
   shipped additions, upstream ports, pending Live validation and planned work.
 - Corrected the README tool count and installation examples to use this fork.
 
-Ships Remote Script **1.21.0**. **Re-run `ableton-mcp-install-script` and
+Ships Remote Script **1.22.0**. **Re-run `ableton-mcp-install-script` and
 restart Live after upgrading** — the new commands live in the script half,
 and Live caches an already-imported script module, so re-selecting the
 control surface is not enough. This release is larger than usual on the
@@ -28,6 +28,27 @@ drove a complete track; the backlog it was mined from, with the measured
 counts, is `docs/IMPROVEMENTS.md`.
 
 ### Added (user-facing)
+
+- `load_device_from_path(track_index, path)` † (Remote Script **1.22.0**):
+  load a preset *file* — `.adv` / `.adg` / `.vstpreset` / `.aupreset` — from
+  the User Library or a folder in Live's Places by absolute path. Live's
+  BrowserItem carries no file path, so the path is mapped onto the browser's
+  own tree (after `.../User Library/`, or after a Places folder's name),
+  matching names with or without the extension. A miss names the level it
+  stopped at and what was there (the usual cause: a file saved moments ago
+  that Live has not indexed). A `.adv` saved from a hosted plugin holds its
+  whole state — capture/model files, IRs, patches — so this is how a
+  configured amp sim or synth comes back without its plugin window.
+- `get_plugin_state(source_path, track?, plugin?)` †: offline decoder for
+  hosted plugins' saved state in a `.als` / `.adv` / `.adg` (hex
+  `ProcessorState` / `ControllerState` / `Buffer`) or a VST3 `.vstpreset`
+  (`Comp` / `Cont` chunks): per plugin, its track, name, chain ordinal,
+  state size and sha256, absolute file paths found in it, and readable
+  strings (ASCII and UTF-16). Verifies which model a plugin really holds
+  when its window still reads "Load model...". Never talks to Live, never
+  writes. There is deliberately no `load_plugin_state`: Live's API has no
+  way to write a running plugin's state (re-probed on 12.4.7); save the
+  configured plugin as a preset and load that instead.
 
 - **Display-string parameter values** (Remote Script **1.21.0** — re-run the
   installer): `set_device_parameter` and `set_device_parameters` accept what

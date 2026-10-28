@@ -1,4 +1,4 @@
-"""Golden-case definitions for all 69 MCP tools (docs/REFACTOR_PLAN.md
+"""Golden-case definitions for all 71 MCP tools (docs/REFACTOR_PLAN.md
 section 5 Level 1, section 6 PR3).
 
 Each case names a tool, the arguments to call it with, and the exact ordered
@@ -991,6 +991,20 @@ BASE_CASES = [
     ]),
 
     # ── fire_clip ─────────────────────────────────────────────────────────
+    _case("load_device_from_path", "success",
+          {"track_index": 1, "path": "/Users/x/Music/Ableton/User Library/Presets/Audio Effects/Amp A.adv"}, [
+        _ok("load_browser_item_by_path",
+            {"track_index": 1,
+             "path": "/Users/x/Music/Ableton/User Library/Presets/Audio Effects/Amp A.adv",
+             "track_type": "regular"},
+            {"loaded": True, "item_name": "Amp A", "track_name": "GTR",
+             "path": "/Users/x/Music/Ableton/User Library/Presets/Audio Effects/Amp A.adv",
+             "uri": "userlibrary:Amp A", "new_devices": ["Amp A"],
+             "devices_after": ["Tuner", "Amp A"]}),
+    ]),
+    # Offline file reading; no wire. A missing file freezes the wording.
+    _case("get_plugin_state", "missing_file",
+          {"source_path": "/nonexistent/song.als"}, []),
     _case("load_devices", "stops_at_first_failure",
           {"track_index": 2, "uris": ["query:A", "query:B", "query:C"]}, [
         _ok("load_browser_item", {"track_index": 2, "item_uri": "query:A",

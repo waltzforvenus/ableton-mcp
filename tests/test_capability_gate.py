@@ -380,6 +380,7 @@ def test_the_matrix_is_not_vacuous():
         "get_plugin_presets",
         "get_song_scale",
         "jump_to_locator",
+        "load_browser_item_by_path",
         "move_arrangement_clip",
         "set_clip_warp",
         "set_device_parameters",

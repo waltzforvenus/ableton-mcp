@@ -1543,6 +1543,70 @@ def load_instrument_or_effect(ctx: Context, track_index: int, uri: str,
 
 
 @tool
+def load_device_from_path(ctx: Context, track_index: int, path: str,
+                          track_type: str = "regular",
+                          expect_track_name: Optional[str] = None) -> str:
+    """
+    Load a saved preset FILE onto a track by its absolute path — a Live
+    device or rack preset (.adv / .adg) or a plugin preset (.vstpreset /
+    .aupreset) in the User Library or a folder added to Live's Places.
+
+    This is how a configured plugin comes back exactly: a .adv saved from a
+    hosted plugin (Live's "Save Preset" on the device) stores the plugin's
+    whole state — an amp sim's capture/model file, a cab IR, a synth patch —
+    so loading it needs no plugin window and no file chooser. Save one
+    preset per configuration once, then load it here; verify what it holds
+    with get_plugin_state.
+
+    The path is mapped onto Live's browser (everything after
+    ".../User Library/", or after a Places folder's name). A file saved a
+    moment ago may not be indexed yet; the error then says which folder was
+    reached and what it contains, so retry once Live's browser shows it.
+
+    Parameters:
+    - track_index: The track to load onto
+    - path: absolute path of the preset file
+    - track_type: "regular" (default), "return" or "master"
+    - expect_track_name: Optional safety net — refuse unless the track at
+      track_index is really named this
+    """
+    result = _deps(ctx).service.load_device_from_path(
+        track_index, path, track_type, expect_track_name)
+    return presenters.load_device_from_path(result)
+
+
+@tool
+def get_plugin_state(ctx: Context, source_path: str, track: Optional[str] = None,
+                     plugin: Optional[str] = None,
+                     include_strings: bool = True) -> str:
+    """
+    Read hosted plugins' SAVED state from a Live file, to verify what a
+    plugin really holds (which capture, model, IR or patch) — offline.
+
+    Live's API exposes nothing of a VST3/AU plugin's internal state, and
+    plugin windows often still read "Load model..." after a load worked. This
+    decodes the state blob Live saved instead: pass a saved set (.als — save
+    first, e.g. checkpoint_set), a device preset (.adv/.adg) or a .vstpreset.
+    For each plugin it returns the track, plugin name, the state's size and
+    sha256, file paths found in it, and its readable strings (where plugins
+    keep paths and settings). It never talks to Live and never writes.
+
+    Parameters:
+    - source_path: absolute path of the .als/.adv/.adg/.vstpreset
+    - track: only plugins on tracks whose name contains this
+    - plugin: only plugins whose name contains this (e.g. "AIDA")
+    - include_strings: False returns sizes, hashes and paths only (smaller)
+
+    There is no matching "load_plugin_state": Live's API cannot write a
+    plugin's state into a running device. Save the configured plugin as a
+    preset and use load_device_from_path.
+    """
+    result = _deps(ctx).service.get_plugin_state(source_path, track, plugin,
+                                                include_strings)
+    return presenters.get_plugin_state(result)
+
+
+@tool
 def load_devices(ctx: Context, track_index: int, uris: List[str],
                  track_type: str = "regular",
                  expect_track_name: Optional[str] = None) -> str:
