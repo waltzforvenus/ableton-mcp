@@ -118,6 +118,21 @@ counts, is `docs/IMPROVEMENTS.md`.
   `arm: false` for any track that cannot be armed. Ported from upstream
   `4b707a2` (#128, fixing upstream #126); the passive arm listener that
   upstream also patched does not exist here.
+- `get_browser_tree` now shows what is in each category: one level of
+  children (up to 64 per folder, deeper folders and longer lists marked
+  `[...]`) and a real folder count. Before, the script never recursed, so
+  every category came back empty and the header always read "showing 0
+  folders". Ported from upstream `7e90cd6`.
+- The Remote Script's socket no longer desynchronises when a non-ASCII
+  character (an accented clip or track name, an emoji) straddles two
+  `recv()` chunks: it buffers raw bytes and decodes only a complete
+  command. Previously the split raised, an error frame went into a stream
+  the client was still reading a real reply from, and every later reply on
+  that connection was out of step. An incomplete command is now capped at
+  16 MB instead of buffering forever, and any framing error closes the
+  connection (the server reconnects) instead of carrying on out of step.
+  Ported from upstream `7e90cd6`; its `ABLETON_MCP_HOST` bind override was
+  not taken, so the socket stays loopback-only.
 
 ### Changed (user-facing)
 
