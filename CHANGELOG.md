@@ -321,6 +321,17 @@ counts, is `docs/IMPROVEMENTS.md`.
 
 ### Fixed (user-facing)
 
+- **Saving and exporting on Live 12.4.7 / macOS 26.6.** The Save panel
+  lists its search field before the name field, so the filename and the
+  Go-to-folder path were typed into a Finder search and every export or
+  Save As stalled; the name field is now picked by role, Go-to-folder is
+  opened from it, and a panel that does not open the sheet is refused
+  (`go_to_folder_did_not_open`). Live 12.4.7 also titles its window with the
+  bare set name (no project, no `*`), which left `save_set` unable to verify
+  any save: the open .als is now read from the window's `AXDocument`
+  (`set_path_source: "ax_document"`, also shown as `ui.set_path` in
+  `get_live_status`), a save is confirmed by that file's mtime, and a
+  greyed-out Save on a set with a file counts as already clean.
 - **A broken preset no longer wedges Live** (Remote Script **1.27.0**).
   `load_device_from_path` reads a `.adv`/`.adg` before sending it and
   refuses (`preset_corrupt`, nothing sent) a document Live would reject:
@@ -502,6 +513,9 @@ counts, is `docs/IMPROVEMENTS.md`.
 
 ### Internal
 
+- `scripts/smoke_live.py`: the checkpoint step checks `checkpointed` /
+  `checkpoint_path` (it read keys `checkpoint_set` never returns), and the
+  export range ends between the test clicks instead of on one.
 - `scripts/smoke_live.py` stops loading presets after a `live_alert`: each
   further load queued behind the open modal.
 

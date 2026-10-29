@@ -534,14 +534,21 @@ class Smoke:
             raise Skip("saves through Live's File menu: re-run with --allow-ui")
         r = self.svc.checkpoint_set("smoke", allow_ui_automation=True,
                                     checkpoint_dir=self.scratch_dir)
-        assert r.get("verified") or r.get("ok"), r
-        return f"checkpoint {os.path.basename(str(r.get('checkpoint') or r.get('path')))}"
+        # checkpoint_set answers {checkpointed, checkpoint_path, sha256}; the
+        # old check read keys it never returns and failed a good checkpoint.
+        assert r.get("checkpointed") is True, r
+        assert os.path.isfile(r["checkpoint_path"]), r
+        return (f"checkpoint {os.path.basename(r['checkpoint_path'])} "
+                f"(sha256 {str(r.get('sha256'))[:12]})")
 
     def step_export(self):
         if not self.allow_ui:
             raise Skip("drives the Export dialog: re-run with --allow-ui")
+        # End between clicks (the click wav has one on every beat): a range
+        # ending ON beat 8 cuts that click, and the render QC rightly calls
+        # the tail cut.
         r = self.svc.export_audio(allow_ui_automation=True, scope="main",
-                                  start_beat=0.0, end_beat=8.0, tail_beats=0.0,
+                                  start_beat=0.0, end_beat=7.5, tail_beats=0.0,
                                   output_dir=self.scratch_dir, file_stem="smoke-export",
                                   require_user_idle_s=0.0, overwrite=True, timeout_s=180)
         assert r.get("ok") is True, r

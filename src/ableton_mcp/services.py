@@ -469,6 +469,10 @@ class AbletonService:
         if set_path:
             path = os.path.expanduser(set_path)
             return {"set_path": path, "candidates": [path], "source": "caller"}
+        shown = windows.get("set_path")
+        if shown and os.path.isfile(shown):
+            # The main window's AXDocument: the file Live itself has open.
+            return {"set_path": shown, "candidates": [shown], "source": "ax_document"}
         candidates = None
         if self._ui is not None and windows.get("set_name"):
             candidates = self._ui.find_set_paths(windows["set_name"],
@@ -529,8 +533,12 @@ class AbletonService:
                                    exclude=("Save Live Set As",))
         out["menu"] = click
         if not click.get("ok"):
-            if click.get("error") == "item_disabled" and before["unsaved"] is False:
+            clean = (before["unsaved"] is False
+                     or (before["unsaved"] is None and path is not None))
+            if click.get("error") == "item_disabled" and clean:
                 # Nothing to save: Live greys the item out on a clean set.
+                # Where the title shows no "*" (12.4.7), the greyed item on a
+                # set with a file is itself the evidence.
                 out.update(saved=True, method="none needed (no unsaved changes)")
             else:
                 out["error"] = "menu_" + str(click.get("error"))
@@ -546,7 +554,10 @@ class AbletonService:
                      if path and os.path.isfile(path) else None)
             advanced = path is None or (mtime is not None and (
                 mtime_before is None or mtime > mtime_before))
-            if now["readable"] and now["unsaved"] is False and advanced:
+            # No "*" to read (12.4.7): the file's mtime advancing is the proof.
+            clean = now["unsaved"] is False or (now["unsaved"] is None
+                                                and path is not None)
+            if now["readable"] and clean and advanced:
                 return ("saved", now)
             return None
 

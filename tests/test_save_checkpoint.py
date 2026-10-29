@@ -268,3 +268,60 @@ def test_release_save_first_failure_keeps_the_lock(als, tmp_path):
     assert e.value.reason == "save_failed"
     assert os.path.exists(lock.path)
     assert "lock stays held" in presenters.lock_refusal(e.value)
+
+
+class FakeUI1247(FakeUI):
+    """Live 12.4.7: the main window is titled with the bare set name (no
+    project, no '*') and names its .als only through AXDocument."""
+
+    def live_windows(self):
+        from urllib.parse import quote
+        doc = "file://" + quote(self.set_path) if self.set_path else None
+        windows = [{"title": self.set_name, "subrole": "AXStandardWindow",
+                    "document": doc}]
+        if self.dialog:
+            windows.append({"title": self.dialog, "subrole": "AXDialog"})
+        return {"frontmost": True, "windows": windows}
+
+
+def test_bare_12_4_7_title_reads_name_and_document(als):
+    from ableton_mcp.ui_macos import summarize_windows
+    summary = summarize_windows(FakeUI1247(set_path=als).live_windows())
+    assert summary["set_name"] == "song" and summary["unsaved"] is None
+    assert summary["set_path"] == als
+
+
+def test_12_4_7_save_is_verified_by_the_document_mtime(als):
+    ui = FakeUI1247(set_path=als, spotlight=[])
+    service, _ = _service(ui)
+    result = service.save_set(allow_ui_automation=True)
+    assert result["saved"] is True, result
+    v = result["verified"]
+    assert v["set_path"] == als and v["set_path_source"] == "ax_document"
+    assert v["mtime_advanced"] is True
+    assert not any(c[0] == "find" for c in ui.calls)  # no Spotlight needed
+
+
+def test_12_4_7_greyed_save_on_a_set_with_a_file_is_clean(als):
+    ui = FakeUI1247(set_path=als, click_result={"ok": False, "error": "item_disabled",
+                                                "item": "Save Live Set"})
+    service, _ = _service(ui)
+    result = service.save_set(allow_ui_automation=True)
+    assert result["saved"] is True
+    assert result["method"] == "none needed (no unsaved changes)"
+
+
+def test_12_4_7_unknown_file_is_not_claimed_saved():
+    ui = FakeUI1247(set_path=None, set_name="Untitled", on_click="none")
+    service, _ = _service(ui)
+    result = service.save_set(allow_ui_automation=True, timeout_s=0.1)
+    assert result["saved"] is False
+
+
+def test_save_panel_fill_skips_the_search_field():
+    # macOS 26.6 lists the Save window's search field first; typing the
+    # folder and name into textFields[0] searched the disk instead.
+    from ableton_mcp.ui_macos import _JXA_SAVE_PANEL
+    assert "AXSearchField" in _JXA_SAVE_PANEL
+    assert ".textFields[0]" not in _JXA_SAVE_PANEL
+    assert "go_to_folder_did_not_open" in _JXA_SAVE_PANEL

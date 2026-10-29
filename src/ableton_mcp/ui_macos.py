@@ -54,10 +54,12 @@ if (ps.length === 0) { JSON.stringify(null); } else {
   const out = [];
   const ws = p.windows();
   for (let i = 0; i < ws.length; i++) {
-    let t = null, sr = null;
+    let t = null, sr = null, doc = null;
     try { t = ws[i].name(); } catch (e) {}
     try { sr = ws[i].subrole(); } catch (e) {}
-    out.push({title: t, subrole: sr});
+    // The open .als as a file:// URL; Live 12.4.7's title no longer names it.
+    try { doc = ws[i].attributes.byName("AXDocument").value(); } catch (e) {}
+    out.push({title: t, subrole: sr, document: doc});
   }
   JSON.stringify({frontmost: p.frontmost(), windows: out});
 }
@@ -301,6 +303,26 @@ function findPanel(p) {
   }
   return null;
 }
+// The name field: macOS 26.6 lists the search field FIRST in the Save
+// window's splitter group (then the name field, then the tag editor), so
+// textFields[0] is the search box - a name typed there searches the disk.
+function nameField(c) {
+  let tfs = []; try { tfs = c.textFields(); } catch (x) { return null; }
+  for (const t of tfs) {
+    let sr = null, d = ""; try { sr = t.subrole(); } catch (x) {}
+    try { d = String(t.description() || ""); } catch (x) {}
+    if (sr === "AXSearchField" || d.indexOf("search") >= 0 || d.indexOf("tag") >= 0) continue;
+    return t;
+  }
+  return null;
+}
+function goToSheetOpen(p) {
+  const wins = p.windows();
+  for (let i = 0; i < wins.length; i++) {
+    try { if (wins[i].sheets.length) return true; } catch (x) {}
+  }
+  return false;
+}
 function sheetOrWindow(p) {
   // The panel opens a moment after the button press that asked for it.
   for (let t = 0; t < 20; t++) { const f = findPanel(p); if (f) return f; delay(0.25); }
@@ -314,15 +336,21 @@ if (ps.length === 0) { JSON.stringify({ok: false, error: "live_not_running"}); }
     if (want.action === "fill") {
       // Folder first: Go-to-folder resets the name field on macOS 26, so a
       // name typed before it is lost and Live saves "Untitled".
-      se.keystroke("g", {using: ["command down", "shift down"]}); delay(0.6);
+      // Focus the name field first: with the search field focused the
+      // shortcut never opens Go-to-folder and the path is typed as a search.
+      const first = nameField(panel);
+      if (first === null) { JSON.stringify({ok: false, error: "no_name_field"}); } else {
+      first.focused = true; delay(0.2);
+      se.keystroke("g", {using: ["command down", "shift down"]}); delay(0.8);
+      if (!goToSheetOpen(p)) { JSON.stringify({ok: false, error: "go_to_folder_did_not_open"}); } else {
       se.keystroke(want.directory); delay(0.3);
       se.keyCode(36); delay(0.8);           // Return in the Go-to-folder sheet only
-      const name = sheetOrWindow(p).textFields[0];
+      const name = nameField(sheetOrWindow(p));
       name.focused = true; delay(0.1);
       se.keystroke("a", {using: ["command down"]}); delay(0.1);
       se.keystroke(want.filename); delay(0.3);
-      let shownName = null; try { shownName = sheetOrWindow(p).textFields[0].value(); } catch (x) {}
-      JSON.stringify({ok: true, filename: shownName});
+      let shownName = null; try { shownName = nameField(sheetOrWindow(p)).value(); } catch (x) {}
+      JSON.stringify({ok: true, filename: shownName}); } }
     } else if (want.action === "save") {
       const b = panel.buttons.whose({name: "Save"});
       if (!b.length) { JSON.stringify({ok: false, error: "no_save_button"}); }
@@ -672,15 +700,34 @@ if (ps.length === 0) { JSON.stringify({ok: false, error: "no_live"}); } else {
 }
 """
 
+def _file_url_path(url: Any) -> Optional[str]:
+    """``file:///a%20b/c.als`` -> ``/a b/c.als``; None for anything else."""
+    if not isinstance(url, str) or not url.startswith("file://"):
+        return None
+    from urllib.parse import unquote, urlparse
+    path = unquote(urlparse(url).path)
+    return path or None
+
+
 def summarize_windows(data: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """The status view of ``MacUI.live_windows()``: the main window parsed,
     any modal dialog named, and every title (plugin windows included)."""
     if data is None:
         return {"readable": False, "set_name": None, "unsaved": None,
-                "modal_dialog": None, "frontmost": None, "titles": None}
+                "set_path": None, "modal_dialog": None, "frontmost": None,
+                "titles": None}
     windows = data.get("windows") or []
     titles = [w.get("title") or "" for w in windows]
     main = next((parse_main_title(t) for t in titles if "Ableton Live" in t), None)
+    standard = next((w for w in windows if w.get("subrole") == "AXStandardWindow"
+                     and w.get("title")), None)
+    if main is None and standard is not None:
+        # Live 12.4.7 titles its main window with the bare set name: no
+        # "- Ableton Live", no project, and no "*" for unsaved changes, so
+        # `unsaved` is unknown (None), not False.
+        main = {"title": standard["title"], "set_name": standard["title"],
+                "project": None, "unsaved": None}
+    set_path = _file_url_path((standard or {}).get("document"))
     modal = None
     for w in windows:
         title = w.get("title") or ""
@@ -693,6 +740,7 @@ def summarize_windows(data: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         "set_name": main["set_name"] if main else None,
         "project": main["project"] if main else None,
         "unsaved": main["unsaved"] if main else None,
+        "set_path": set_path,
         "modal_dialog": modal,
         "frontmost": data.get("frontmost"),
         "titles": titles,
