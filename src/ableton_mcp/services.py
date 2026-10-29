@@ -25,7 +25,7 @@ import threading
 import time
 from typing import Any, Dict, List, Optional, Union
 
-from . import audio_metrics, plugin_state, render, warp_vision
+from . import audio_metrics, plugin_state, preset_integrity, render, warp_vision
 from .commands import COMMANDS
 from .handshake import CapabilityError, ScriptHandshake
 from .live_lock import LiveLock, LockError
@@ -1083,7 +1083,12 @@ class AbletonService:
         ui = getattr(self, "_ui", None)
         if ui is None or not getattr(ui, "available", False):
             return self._send(command, params)
-        before = ui.modal_alerts() or []
+        before = ui.modal_alerts()
+        # None means the alerts cannot be read (no Accessibility permission
+        # for this process): the load still goes, but an alert it opens
+        # cannot be seen or dismissed, and the refusal below says so.
+        blind = before is None
+        before = before or []
         if before:
             raise render.RenderRefused("modal_open", modal_dialog=before[0])
         outcome: Dict[str, Any] = {}
@@ -1103,7 +1108,10 @@ class AbletonService:
             worker.join(0.25)
             if not worker.is_alive():
                 break
-            alerts = ui.modal_alerts() or []
+            alerts = ui.modal_alerts()
+            if alerts is None:
+                blind = True
+                continue
             fresh = [a for a in alerts if a not in before]
             if fresh:
                 alert = fresh[0]
@@ -1128,7 +1136,12 @@ class AbletonService:
         if worker.is_alive():
             raise render.RenderRefused(
                 "live_alert", alert_text="", buttons=[],
-                detail="no reply from Live and no alert seen")
+                detail=("no reply from Live, and its dialogs cannot be read "
+                        "(this process lacks the Accessibility permission), "
+                        "so a 'cannot be loaded' alert may be open in Live: "
+                        "dismiss it there before sending anything else"
+                        if blind else
+                        "no reply from Live and no alert seen"))
         if failure:
             raise failure[0]
         return outcome["value"]
@@ -1137,9 +1150,17 @@ class AbletonService:
                               track_type: str = "regular",
                               expect_track_name: Optional[str] = None
                               ) -> Dict[str, Any]:
+        path = os.path.expanduser(path)
+        # A document Live would refuse is refused here instead: one kind
+        # answers with a modal alert that wedges Live until it is clicked.
+        broken = preset_integrity.check_preset_file(path)
+        if broken:
+            raise render.RenderRefused("preset_corrupt", path=path,
+                                       summary=broken["summary"],
+                                       problems=broken["problems"])
         return self._send_with_alert_watchdog("load_browser_item_by_path", _guarded({
             "track_index": track_index,
-            "path": os.path.expanduser(path),
+            "path": path,
             "track_type": track_type,
         }, expect_track_name))
 

@@ -482,6 +482,8 @@ _RENDER_REASONS = {
     "destructive": "{mode} replaces the track's clips and devices; pass confirm_destructive=true",
     "checkpoint_failed": "the safety checkpoint before a destructive bounce failed ({checkpoint})",
     "cannot_freeze": "Live says '{track}' cannot be frozen",
+    "preset_corrupt": "Live would refuse {path}: {summary}. Nothing was sent to Live",
+    "live_alert": "the load did not complete: {detail} (alert text: {alert_text!r})",
 }
 
 
@@ -529,6 +531,9 @@ def set_chain_mixer(result: Dict[str, Any]) -> str:
 
 def load_device_from_path(result: Dict[str, Any]) -> str:
     new = result.get("new_devices") or []
+    if result.get("loaded") is False:
+        return (f"Did NOT load '{result.get('item_name')}' from {result.get('path')}: "
+                f"{result.get('reason') or 'no new device appeared'}")
     added = f"added {', '.join(new)}" if new else "no new device appeared"
     chain = ", ".join(f"{i} {n}" for i, n in enumerate(result.get("devices_after") or []))
     return (f"Loaded '{result.get('item_name')}' from {result.get('path')} onto "

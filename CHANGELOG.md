@@ -15,7 +15,7 @@ separately, and a script change means **re-run
   shipped additions, upstream ports, pending Live validation and planned work.
 - Corrected the README tool count and installation examples to use this fork.
 
-Ships Remote Script **1.26.0**. **Re-run `ableton-mcp-install-script` and
+Ships Remote Script **1.27.0**. **Re-run `ableton-mcp-install-script` and
 restart Live after upgrading** — the new commands live in the script half,
 and Live caches an already-imported script module, so re-selecting the
 control surface is not enough. This release is larger than usual on the
@@ -321,6 +321,23 @@ counts, is `docs/IMPROVEMENTS.md`.
 
 ### Fixed (user-facing)
 
+- **A broken preset no longer wedges Live** (Remote Script **1.27.0**).
+  `load_device_from_path` reads a `.adv`/`.adg` before sending it and
+  refuses (`preset_corrupt`, nothing sent) a document Live would reject:
+  two same-tag items sharing an Id in one list ("Non-unique list ids", which
+  Live answers with a modal that blocks its main thread until clicked) or a
+  device without an Id inside `<Device>` ("Not all list members have Ids",
+  which Live refuses silently). Both rules hold for all 3,258 presets in
+  Live 12.4's Core Library. Found when 74 generated presets did both and a
+  smoke run left Live answering nothing.
+- `load_browser_item_by_path` now reports `loaded: false` with a `reason`
+  when no new device appears, instead of always `true`; new devices are
+  matched by identity, so reloading a same-named preset still counts.
+- When this process cannot read Live's dialogs (no Accessibility
+  permission), the load watchdog's refusal now says an alert may be open
+  in Live and must be dismissed there, rather than "no reply". `live_alert`
+  and `preset_corrupt` refusals render as sentences, not bare codes.
+
 - **A preset Live cannot load wedged every later command.** `load_device_from_path`
   on a preset Live rejects (a missing sample source, say) answers with a
   modal alert on Live's main thread: the Remote Script never replied, the
@@ -484,6 +501,9 @@ counts, is `docs/IMPROVEMENTS.md`.
   caller who did not pass `expect_track_name` can still diff afterwards.
 
 ### Internal
+
+- `scripts/smoke_live.py` stops loading presets after a `live_alert`: each
+  further load queued behind the open modal.
 
 - Remote Script **1.17.0 → 1.18.0**, with `EXPECTED_REMOTE_SCRIPT_VERSION`
   moved in the same commit, for the commands added after 1.17.0

@@ -167,3 +167,23 @@ def test_a_miss_names_the_level_and_its_contents():
     assert "not be indexed yet" in resp["message"]
     outside = _load(harness, "/tmp/elsewhere/thing.adv")
     assert "not inside the User Library" in outside["message"]
+
+
+def test_a_load_that_adds_no_device_reports_loaded_false():
+    # Live refuses some broken documents ("Not all list members have Ids")
+    # with no alert and no error; the reply must not claim a load.
+    harness = _harness_with_user_library()
+    harness.app.browser.load_item = lambda item: None
+    resp = _load(harness, "/Users/x/Music/Ableton/User Library/Presets/Audio Effects/Amp A.adv")
+    assert resp["status"] == "success", resp
+    assert resp["result"]["loaded"] is False
+    assert resp["result"]["new_devices"] == []
+    assert "no device appeared" in resp["result"]["reason"]
+
+
+def test_reloading_a_same_named_preset_still_counts_as_loaded():
+    harness = _harness_with_user_library()
+    path = "/Users/x/Music/Ableton/User Library/Presets/Audio Effects/Amp A.adv"
+    assert _load(harness, path)["result"]["loaded"] is True
+    again = _load(harness, path)["result"]
+    assert again["loaded"] is True and again["new_devices"] == ["Amp A"]

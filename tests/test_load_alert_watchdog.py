@@ -168,3 +168,30 @@ def test_other_cue_errors_are_not_retried(tmp_path):
     with pytest.raises(RuntimeError):
         service.jump_to_locator(name="x")
     assert client.sent == ["jump_to_locator"]
+
+
+class BlindUI(FakeUI):
+    """A process without the Accessibility permission: alerts unreadable."""
+
+    def modal_alerts(self):
+        self.calls += 1
+        return None
+
+
+def test_a_blind_watchdog_says_the_alert_may_be_open(tmp_path, monkeypatch):
+    # 2026-10-28: the smoke ran under a process macOS had not granted
+    # Accessibility, the alert went unseen, and the refusal read as if
+    # Live had simply gone quiet.
+    ui = BlindUI()
+    client = FakeClient()
+    client.gate = threading.Event()  # never set: Live stays blocked
+    service = _service(client, ui=ui, tmp_path=tmp_path)
+    original = service._send_with_alert_watchdog
+    monkeypatch.setattr(service, "_send_with_alert_watchdog",
+                        lambda c, p: original(c, p, timeout_s=0.6))
+    with pytest.raises(render.RenderRefused) as caught:
+        service.load_device_from_path(4, "/presets/x.adv")
+    assert caught.value.reason == "live_alert"
+    assert "Accessibility" in caught.value.details["detail"]
+    assert ui.dismissed == []
+    client.gate.set()
