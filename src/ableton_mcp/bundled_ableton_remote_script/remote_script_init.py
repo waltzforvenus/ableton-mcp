@@ -37,7 +37,7 @@ EXPECTED_COMMAND_ERRORS = (ValueError, IndexError, KeyError)
 
 # Bumped whenever the TCP command surface changes; the MCP server compares
 # this to EXPECTED_REMOTE_SCRIPT_VERSION.
-SCRIPT_VERSION = "1.26.0"
+SCRIPT_VERSION = "1.27.0"
 PROTOCOL_VERSION = 1
 
 # The trim eraser (see _trim_arrangement_clip): a temporary Session clip
@@ -5367,6 +5367,13 @@ class AbletonMCP(ControlSurface):
             "may not be indexed yet: open its folder in Live's browser, or "
             "retry in a moment." % (path, "; ".join(misses)))
 
+    @staticmethod
+    def _device_key(device):
+        """A device's identity across reads: Live hands out a fresh Python
+        wrapper per access, but the pointer underneath is stable."""
+        ptr = getattr(device, "_live_ptr", None)
+        return ptr if ptr is not None else id(device)
+
     def _load_browser_item_by_path(self, track_index=0, path="",
                                    track_type="regular", expect_track_name=None):
         """Load a preset file (.adv/.adg/.vstpreset/.aupreset/...) by its
@@ -5388,20 +5395,19 @@ class AbletonMCP(ControlSurface):
                 raise ValueError("'%s' is in the browser but is not loadable "
                                  "(a folder?)" % item.name)
             self._song.view.selected_track = track
-            devices_before = [d.name for d in track.devices]
+            before = set(self._device_key(d) for d in track.devices)
             app.browser.load_item(item)
-            devices_after = [d.name for d in track.devices]
-            remaining = {}
-            for name in devices_before:
-                remaining[name] = remaining.get(name, 0) + 1
-            new_devices = []
-            for name in devices_after:
-                if remaining.get(name, 0) > 0:
-                    remaining[name] -= 1
-                else:
-                    new_devices.append(name)
-            return {
-                "loaded": True,
+            after = list(track.devices)
+            devices_after = [d.name for d in after]
+            # By device identity, not name: reloading the preset a track
+            # already holds replaces it with a same-named device. Live
+            # refuses some broken documents without an alert or an error
+            # ("Not all list members have Ids"), so no new device means
+            # nothing loaded - reported, not claimed.
+            new_devices = [d.name for d in after
+                           if self._device_key(d) not in before]
+            result = {
+                "loaded": bool(new_devices),
                 "item_name": item.name,
                 "track_name": track.name,
                 "path": path,
@@ -5409,6 +5415,11 @@ class AbletonMCP(ControlSurface):
                 "new_devices": new_devices,
                 "devices_after": devices_after,
             }
+            if not new_devices:
+                result["reason"] = ("Live took the load but no device appeared "
+                                    "on '%s'; the preset is probably one Live "
+                                    "refuses (its Log.txt names why)" % track.name)
+            return result
         except Exception as e:
             self.log_message("Error loading by path: {0}".format(str(e)))
             raise

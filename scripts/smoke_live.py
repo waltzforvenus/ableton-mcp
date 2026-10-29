@@ -38,6 +38,7 @@ import time
 import wave
 
 from ableton_mcp.app import Settings, build_deps
+from ableton_mcp.render import RenderRefused
 from ableton_mcp.remote_script_install import EXPECTED_REMOTE_SCRIPT_VERSION
 
 
@@ -486,14 +487,26 @@ class Smoke:
                     presets.append(os.path.join(root, f))
         if not presets:
             raise Skip("no .adv preset in the User Library")
-        # A preset Live cannot load answers with a modal alert; the server's
-        # watchdog dismisses it and reports live_alert, so walk a few presets
-        # and skip the step (not fail) when none of them load.
+        # The server refuses a document Live would reject (preset_corrupt,
+        # nothing sent), so walk a few presets and skip the step (not fail)
+        # when none of them load. A live_alert is different: Live answered
+        # with a modal, and if it is still up every further load queues
+        # behind it - on 2026-10-28 that turned one bad preset into a Live
+        # that never answered again. Stop there.
         notes = []
         for preset in presets[:5]:
             try:
                 r = self.svc.load_device_from_path(t, preset,
                                                    expect_track_name="smoke-midi")
+            except RenderRefused as e:
+                if e.reason == "live_alert":
+                    raise AssertionError(
+                        f"{os.path.basename(preset)}: Live alert "
+                        f"{e.details.get('alert_text')!r} - "
+                        f"{e.details.get('detail')}; stopped loading") from e
+                notes.append(f"{os.path.basename(preset)}: {e.reason} "
+                             f"{str(e.details.get('summary') or '')[:80]}")
+                continue
             except Exception as e:
                 notes.append(f"{os.path.basename(preset)}: {str(e)[:90]}")
                 continue
