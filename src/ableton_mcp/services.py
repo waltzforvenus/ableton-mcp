@@ -108,6 +108,24 @@ def _fit_snapshot(snapshot: Dict[str, Any], max_chars: int) -> Dict[str, Any]:
     return build(min(lo, len(tracks)))
 
 
+def _browser_uri_to_path(path: str) -> str:
+    """Accept the URI form the browser itself reports.
+
+    Every item get_browser_items_at_path returns carries a uri like
+    query:Plugins#VST3:AIDA%20DSP, but the remote-script walker takes
+    /-separated attribute paths (Plugins/VST3/AIDA DSP) - so feeding a
+    reported URI back in walked nothing and Plug-Ins enumeration looked
+    empty. Translate query:X#Y#Z (percent-decoded) to X/Y/Z; anything
+    without the query: prefix passes through unchanged.
+    """
+    if not path.startswith("query:"):
+        return path
+    from urllib.parse import unquote
+    # Levels separate with # after the root and : below it; split before
+    # unquoting so a %3A inside a name never becomes a separator.
+    segments = [unquote(s) for s in re.split("[#:]", path[len("query:"):]) if s]
+    return "/".join(segments)
+
 def _sha256(path: str) -> str:
     digest = hashlib.sha256()
     with open(path, "rb") as f:
@@ -1259,7 +1277,7 @@ class AbletonService:
 
     def get_browser_items_at_path(self, path: str) -> Dict[str, Any]:
         return self._send("get_browser_items_at_path", {
-            "path": path
+            "path": _browser_uri_to_path(path)
         })
 
     def load_drum_kit(self, track_index: int, rack_uri: str, kit_path: str,
