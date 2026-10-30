@@ -124,6 +124,12 @@ def _browser_uri_to_path(path: str) -> str:
     # Levels separate with # after the root and : below it; split before
     # unquoting so a %3A inside a name never becomes a separator.
     segments = [unquote(s) for s in re.split("[#:]", path[len("query:"):]) if s]
+    # Browser roots use display names (AudioFx) where the walker expects
+    # snake_case attributes (audio_effects) - alias the root so translated
+    # paths stay walkable. Hit live loading stock FX, 2026-10-30.
+    aliases = {"audiofx": "audio_effects"}
+    if segments and segments[0].lower() in aliases:
+        segments[0] = aliases[segments[0].lower()]
     return "/".join(segments)
 
 def _sha256(path: str) -> str:
