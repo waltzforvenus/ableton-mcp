@@ -87,7 +87,7 @@
         "path": "/Users/x/Music/Ableton/User Library/Presets/Audio Effects/Amp A.adv",
         "track_index": 1
       },
-      "expect": "Error loading the preset file: boom",
+      "expect": "{\n  \"loaded\": null,\n  \"reconciliation_required\": true,\n  \"retry_safe\": false,\n  \"changed_state\": null,\n  \"state_preservation\": \"unknown\",\n  \"reason\": \"boom\",\n  \"command\": \"load_browser_item_by_path\"\n}",
       "name": "error",
       "wire": [
         {

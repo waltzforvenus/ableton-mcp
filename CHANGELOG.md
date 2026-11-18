@@ -1,3 +1,17 @@
+## Unreleased — load failure outcomes (1.33.0)
+
+- Keep completed rack evidence on read-only kit lookup errors and later lock/gate
+  refusals; explicitly prevent replay of the whole partially completed workflow.
+- Shared URI/path post-dispatch uncertainty contract preserves watchdog diagnostics
+  and proven preflight refusal semantics. No automatic retry or rollback.
+- Native load exceptions retain bounded best-effort device evidence, never infer
+  completion from device presence after a failure.
+- Detection/non-clobber scope and temporary restart-only latch recovery accepted;
+  automatic arm restoration/new-track disarming remain open. A4-HUMAN-ACK is a
+  named follow-up, not a new recovery tool shipped here.
+- Protocol1.33.0 requires re-running ableton-mcp-install-script and restarting Live
+  when deploying (not performed here). Native acceptance remains pending.
+
 ## Unreleased — load-state evidence and non-clobber guard (1.32.0)
 
 - Shared native loader snapshots all track identities/arm/monitor states before

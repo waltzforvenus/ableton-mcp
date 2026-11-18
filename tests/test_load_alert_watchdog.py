@@ -118,15 +118,15 @@ def test_watchdog_returns_the_reply_with_the_alert_folded_in(tmp_path):
     assert ui.dismissed == ["OK"]
 
 
-def test_watchdog_raises_live_alert_naming_the_text(tmp_path):
+def test_watchdog_reports_uncertainty_with_live_alert_text(tmp_path):
     ui = FakeUI()
     client = FakeClient(error=TimeoutError("No data received"))
     client.gate = ui.unblock
     service = _service(client, ui=ui, tmp_path=tmp_path)
-    with pytest.raises(render.RenderRefused) as caught:
-        service.load_device_from_path(4, "/presets/broken.adv")
-    assert caught.value.reason == "live_alert"
-    assert ALERT["text"] in caught.value.details.get("alert_text", "")
+    result = service.load_device_from_path(4, "/presets/broken.adv")
+    assert result["reconciliation_required"] is True
+    assert result["diagnostics"]["reason"] == "live_alert"
+    assert ALERT["text"] in result["diagnostics"]["details"].get("alert_text", "")
 
 
 def test_without_a_ui_the_load_is_a_plain_send(tmp_path):
@@ -188,10 +188,10 @@ def test_a_blind_watchdog_says_the_alert_may_be_open(tmp_path, monkeypatch):
     service = _service(client, ui=ui, tmp_path=tmp_path)
     original = service._send_with_alert_watchdog
     monkeypatch.setattr(service, "_send_with_alert_watchdog",
-                        lambda c, p: original(c, p, timeout_s=0.6))
-    with pytest.raises(render.RenderRefused) as caught:
-        service.load_device_from_path(4, "/presets/x.adv")
-    assert caught.value.reason == "live_alert"
-    assert "Accessibility" in caught.value.details["detail"]
+                        lambda c, p, **kw: original(c, p, timeout_s=0.6, **kw))
+    result = service.load_device_from_path(4, "/presets/x.adv")
+    assert result["reconciliation_required"] is True
+    assert result["diagnostics"]["reason"] == "live_alert"
+    assert "Accessibility" in result["diagnostics"]["details"]["detail"]
     assert ui.dismissed == []
     client.gate.set()

@@ -39,7 +39,7 @@ EXPECTED_COMMAND_ERRORS = (ValueError, IndexError, KeyError)
 
 # Bumped whenever the TCP command surface changes; the MCP server compares
 # this to EXPECTED_REMOTE_SCRIPT_VERSION.
-SCRIPT_VERSION = "1.32.0"
+SCRIPT_VERSION = "1.33.0"
 PROTOCOL_VERSION = 1
 
 # The trim eraser (see _trim_arrangement_clip): a temporary Session clip
@@ -5496,6 +5496,22 @@ class AbletonMCP(ControlSurface):
                 error = "No native device arrival verified; delayed/rejected load requires reconciliation"
         except Exception as exc:
             error = str(exc)
+            result["loaded"] = None
+            # One bounded best-effort read, never a retry or success inference.
+            try:
+                devices = []
+                complete = True
+                for index, device in enumerate(track.devices):
+                    if index >= 128:
+                        complete = False
+                        break
+                    devices.append(device)
+                result["devices_after"] = [d.name for d in devices]
+                result["new_devices"] = [d.name for d in devices
+                                         if self._device_key(d) not in devices_before]
+                result["device_evidence_complete"] = complete
+            except Exception as read_error:
+                result["device_readback_error"] = str(read_error)
         try:
             after = self._load_track_state()
             result["changed_state"] = self._load_state_diff(before, after)

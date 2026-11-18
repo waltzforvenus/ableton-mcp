@@ -551,7 +551,7 @@ get_plugin_state = as_json
 
 
 def load_devices(result: Dict[str, Any]) -> str:
-    if (result.get("reconciliation_required") or "changed_state" in result
+    if (result.get("partial_completion") or result.get("reconciliation_required") or "changed_state" in result
             or any("changed_state" in r for r in result.get("loaded", []))):
         return as_json(result)
     chain = ", ".join(f"{d.get('index')} {d.get('name')}"
@@ -898,7 +898,7 @@ def load_drum_kit(result: Dict[str, Any]) -> str:
     """Render the service's stage-tagged outcome dict. Only the exception
     path is an "Error ..." string (the decorator's job); the intermediate
     failures below have always been success-path strings."""
-    if (result.get("reconciliation_required") or result.get("stage") == "kit_failed"
+    if (result.get("partial_completion") or result.get("reconciliation_required") or result.get("stage") == "kit_failed"
             or "changed_state" in (result.get("rack_result") or {})):
         return as_json(result)
     stage = result["stage"]

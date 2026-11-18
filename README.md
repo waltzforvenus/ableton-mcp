@@ -802,3 +802,16 @@ by this code; unexpected native arming is reported, not silently overwritten.
 Unchanged-at-return is not proof that asynchronous plugin loading has finished.
 Inspect/reconcile manually before deliberately restarting the script; a restart
 alone is not evidence of reconciliation. Live acceptance remains pending.
+
+Load failure reporting (1.33.0) retains completed rack/batch evidence across lookup
+errors and later preflight refusals. Read-only lookup failure does not imply a
+new mutation. URI/path post-dispatch uncertainty is reported with loaded=null,
+retry_safe=false and watchdog diagnostics when available; proven preflight
+lock/capability/preset/modal refusals retain their existing refusal behavior.
+
+**Follow-up A4-HUMAN-ACK (owner: retained Ableton implementation owner):** replace
+restart-only latch recovery with explicit human-confirmed incident acknowledgement
+bound to a fresh state/identity fingerprint. Clear only the application-owned
+latch/candidate, invalidate stale tokens, and perform no arm/monitor/load writes.
+Changed snapshots must refuse; quiet time is not asynchronous-completion proof.
+This follow-up is not implemented in the current detection/non-clobber increment.

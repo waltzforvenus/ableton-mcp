@@ -254,9 +254,9 @@ def test_min_version_floors_are_exactly_the_broken_but_advertised():
         "get_device_parameters": "1.8.0",
         "set_device_parameter": "1.8.0",
         "trim_arrangement_clip": "1.12.0",
-        "load_browser_item": "1.32.0",
-        "load_browser_item_by_path": "1.32.0",
-        "load_instrument_or_effect": "1.32.0",
+        "load_browser_item": "1.33.0",
+        "load_browser_item_by_path": "1.33.0",
+        "load_instrument_or_effect": "1.33.0",
         # New keyword an older handler has no parameter for.
         "get_clip_notes": "1.29.0",            # source completeness and paging
         "get_session_snapshot": "1.15.0",      # scoping flags; schema v2 -> v3

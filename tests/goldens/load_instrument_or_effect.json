@@ -184,7 +184,7 @@
         "track_index": 0,
         "uri": "query:Synths#Operator"
       },
-      "expect": "Error loading instrument by URI: boom",
+      "expect": "{\n  \"loaded\": null,\n  \"reconciliation_required\": true,\n  \"retry_safe\": false,\n  \"changed_state\": null,\n  \"state_preservation\": \"unknown\",\n  \"reason\": \"boom\",\n  \"command\": \"load_browser_item\"\n}",
       "name": "error",
       "wire": [
         {

@@ -78,11 +78,11 @@ def _wire_call_literals(path, attrs):
 
 
 def _service_send_literals():
-    # _send_cue and _send_with_alert_watchdog are service-layer indirections
+    # _send_cue, _send_load and _send_with_alert_watchdog are service-layer indirections
     # over _send: the wire command is still named by a literal at the call
     # site, so those literals count as reachable too.
     literals = _wire_call_literals(
-        SERVICES, {"_send", "_send_cue", "_send_with_alert_watchdog"})
+        SERVICES, {"_send", "_send_cue", "_send_load", "_send_with_alert_watchdog"})
     assert literals, "no _send call sites found in services.py"
     return literals
 

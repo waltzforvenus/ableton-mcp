@@ -1742,6 +1742,16 @@ BASE_CASES += [
         _ok("load_browser_item", {'track_index': 0, 'item_uri': 'rack'}, {'loaded': True, 'item_name': 'Device', 'track_name': 'Track', 'new_devices': ['Device'], 'devices_after': ['Device'], 'changed_state': [{'identity': 12, 'before': {'arm': False, 'monitoring': 1}, 'after': {'arm': True, 'monitoring': 0}}], 'topology_changed': False, 'state_preservation': 'unresolved', 'state_scope': 'immediate_main_thread_return', 'async_completion': 'unverified', 'reconciliation_required': True, 'retry_safe': False, 'reason': 'Unattributed arm/monitor/identity change; no compensating writes performed'})]),
 ]
 
+BASE_CASES += [
+    _case("load_drum_kit", "lookup_exception_after_rack",
+          {"track_index": 0, "rack_uri": "rack", "kit_path": "drums"}, [
+        _ok("load_browser_item", {"track_index": 0, "item_uri": "rack"},
+            {"loaded": True, "changed_state": [], "state_preservation": "unchanged_at_return"}),
+        _boom("get_browser_items_at_path", {"path": "drums"}, "lookup response lost"),
+    ]),
+]
+
+
 def _generated_error_cases(base_cases):
     """One error case per tool: same args as the tool's first case, first
     send raises RuntimeError("boom"), freezing the tool's error string."""
