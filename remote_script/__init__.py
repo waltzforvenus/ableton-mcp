@@ -39,7 +39,7 @@ EXPECTED_COMMAND_ERRORS = (ValueError, IndexError, KeyError)
 
 # Bumped whenever the TCP command surface changes; the MCP server compares
 # this to EXPECTED_REMOTE_SCRIPT_VERSION.
-SCRIPT_VERSION = "1.31.0"
+SCRIPT_VERSION = "1.32.0"
 PROTOCOL_VERSION = 1
 
 # The trim eraser (see _trim_arrangement_clip): a temporary Session clip
@@ -5434,65 +5434,104 @@ class AbletonMCP(ControlSurface):
         return self._load_browser_item(track_index, uri, track_type,
                                        expect_track_name=expect_track_name)
 
-    def _load_browser_item(self, track_index=0, item_uri="", track_type="regular",
-                           expect_track_name=None):
-        """Load a browser item onto a track by its URI.
+    def _load_track_state(self):
+        """Snapshot identities and arm/monitor values, not a mutation authority."""
+        tracks = list(self._song.tracks) + list(self._song.return_tracks) + [self._song.master_track]
+        rows = []
+        for track in tracks:
+            arm = bool(track.arm) if track.can_be_armed else None
+            monitor = int(track.current_monitoring_state) if track.can_be_armed else None
+            rows.append({"identity": self._device_key(track), "name": track.name,
+                         "arm": arm, "monitoring": monitor})
+        return rows
 
-        track_type accepts "regular", "return" or "master", so effects can be
-        placed on the master bus and on send returns, not just regular tracks.
+    def _load_state_diff(self, before, after):
+        old = dict((r["identity"], r) for r in before)
+        new = dict((r["identity"], r) for r in after)
+        keys = [r["identity"] for r in before]
+        keys.extend(r["identity"] for r in after if r["identity"] not in old)
+        return [{"identity": key, "before": old.get(key), "after": new.get(key)}
+                for key in keys if old.get(key) != new.get(key)]
+
+    def _load_item_preserving_state(self, track, item, browser, expect_load_state_token=None):
+        """One main-thread native load with honest immediate state evidence.
+
+        Browser.load_item has no documented origin/generation token for arm
+        events. Even a familiar Exclusive Arm transfer can be a human edit
+        during a reentrant/modal load. Never compensate an unattributed delta.
         """
+        if getattr(self, "_load_state_reconciliation", False):
+            return {"loaded": False, "reconciliation_required": True,
+                    "retry_safe": False, "changed_state": [],
+                    "reason": "Prior load needs manual state reconciliation; further loads blocked in this script instance"}
+        held_tracks = tuple(self._song.tracks) + tuple(self._song.return_tracks) + (self._song.master_track,)
+        before = self._load_track_state()
+        if expect_load_state_token is not None:
+            prior = getattr(self, "_load_state_candidate", None)
+            if not prior or prior[0] != expect_load_state_token or prior[1] != track or prior[2] != before:
+                self._load_state_reconciliation = True
+                return {"loaded": False, "reconciliation_required": True,
+                        "retry_safe": False, "changed_state": [],
+                        "reason": "Prior load identity/state changed; next load not attempted"}
+        self._load_state_candidate = None
+        devices_before = set(self._device_key(d) for d in track.devices)
+        result = {"loaded": None, "track_name": track.name, "item_name": item.name,
+                  "changed_state": [], "state_scope": "immediate_main_thread_return",
+                  "async_completion": "unverified"}
+        error = None
         try:
-            # expect_track_name earns its keep here above all: this is the
-            # call that put an Auto Pan on the BASS bus instead of GUITARS,
-            # and a device loaded onto the wrong track is silent until
-            # somebody notices the wrong thing moving.
-            track = self._resolve_track(track_index, track_type,
-                                        expect_track_name=expect_track_name)
-            
-            # Access the application's browser instance instead of creating a new one
-            app = self.application()
-            
-            # Find the browser item by URI
-            item = self._find_browser_item_by_uri(app.browser, item_uri)
-            
-            if not item:
-                raise ValueError("Browser item with URI '{0}' not found".format(item_uri))
-            
-            # Select the track
             self._song.view.selected_track = track
+            # Selection itself can change user state. Do not proceed to load
+            # when the snapshot no longer describes the selected context.
+            selected_state = self._load_track_state()
+            if selected_state != before or self._song.view.selected_track != track:
+                raise ValueError("Track state changed during selection; native load not attempted")
+            browser.load_item(item)
+            after_devices = list(track.devices)
+            result["devices_after"] = [d.name for d in after_devices]
+            result["new_devices"] = [d.name for d in after_devices
+                                     if self._device_key(d) not in devices_before]
+            result["loaded"] = bool(result["new_devices"])
+            if not result["loaded"]:
+                error = "No native device arrival verified; delayed/rejected load requires reconciliation"
+        except Exception as exc:
+            error = str(exc)
+        try:
+            after = self._load_track_state()
+            result["changed_state"] = self._load_state_diff(before, after)
+            result["topology_changed"] = ([r["identity"] for r in before]
+                                          != [r["identity"] for r in after])
+            changed = after != before or self._song.view.selected_track != track
+        except Exception as exc:
+            changed = True
+            result["state_readback_error"] = str(exc)
+        if changed or error:
+            self._load_state_reconciliation = True
+            result.update(reconciliation_required=True, retry_safe=False,
+                          state_preservation="unresolved",
+                          reason=error or "Unattributed arm/monitor/identity change; no compensating writes performed")
+        else:
+            serial = getattr(self, "_load_state_serial", 0) + 1
+            self._load_state_serial = serial
+            token = str(serial)
+            self._load_state_candidate = (token, track, after, held_tracks)
+            result.update(reconciliation_required=False,
+                          state_preservation="unchanged_at_return", load_state_token=token)
+        return result
 
-            devices_before = [d.name for d in track.devices]
+    def _load_browser_item(self, track_index=0, item_uri="", track_type="regular",
+                           expect_track_name=None, expect_load_state_token=None):
+        """Load by URI with all-track arm/monitor readback, never blind restore."""
+        track = self._resolve_track(track_index, track_type,
+                                    expect_track_name=expect_track_name)
+        browser = self.application().browser
+        item = self._find_browser_item_by_uri(browser, item_uri)
+        if not item:
+            raise ValueError("Browser item with URI '%s' not found" % item_uri)
+        result = self._load_item_preserving_state(track, item, browser, expect_load_state_token)
+        result["uri"] = item_uri
+        return result
 
-            # Load the item
-            app.browser.load_item(item)
-
-            devices_after = [d.name for d in track.devices]
-            # Multiset diff, so a second copy of an already-present device
-            # still counts as new.
-            remaining = {}
-            for name in devices_before:
-                remaining[name] = remaining.get(name, 0) + 1
-            new_devices = []
-            for name in devices_after:
-                if remaining.get(name, 0) > 0:
-                    remaining[name] -= 1
-                else:
-                    new_devices.append(name)
-
-            result = {
-                "loaded": True,
-                "item_name": item.name,
-                "track_name": track.name,
-                "uri": item_uri,
-                "new_devices": new_devices,
-                "devices_after": devices_after,
-            }
-            return result
-        except Exception as e:
-            self.log_message("Error loading browser item: {0}".format(str(e)))
-            self.log_message(traceback.format_exc())
-            raise
-    
     def _browser_item_for_path(self, browser, path):
         """The browser item for a file under the User Library or one of the
         browser's user folders ("Places"), found by walking names.
@@ -5564,53 +5603,18 @@ class AbletonMCP(ControlSurface):
 
     def _load_browser_item_by_path(self, track_index=0, path="",
                                    track_type="regular", expect_track_name=None):
-        """Load a preset file (.adv/.adg/.vstpreset/.aupreset/...) by its
-        absolute path, through the browser item Live shows for it.
-
-        A Live device preset (.adv) stores the device's whole state —
-        for a hosted plugin, the plugin's own state blob, model and IR
-        file paths included — so a configured amp or synth saved once
-        reloads exactly, with no plugin window or file chooser involved.
-        """
-        try:
-            track = self._resolve_track(track_index, track_type,
-                                        expect_track_name=expect_track_name)
-            if not path:
-                raise ValueError("path must be the preset file's absolute path")
-            app = self.application()
-            item = self._browser_item_for_path(app.browser, path)
-            if not getattr(item, "is_loadable", False):
-                raise ValueError("'%s' is in the browser but is not loadable "
-                                 "(a folder?)" % item.name)
-            self._song.view.selected_track = track
-            before = set(self._device_key(d) for d in track.devices)
-            app.browser.load_item(item)
-            after = list(track.devices)
-            devices_after = [d.name for d in after]
-            # By device identity, not name: reloading the preset a track
-            # already holds replaces it with a same-named device. Live
-            # refuses some broken documents without an alert or an error
-            # ("Not all list members have Ids"), so no new device means
-            # nothing loaded - reported, not claimed.
-            new_devices = [d.name for d in after
-                           if self._device_key(d) not in before]
-            result = {
-                "loaded": bool(new_devices),
-                "item_name": item.name,
-                "track_name": track.name,
-                "path": path,
-                "uri": getattr(item, "uri", None),
-                "new_devices": new_devices,
-                "devices_after": devices_after,
-            }
-            if not new_devices:
-                result["reason"] = ("Live took the load but no device appeared "
-                                    "on '%s'; the preset is probably one Live "
-                                    "refuses (its Log.txt names why)" % track.name)
-            return result
-        except Exception as e:
-            self.log_message("Error loading by path: {0}".format(str(e)))
-            raise
+        """Resolve a browser-visible preset path and use the shared guarded load."""
+        track = self._resolve_track(track_index, track_type,
+                                    expect_track_name=expect_track_name)
+        if not path:
+            raise ValueError("path must be the preset file's absolute path")
+        browser = self.application().browser
+        item = self._browser_item_for_path(browser, path)
+        if not getattr(item, "is_loadable", False):
+            raise ValueError("'%s' is in the browser but is not loadable (a folder?)" % item.name)
+        result = self._load_item_preserving_state(track, item, browser)
+        result.update(path=path, uri=getattr(item, "uri", None))
+        return result
 
     # Substring markers that point a URI at a likely root. Unmatched URIs fall
     # back to the default search order.

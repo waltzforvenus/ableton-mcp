@@ -1,3 +1,17 @@
+## Unreleased — load-state evidence and non-clobber guard (1.32.0)
+
+- Shared native loader snapshots all track identities/arm/monitor states before
+  selection and returns changed_state and immediate verification scope.
+- Unexpected state/topology, no verified device arrival or partial failure
+  requires reconciliation, not blind restoration. Further loads stop; batch/kit
+  calls retain per-load results and validate a prior-state token between loads.
+- Public responses expose reconciliation instead of hiding it behind Loaded.
+- Limitation: automatic Exclusive Arm restoration/new-track disarming is not
+  supported without trustworthy change provenance. No compensating writes overwrite observed state;
+  asynchronous plugin completion and native restoration acceptance remain pending.
+- Re-run ableton-mcp-install-script and restart Live when deploying protocol1.32.0
+  (not performed here). Existing successful unchanged-state loads remain usable.
+
 ## Unreleased — bounded arrangement audio subset (1.31.0)
 
 - Unsupported plans now remain visibly unsupported, not a false placement success.

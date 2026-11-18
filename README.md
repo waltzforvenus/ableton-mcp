@@ -482,7 +482,7 @@ are not present upstream.
 | `get_plugin_presets` † | `track_index`, `device_index`, `track_type`? | List a hosted VST/VST3/AU plugin's factory presets and which one is selected — the way in to a plugin whose parameters Live does not expose |
 | `set_plugin_preset` † | `track_index`, `device_index`, `preset_index`?, `preset_name`?, `track_type`? | Select a plugin's factory preset by index or by name (exact, then an unambiguous fragment); refuses ambiguous names, out-of-range indices and devices without presets |
 | `delete_device` † | `track_index`, `device_index`, `track_type`? | Remove a device from a track's chain |
-| `load_devices` † | `track_index`, `uris`, `track_type`?, `expect_track_name`? | Load several browser items onto one track in order (a whole chain); stops at the first failure and returns the final device list |
+| `load_devices` † | `track_index`, `uris`, `track_type`?, `expect_track_name`? | Load several browser items onto one track in order (a whole chain); stops at failure or state reconciliation; reports per-load arm/monitor evidence |
 | `export_audio` † | `output_dir`, `file_stem`, `scope`?, `track`?, `start_beat`?, `end_beat`?, `tail_beats`?, `sample_rate`?, `bit_depth`?, `file_type`?, … `allow_ui_automation`, `dry_run`? | Live's own offline render via File › Export Audio/Video, driven over Accessibility: range from the LOM, every field set by label and read back, Export by its button, files measured. No playback |
 | `bounce_track` † | `track_index`, `mode`?, `allow_ui_automation`, `expect_track_name`?, `confirm_destructive`? | Freeze / Bounce to New Track / Bounce Track in Place through the Edit menu, verified through the LOM (frozen flag, track count, the new clip's file) |
 | `analyze_audio` † | `path`, `start_s`?, `end_s`? | Measure a file offline: duration, rate, LUFS-I, LRA, true peak, sample peak, RMS, clipping, L/R balance/correlation, silence, cut tail (ffmpeg) |
@@ -786,3 +786,19 @@ fingerprint_scope and opaque_expression_verified=false. Full replacement remains
 unsupported. Setter/apply/readback failures consume the plan and require explicit
 reconciliation; do not retry. Advanced-add failures report partial measured IDs
 or unknown counts after one best-effort readback, never retry or roll back.
+
+
+### Load-state safety (Remote Script 1.32.0)
+URI/preset/batch/kit loads snapshot track identities and arm/monitor states before
+selection and report immediate readback. Native state changes or uncertain loads
+require reconciliation and block further loads in that script instance; no blind
+restoration or global Exclusive Arm preference change is performed. Consecutive
+batch/kit loads validate the prior identity/state token before the next mutation.
+
+Automatic restoration of Exclusive Arm transfers and normalization of unexpected
+new tracks remain unsupported: native browser events do not identify whether a
+loader, plugin or human caused a change. Existing unarmed tracks are never armed
+by this code; unexpected native arming is reported, not silently overwritten.
+Unchanged-at-return is not proof that asynchronous plugin loading has finished.
+Inspect/reconcile manually before deliberately restarting the script; a restart
+alone is not evidence of reconciliation. Live acceptance remains pending.

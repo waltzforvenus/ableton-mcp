@@ -978,7 +978,8 @@ class AbletonService:
 
     def load_browser_item(self, track_index: int, item_uri: str,
                           track_type: Optional[str] = None,
-                          expect_track_name: Optional[str] = None
+                          expect_track_name: Optional[str] = None,
+                          expect_load_state_token: Optional[str] = None
                           ) -> Dict[str, Any]:
         """The wire command behind all three load tools. The drum-kit
         orchestration has never sent a track_type, so the params dict only
@@ -990,6 +991,8 @@ class AbletonService:
         }
         if track_type is not None:
             params["track_type"] = track_type
+        if expect_load_state_token is not None:
+            params["expect_load_state_token"] = expect_load_state_token
         return self._send("load_browser_item",
                           _guarded(params, expect_track_name))
 
@@ -1271,19 +1274,29 @@ class AbletonService:
         failed = None
         devices_after: List[str] = []
         track_name = None
+        load_guard = {}
         for uri in uris:
             try:
                 r = self.load_browser_item(track_index, uri, track_type,
-                                           expect_track_name)
+                                           expect_track_name, **load_guard)
             except LockError:
                 raise
             except Exception as e:
-                failed = {"uri": uri, "error": str(e)}
+                failed = {"uri": uri, "error": str(e),
+                          "result": {"loaded": None, "reconciliation_required": True,
+                                     "retry_safe": False, "changed_state": None,
+                                     "state_preservation": "unknown"}}
                 break
-            loaded.append({"uri": uri, "item_name": r.get("item_name"),
-                           "new_devices": r.get("new_devices")})
-            devices_after = list(r.get("devices_after") or [])
+            if "devices_after" in r:
+                devices_after = list(r.get("devices_after") or [])
             track_name = r.get("track_name", track_name)
+            if r.get("reconciliation_required") or r.get("loaded") is False:
+                failed = {"uri": uri, "error": r.get("reason", "Load needs reconciliation"),
+                          "result": r}
+                break
+            if r.get("load_state_token") is not None:
+                load_guard = {"expect_load_state_token": r["load_state_token"]}
+            loaded.append(dict(r, uri=uri))
         return {
             "track_index": track_index,
             "track_name": track_name,
@@ -1291,6 +1304,7 @@ class AbletonService:
             "loaded_count": len(loaded),
             "loaded": loaded,
             "failed": failed,
+            "reconciliation_required": bool(failed and (failed.get("result") or {}).get("reconciliation_required")),
             "not_attempted": list(uris[len(loaded) + (1 if failed else 0):]),
             "devices": [{"index": i, "name": n} for i, n in enumerate(devices_after)],
         }
@@ -1351,13 +1365,15 @@ class AbletonService:
         # whatever rack the first one found.
         result = self.load_browser_item(track_index, rack_uri,
                                         expect_track_name=expect_track_name)
-        if not result.get("loaded", False):
-            return {"stage": "rack_failed", "rack_uri": rack_uri}
+        if result.get("reconciliation_required") or not result.get("loaded", False):
+            return {"stage": "rack_failed", "rack_uri": rack_uri,
+                    "rack_result": result,
+                    "reconciliation_required": bool(result.get("reconciliation_required"))}
 
         # Step 2: Get the drum kit items at the specified path
         kit_result = self.get_browser_items_at_path(kit_path)
         if "error" in kit_result:
-            return {"stage": "kit_lookup_failed",
+            return {"stage": "kit_lookup_failed", "rack_result": result,
                     "error": kit_result.get("error")}
 
         # Step 3: Find a loadable drum kit. kit_path may name a folder (load
@@ -1370,13 +1386,25 @@ class AbletonService:
                 and kit_result.get("uri"):
             loadable_kits = [kit_result]
         if not loadable_kits:
-            return {"stage": "no_loadable", "kit_path": kit_path}
+            return {"stage": "no_loadable", "kit_path": kit_path, "rack_result": result}
 
         # Step 4: Load the first loadable kit
-        self.load_browser_item(track_index, loadable_kits[0].get("uri"),
-                               expect_track_name=expect_track_name)
+        load_guard = ({"expect_load_state_token": result["load_state_token"]}
+                      if result.get("load_state_token") is not None else {})
+        try:
+            kit_result = self.load_browser_item(track_index, loadable_kits[0].get("uri"),
+                                                expect_track_name=expect_track_name, **load_guard)
+        except LockError:
+            raise
+        except Exception as exc:
+            kit_result = {"loaded": None, "reconciliation_required": True,
+                          "retry_safe": False, "reason": str(exc),
+                          "changed_state": None, "state_preservation": "unknown"}
+        if kit_result.get("reconciliation_required") or kit_result.get("loaded") is False:
+            return {"stage": "kit_failed", "rack_result": result, "kit_result": kit_result,
+                    "reconciliation_required": bool(kit_result.get("reconciliation_required"))}
         return {"stage": "ok", "kit_name": loadable_kits[0].get("name"),
-                "track_index": track_index}
+                "track_index": track_index, "rack_result": result, "kit_result": kit_result}
 
     # ── Arrangement view commands ─────────────────────────────────────────────
 

@@ -364,6 +364,9 @@ def test_the_matrix_is_not_vacuous():
         "get_clip_notes",
         "get_device_parameters",
         "get_session_snapshot",
+        "load_browser_item",
+        "load_browser_item_by_path",
+        "load_instrument_or_effect",
         "set_device_parameter",
         "trim_arrangement_clip",
     ]
@@ -390,7 +393,6 @@ def test_the_matrix_is_not_vacuous():
         "insert_device",
         "insert_rack_chain",
         "jump_to_locator",
-        "load_browser_item_by_path",
         "move_arrangement_clip",
         "move_device",
         "plan_note_edits",

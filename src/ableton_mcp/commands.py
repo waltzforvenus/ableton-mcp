@@ -193,10 +193,10 @@ COMMANDS: dict[str, CommandSpec] = {
     # row it got the short read-only socket timeout and appeared to fail
     # while Live was in fact still loading the device. Every historical
     # script dispatches it (advertised only from 1.8.0), so it sits in the
-    # LEGACY floor and stays ungated like the rest of the floor.
-    "load_browser_item": CommandSpec(modifying=True),
-    # 1.22.0; a new name, so the capability gate alone answers old scripts.
-    "load_browser_item_by_path": CommandSpec(modifying=True, gated=True),
+    # LEGACY surface, but 1.32.0 now requires state-preservation reporting.
+    "load_browser_item": CommandSpec(modifying=True, gated=True, min_script_version="1.32.0"),
+    # 1.32.0 adds honest load-state evidence and consecutive-load guards.
+    "load_browser_item_by_path": CommandSpec(modifying=True, gated=True, min_script_version="1.32.0"),
     "insert_rack_chain": CommandSpec(modifying=True, gated=True),
     # Selection is not an edit of the set (no stamp), but it still needs
     # the lock: it is what the next menu click acts on.
@@ -214,8 +214,8 @@ COMMANDS: dict[str, CommandSpec] = {
     # Dispatchable on the Remote Script but never sent by any current tool
     # (the tool of that name sends load_browser_item); kept for third-party
     # clients (plan §9) and for the cross-half modifying-set equality.
-    # Also in the LEGACY floor, so it stays ungated.
-    "load_instrument_or_effect": CommandSpec(modifying=True),
+    # Legacy alias shares the 1.32.0 state-safety floor.
+    "load_instrument_or_effect": CommandSpec(modifying=True, gated=True, min_script_version="1.32.0"),
     "switch_to_arrangement_view": CommandSpec(modifying=True, gated=True, lock="check"),
     "set_current_song_time": CommandSpec(modifying=True, gated=True, lock="check"),
     # 35 s, not the modifying default: the Remote Script's queue timeout for
