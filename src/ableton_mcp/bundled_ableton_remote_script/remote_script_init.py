@@ -39,7 +39,7 @@ EXPECTED_COMMAND_ERRORS = (ValueError, IndexError, KeyError)
 
 # Bumped whenever the TCP command surface changes; the MCP server compares
 # this to EXPECTED_REMOTE_SCRIPT_VERSION.
-SCRIPT_VERSION = "1.33.0"
+SCRIPT_VERSION = "1.34.0"
 PROTOCOL_VERSION = 1
 
 # The trim eraser (see _trim_arrangement_clip): a temporary Session clip
@@ -117,15 +117,15 @@ class _PlainWarpMarker(object):
 # Wire-command dispatch table: every command _process_command accepts, in one
 # place. Each row is
 #
-#     command name: (handler method, main_thread, queue_timeout, advertise)
+#     command name: (handler method, modifying, queue_timeout, advertise)
 #
 # - handler method: dispatched as getattr(self, method)(**params), so the wire
 #   parameter names ARE the handler's keyword arguments and Python itself
 #   enforces arity — the check whose absence let the 2026-08 merge's duplicate
 #   definitions ship silently.
-# - main_thread: True means the command modifies Live's state and must run on
-#   Live's main thread (scheduled via schedule_message); False means read-only,
-#   run directly on the socket client thread.
+# - modifying: True means the command changes Live state. This metadata is
+#   independent of scheduling: ALL handlers run on Live's main thread via
+#   update_display, including read-only handlers and the handshake.
 # - queue_timeout: seconds to wait for the main-thread task's response queue;
 #   None means the default (10.0). Two rows need more: create_audio_clip
 #   decodes/imports the file on the main thread, and the session stamp can be
@@ -247,6 +247,56 @@ def create_instance(c_instance):
     """Create and return the AbletonMCP script instance"""
     return AbletonMCP(c_instance)
 
+MAX_PENDING_COMMANDS = 64
+MAX_COMMANDS_PER_TICK = 8
+
+
+class _CommandRequest(object):
+    """One atomic admission/result decision shared by a worker and Live tick."""
+
+    def __init__(self, command, deadline, clock, client=None):
+        self.command = command
+        self.deadline = deadline
+        self.clock = clock
+        self.client = client
+        self.lock = threading.Lock()
+        self.done = threading.Event()
+        self.state = "pending"
+        self.response = None
+
+    def _cancel_locked(self, reason):
+        if self.state in ("completed", "cancelled"):
+            return self.response
+        started = self.state == "running"
+        self.state = "cancelled"
+        detail = ("; it had started, so its outcome is unknown: read the state back before retrying"
+                  if started else "; the command was not executed and will not be")
+        self.response = {"status": "error", "message": reason + detail}
+        self.done.set()
+        return self.response
+
+    def cancel(self, reason):
+        with self.lock:
+            return self._cancel_locked(reason)
+
+    def begin(self):
+        with self.lock:
+            if self.state != "pending":
+                return False
+            if self.clock() >= self.deadline:
+                self._cancel_locked("Timeout before command admission")
+                return False
+            self.state = "running"
+            return True
+
+    def complete(self, response):
+        with self.lock:
+            if self.state == "running":
+                self.state = "completed"
+                self.response = response
+                self.done.set()
+
+
 class AbletonMCP(ControlSurface):
     """AbletonMCP Remote Script for Ableton Live"""
     
@@ -268,6 +318,8 @@ class AbletonMCP(ControlSurface):
         # property below), so a set opened after this script loaded is the
         # set every command sees.
         
+        # Capture Live thread identity before admitting any network work.
+        self._initialize_command_dispatch()
         # Start the socket server
         self.start_server()
         
@@ -461,111 +513,68 @@ class AbletonMCP(ControlSurface):
                 pass
             self.log_message("Client handler stopped")
     
-    def _process_command(self, command):
-        """Process a command from the client and return a response"""
-        command_type = command.get("type", "")
-        params = command.get("params", {})
-        
-        # Initialize response
-        response = {
-            "status": "success",
-            "result": {}
-        }
-        
+    def _initialize_command_dispatch(self, clock=None):
+        self._command_clock = clock or time.monotonic
+        self._command_thread = threading.current_thread().ident
+        self._command_queue = queue.Queue(maxsize=MAX_PENDING_COMMANDS)
+
+    def _assert_command_thread(self):
+        if threading.current_thread().ident != self._command_thread:
+            raise RuntimeError("Live command execution requires the main thread")
+
+    def _enqueue_command(self, command, client=None):
+        spec = COMMANDS.get(command.get("type", ""))
+        budget = (spec[2] if spec else None) or 10.0
+        request = _CommandRequest(command, self._command_clock() + budget,
+                                  self._command_clock, client)
         try:
-            # Route the command through the COMMANDS table. Wire parameter
-            # names are the handler's keyword arguments, so **params both
-            # dispatches and enforces arity; per-command defaults live on the
-            # handler signatures.
-            spec = COMMANDS.get(command_type)
-            if spec is None:
-                response["status"] = "error"
-                response["message"] = "Unknown command: " + command_type
-                return response
+            self._command_queue.put_nowait(request)
+        except queue.Full:
+            request.cancel("Command queue full")
+        return request
 
-            method_name, main_thread, queue_timeout, _advertise = spec
-            handler = getattr(self, method_name)
+    def _process_command(self, command, client=None):
+        """Worker-only handoff. A timeout never authorizes a replay."""
+        if threading.current_thread().ident == self._command_thread:
+            return {"status": "error", "message":
+                    "Main-thread handoff refused; command not executed"}
+        request = self._enqueue_command(command, client)
+        remaining = max(0.0, request.deadline - self._command_clock())
+        if not request.done.wait(remaining):
+            return request.cancel("Timeout waiting for operation to complete")
+        return request.response
 
-            if not main_thread:
-                # Read-only commands run directly on this client thread.
-                response["result"] = handler(**params)
-                return response
+    def update_display(self):
+        ControlSurface.update_display(self)
+        self._drain_commands()
 
-            # Commands that modify Live's state must run on Live's main
-            # thread. Use a thread-safe approach with a response queue.
-            response_queue = queue.Queue()
-
-            # A task still waiting on Live's tick when the queue wait below
-            # times out must never run afterwards: the client has already been
-            # told the command failed and may retry or move on, and a late
-            # delete_track or add_notes_to_clip landing then edits the set
-            # behind its back. The flag is checked and set under one lock, so
-            # either the task has started (outcome unknown, reported as such)
-            # or it never will. (Upstream PR #140's cancel-on-timeout.)
-            task_state = {"cancelled": False, "started": False}
-            task_state_lock = threading.Lock()
-
-            # Define a function to execute on the main thread
-            def main_thread_task():
-                with task_state_lock:
-                    if task_state["cancelled"]:
-                        self.log_message(
-                            "Skipped %s: its caller already timed out"
-                            % command_type)
-                        return
-                    task_state["started"] = True
-                try:
-                    # The handler call happens inside the task so a bad
-                    # parameter set (TypeError) reports through the same
-                    # error envelope as any other handler failure.
-                    result = handler(**params)
-                    # Put the result in the queue
-                    response_queue.put({"status": "success", "result": result})
-                except Exception as e:
-                    self._log_command_error("Error in main thread task", e)
-                    response_queue.put({"status": "error", "message": str(e)})
-
-            # Schedule the task to run on the main thread
+    def _drain_commands(self):
+        self._assert_command_thread()
+        # Count bounds admission work, not duration: native handlers cannot
+        # be preempted once started. Cancelled entries also consume a slot.
+        for _ in range(MAX_COMMANDS_PER_TICK):
             try:
-                self.schedule_message(0, main_thread_task)
-            except AssertionError:
-                # If we're already on the main thread, execute directly
-                main_thread_task()
-
-            # queue_timeout comes from the COMMANDS row; None means the
-            # default budget. The overrides are the two commands that do
-            # bulk work on the main thread (create_audio_clip's import, the
-            # session stamp's placement run).
-            if queue_timeout is None:
-                queue_timeout = 10.0
-            try:
-                task_response = response_queue.get(timeout=queue_timeout)
-                if task_response.get("status") == "error":
-                    response["status"] = "error"
-                    response["message"] = task_response.get("message", "Unknown error")
-                else:
-                    response["result"] = task_response.get("result", {})
+                request = self._command_queue.get_nowait()
             except queue.Empty:
-                with task_state_lock:
-                    task_state["cancelled"] = True
-                    started = task_state["started"]
-                response["status"] = "error"
-                if started:
-                    response["message"] = (
-                        "Timeout waiting for operation to complete; it had "
-                        "started, so its outcome is unknown: read the state "
-                        "back before retrying")
-                else:
-                    response["message"] = (
-                        "Timeout waiting for operation to complete; the "
-                        "command was not executed and will not be")
+                break
+            if request.begin():
+                request.complete(self._execute_command(request.command))
+
+    def _execute_command(self, command):
+        """Main-thread internal seam; reads and writes share thread affinity."""
+        self._assert_command_thread()
+        command_type = command.get("type", "")
+        spec = COMMANDS.get(command_type)
+        if spec is None:
+            return {"status": "error", "message": "Unknown command: " + command_type}
+        try:
+            method_name, _modifying, _timeout, _advertise = spec
+            result = getattr(self, method_name)(**command.get("params", {}))
+            return {"status": "success", "result": result}
         except Exception as e:
-            self._log_command_error("Error processing command", e)
-            response["status"] = "error"
-            response["message"] = str(e)
-        
-        return response
-    
+            self._log_command_error("Error in main thread task", e)
+            return {"status": "error", "message": str(e)}
+
     def _log_command_error(self, context, error):
         """Log a failed command: one line always, the traceback only when it
         is a real fault.

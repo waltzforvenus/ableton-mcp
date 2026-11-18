@@ -153,8 +153,8 @@ fails if you skip it (`docs/UPSTREAM.md` §3 is the long form):
    never be refused (`"exempt"`, as `stop_playback`).
 5. Remote Script: a `_your_command` handler with every parameter defaulted
    (dispatch calls `**params`), plus a `COMMANDS` table row
-   `(method, main_thread, queue_timeout, advertise)`. State changes must run
-   on Live's main thread (`main_thread=True`); the modifying sets of the two
+   `(method, modifying, queue_timeout, advertise)`. All handlers run on Live's main thread via the bounded update_display queue;
+   state changes set modifying=True. The modifying sets of the two
    halves must agree (`test_cross_half_contract`). Set `advertise`
    deliberately — it feeds `SCRIPT_CAPABILITIES`, which is part of the
    `get_script_info` wire response and pinned by a snapshot test.

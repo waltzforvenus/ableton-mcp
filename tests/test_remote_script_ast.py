@@ -103,7 +103,7 @@ def _commands_dict_node():
 
 
 def _commands_table():
-    """The COMMANDS table as a plain dict: name -> (method, main_thread,
+    """The COMMANDS table as a plain dict: name -> (method, modifying,
     queue_timeout, advertise). Must be a pure literal."""
     table = ast.literal_eval(_commands_dict_node())
     assert table, "COMMANDS table is empty"
@@ -111,11 +111,11 @@ def _commands_table():
         assert isinstance(name, str), f"non-string COMMANDS key: {name!r}"
         assert isinstance(row, tuple) and len(row) == 4, (
             f"COMMANDS[{name!r}] must be a 4-tuple "
-            f"(method, main_thread, queue_timeout, advertise), got {row!r}"
+            f"(method, modifying, queue_timeout, advertise), got {row!r}"
         )
-        method, main_thread, queue_timeout, advertise = row
+        method, modifying, queue_timeout, advertise = row
         assert isinstance(method, str)
-        assert isinstance(main_thread, bool)
+        assert isinstance(modifying, bool)
         assert queue_timeout is None or isinstance(queue_timeout, float)
         assert isinstance(advertise, bool)
     return table

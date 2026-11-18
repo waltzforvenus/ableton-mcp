@@ -451,3 +451,16 @@ def test_service_status_survives_an_unreachable_live(lock_path):
     assert status["lock"]["lock"]["holder"] == "session-a"
     assert status["lock"]["held_by_this_server"] is True
     assert status["ui"]["unsaved"] is True and status["user_idle_s"] is None
+
+
+@pytest.mark.parametrize('command', [n for n, spec in COMMANDS.items() if not spec.modifying])
+def test_main_thread_reads_never_require_or_stamp_lock(lock_path, command):
+    # Thread affinity is independent of the service's mutation/lock contract.
+    lock = _lock(lock_path)
+    service, client = _service(lock)
+    service._send(command, {})
+    assert not os.path.exists(lock_path)
+    lock.acquire('session-a')
+    before = open(lock_path, 'rb').read()
+    service._send(command, {})
+    assert open(lock_path, 'rb').read() == before

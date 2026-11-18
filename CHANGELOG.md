@@ -1,3 +1,14 @@
+## Unreleased — bounded main-thread dispatch (1.34.0)
+
+- Serialize all command handlers, including reads and handshake, on Live's
+  update_display thread. Mutation/lock metadata is independent of scheduling.
+- Bound queued commands to64 and drain to8 entries per tick. Expired/cancelled
+  pending commands never execute later; already-started timeouts remain unknown
+  and require readback before retry. Long import/stamp budgets are retained.
+- Re-run ableton-mcp-install-script and restart Live when deploying this version.
+  Native callback timing acceptance and dependent disconnect/shutdown/transport
+  lifecycle work remain pending; no claim that long handlers are preemptible.
+
 ## Unreleased — stricter export artifact evidence
 
 - Bind each artifact to its requested container/codec and PCM subtype precision;
