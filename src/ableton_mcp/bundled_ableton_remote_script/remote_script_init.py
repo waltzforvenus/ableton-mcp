@@ -6133,6 +6133,12 @@ class AbletonMCP(ControlSurface):
         else:
             lo = source_start if source_start is not None else min(0.0, metadata["start_marker"] or 0.0, metadata["loop_start"] or 0.0)
             hi = source_end if source_end is not None else max(float(clip.length) + 1.0, metadata["end_marker"] or 0.0, metadata["loop_end"] or 0.0, lo + 1.0)
+            # Omitted bounds are inferred from markers, not an unbounded source.
+            # Validate the effective window before either legacy API can swallow
+            # an inverted/empty interval into a misleading successful empty read.
+            if not math.isfinite(lo) or not math.isfinite(hi) or hi <= lo:
+                raise ValueError("Legacy note reads require a finite positive range; "
+                                 "provide source_start strictly below source_end")
             notes = self._notes_from_clip(clip, source_start=lo, source_end=hi)
         notes.sort(key=lambda n: (n["start_time"], n["pitch"], n.get("note_id", -1)))
         extent = ({"start": min(n["start_time"] for n in notes),

@@ -95,6 +95,38 @@ def test_legacy_explicit_offset_range_is_useful_but_never_complete():
     assert r["source_completeness"] == "unknown"
 
 
+@pytest.mark.parametrize("source_end", [-0.5, 0.0])
+@pytest.mark.parametrize("legacy_only", [False, True])
+def test_legacy_implicit_lower_bound_refuses_nonpositive_span(source_end, legacy_only):
+    h, c = fixture(False)
+    calls = []
+    def extended(*args):
+        calls.append(args)
+        return ()
+    def legacy(*args):
+        calls.append(args)
+        return ()
+    c.get_notes = legacy
+    if legacy_only:
+        del c.get_notes_extended
+    else:
+        c.get_notes_extended = extended
+    with pytest.raises(ValueError, match="source_start"):
+        read(h, source_end=source_end)
+    assert calls == []  # Reject before either API, not a swallowed API failure.
+
+
+@pytest.mark.parametrize("legacy_only", [False, True])
+def test_legacy_explicit_negative_range_preserves_notes_and_unknown_coverage(legacy_only):
+    h, c = fixture(False)
+    if legacy_only:
+        del c.get_notes_extended
+    r = read(h, source_start=-2, source_end=-0.5)
+    assert [n["start_time"] for n in r["notes"]] == [-2, -1]
+    assert r["source_completeness"] == "unknown"
+    assert r["completeness"] == "partial"
+
+
 def test_all_api_failure_does_not_fabricate_complete_empty_read():
     h, c = fixture()
     def failed():
