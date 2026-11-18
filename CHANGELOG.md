@@ -1,3 +1,19 @@
+## Unreleased — stricter export artifact evidence
+
+- Bind each artifact to its requested container/codec and PCM subtype precision;
+  mislabeled/swapped PCM and MP3 cannot pass or waive requested PCM depth.
+
+- Require exact Save name/destination evidence, fresh PCM/MP3 outputs and full
+  decoder duration/rate/depth verification; missing depth no longer passes.
+- Bound UI/decoder subprocess work from preparation through verification;
+  preserve uncertain outcomes and prohibit automatic re-export.
+- Match separate PCM/MP3 Replace sheets to exact requested names; leave
+  unrelated or ambiguous sheets untouched.
+- Native engine/device readiness remains explicitly unknown without a verified
+  adapter. AX destination support and actual short/long renders remain pending
+  native acceptance. Multi-stem completeness is not newly claimed.
+- Internal: retain DI/job ownership, protocol 1.33.0 and unchanged native bundle.
+
 ## Unreleased — load failure outcomes (1.33.0)
 
 - Keep completed rack evidence on read-only kit lookup errors and later lock/gate

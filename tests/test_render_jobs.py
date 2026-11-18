@@ -1,5 +1,6 @@
 """Job lifecycle against local journals and injected executors; no native UI."""
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 import threading
 import pytest
 from ableton_mcp.render_jobs import AtomicJobStore, RenderJobService
@@ -18,6 +19,20 @@ class ManualExecutor:
 def jobs(tmp_path, runner, executor=None, clock=lambda: 0, owner=lambda: "owner"):
     store = AtomicJobStore(str(tmp_path / "jobs.json"))
     return RenderJobService(store, executor or ManualExecutor(), clock, runner, owner)
+
+
+@contextmanager
+def threaded_jobs(tmp_path, runner, **kwargs):
+    # Terminal visibility is not executor quiescence. Always join the worker
+    # before releasing its journal, including assertion/error cleanup paths.
+    j = None
+    try:
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            j = jobs(tmp_path, runner, executor, **kwargs)
+            yield j
+    finally:
+        if j is not None:
+            j.close()
 
 
 def good(request, stage):
@@ -54,8 +69,7 @@ def test_status_disconnect_long_job_and_cancel_after_admission(tmp_path):
         now[0] += 120
         stage("verifying")
         return {"ok": True, "files": [{"ok": True}]}
-    with ThreadPoolExecutor(max_workers=1) as ex:
-        j = jobs(tmp_path, run, ex, lambda: now[0])
+    with threaded_jobs(tmp_path, run, clock=lambda: now[0]) as j:
         a = j.start("long", {})
         try:
             assert entered.wait(1)
@@ -71,7 +85,6 @@ def test_status_disconnect_long_job_and_cancel_after_admission(tmp_path):
         assert end["state"] == "needs_reconciliation"
         assert end["result"]["ok"] is True  # evidence not discarded
         assert end["updated_at"] == 120
-        j.close()
 
 
 def test_cancel_queued_and_before_render_prevents_native_start(tmp_path):
@@ -178,8 +191,7 @@ def test_pre_render_cancel_during_configuring_stops_render(tmp_path):
         assert release.wait(3)
         stage("rendering")
         invoked.append(True)
-    with ThreadPoolExecutor(max_workers=1) as ex:
-        j = jobs(tmp_path, run, ex)
+    with threaded_jobs(tmp_path, run) as j:
         a = j.start("cancel", {})
         try:
             assert entered.wait(1)
@@ -188,7 +200,6 @@ def test_pre_render_cancel_during_configuring_stops_render(tmp_path):
             release.set()
         assert j.wait(a["job_id"], 2)["state"] == "cancelled"
         assert invoked == []
-        j.close()
 
 
 def test_stage_journal_failure_stops_render_and_blocks_future_work(tmp_path, monkeypatch):
@@ -252,7 +263,7 @@ def test_public_tools_keep_one_job_and_return_structured_status(tmp_path):
     status = json.loads(tools.get_export_job(ctx, first["job_id"]))
     assert status["state"] == "succeeded"
     assert status["result"]["files"][0]["path"] == "fixture.wav"
-    assert "A1b_pending" in status["verification_scope"]
+    assert "native_readiness_probe_pending" in status["verification_policy"]
     assert json.loads(tools.cancel_export_job(ctx, first["job_id"]))["state"] == "succeeded"
     j.close()
 
@@ -360,17 +371,52 @@ def test_synchronous_service_delegates_and_waits_on_same_queue(tmp_path, monkeyp
             kwargs["job_stage"]("verifying")
             return {"ok": True, "mode": "freeze", "after": {"is_frozen": True}}
         monkeypatch.setattr(render, "bounce_track", fake)
-    with ThreadPoolExecutor(max_workers=1) as ex:
-        j = jobs(tmp_path, lambda r, s: service.run_export_job(r, s), ex)
+    with threaded_jobs(tmp_path, lambda r, s: service.run_export_job(r, s)) as j:
+        released, published = threading.Event(), threading.Event()
+        condition = j._condition
+        class HoldPublishedTerminal:
+            """Force terminal visibility before worker-finally clears ownership."""
+            def __getattr__(self, name):
+                return getattr(condition, name)
+            def __enter__(self):
+                return condition.__enter__()
+            def __exit__(self, *args):
+                hold = (j._worker == threading.get_ident() and j._jobs and
+                        any(job["state"] == "succeeded" for job in j._jobs.values()))
+                result = condition.__exit__(*args)
+                if hold:
+                    published.set()
+                    assert released.wait(3)
+                return result
+        monkeypatch.setattr(j, "_condition", HoldPublishedTerminal())
         service = AbletonService(None, AllCapabilitiesHandshake(), render_jobs=j,
                                  ui=SimpleNamespace(available=True))
-        if operation == "export":
-            result = service.export_audio(output_dir=str(tmp_path), file_stem="mix",
-                                          allow_ui_automation=True)
-        else:
-            result = service.bounce_track(0, "freeze", allow_ui_automation=True)
-        assert result["ok"] is True
-        assert result["job_state"] == "succeeded"
-        assert service.get_export_job(result["job_id"])["state"] == "succeeded"
-        assert len(calls) == 1
-        j.close()
+        try:
+            if operation == "export":
+                result = service.export_audio(output_dir=str(tmp_path), file_stem="mix",
+                                              allow_ui_automation=True)
+            else:
+                result = service.bounce_track(0, "freeze", allow_ui_automation=True)
+            assert published.wait(1)
+            assert result["ok"] is True
+            assert result["job_state"] == "succeeded"
+            assert service.get_export_job(result["job_id"])["state"] == "succeeded"
+            assert len(calls) == 1
+            # A terminal result must NOT weaken the active-worker close guard.
+            with pytest.raises(RuntimeError, match="active export worker"):
+                j.close()
+        finally:
+            released.set()
+    assert j.store.closed
+    assert j._worker is None
+
+
+def test_old_result_does_not_gain_new_verification_proof(tmp_path):
+    ex = ManualExecutor()
+    j = jobs(tmp_path, good, ex)
+    first = j.start('legacy', {})
+    ex.run()
+    status = j.status(first['job_id'])
+    assert status['verification_scope'] == 'legacy_renderer_evidence_only'
+    assert 'native_readiness_probe_pending' in status['verification_policy']
+    j.close()

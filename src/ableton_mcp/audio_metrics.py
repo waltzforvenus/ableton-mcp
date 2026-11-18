@@ -108,7 +108,7 @@ def parse_ffmpeg_summary(stderr: str) -> Dict[str, Any]:
 
 def _probe(ffprobe: str, path: str, run: Runner) -> Dict[str, Any]:
     code, out, err = run([ffprobe, "-v", "error", "-show_entries",
-                          "format=duration:stream=sample_rate,channels,"
+                          "format=duration,format_name:stream=sample_rate,channels,"
                           "bits_per_sample,bits_per_raw_sample,sample_fmt,codec_name",
                           "-select_streams", "a:0", "-of", "json", path], 30.0)
     if code != 0:
@@ -128,6 +128,7 @@ def _probe(ffprobe: str, path: str, run: Runner) -> Dict[str, Any]:
         "channels": int(stream.get("channels") or 0) or None,
         "bit_depth": bits,
         "codec": stream.get("codec_name"),
+        "container": (data.get("format") or {}).get("format_name"),
     }
 
 
@@ -180,15 +181,27 @@ def _finite(x: Optional[float]) -> Optional[float]:
 def analyze(path: str, start_s: Optional[float] = None,
             end_s: Optional[float] = None, ffmpeg: Optional[str] = None,
             ffprobe: Optional[str] = None,
-            runner: Optional[Runner] = None) -> Dict[str, Any]:
+            runner: Optional[Runner] = None, timeout_s: Optional[float] = None,
+            clock: Callable[[], float] = time.monotonic) -> Dict[str, Any]:
     """Every measurement for ``path`` (or ``[start_s, end_s]`` of it)."""
     path = os.path.expanduser(path or "")
     if not os.path.isfile(path):
         raise ValueError(f"no such audio file: {path!r}")
-    run = runner or _default_runner
+    base_run = runner or _default_runner
+    deadline = clock() + timeout_s if timeout_s is not None else None
+    def run(args, timeout):
+        if deadline is not None:
+            left = deadline - clock()
+            if left <= 0:
+                raise TimeoutError("audio verification budget expired")
+            timeout = min(timeout, left)
+        result = base_run(args, timeout)
+        if deadline is not None and clock() >= deadline:
+            raise TimeoutError("audio verification budget expired")
+        return result
     ffmpeg_bin = find_tool("ffmpeg", ffmpeg)
     ffprobe_bin = find_tool("ffprobe", ffprobe)
-    result: Dict[str, Any] = {"path": path, "engine": [], "warnings": []}
+    result: Dict[str, Any] = {"path": path, "engine": [], "warnings": [], "decoded": False}
     if ffprobe_bin:
         result.update(_probe(ffprobe_bin, path, run))
         result["engine"].append("ffprobe")
@@ -201,7 +214,7 @@ def analyze(path: str, start_s: Optional[float] = None,
     span_end = float(end_s) if end_s is not None else result.get("duration_s")
     stats: Dict[str, Any] = {}
     if ffmpeg_bin:
-        code, _out, err = run([ffmpeg_bin, "-hide_banner", "-nostats"] + window +
+        code, decoded_progress, err = run([ffmpeg_bin, "-hide_banner", "-nostats", "-xerror", "-progress", "pipe:1"] + window +
                               ["-i", path, "-af",
                                "ebur128=peak=true,astats=measure_perchannel=none,"
                                f"silencedetect=n={SILENCE_DB}dB:d={SILENCE_MIN_S}",
@@ -209,6 +222,9 @@ def analyze(path: str, start_s: Optional[float] = None,
         if code == 0:
             stats = parse_ffmpeg_summary(err)
             result["engine"].append("ffmpeg")
+            times = re.findall(r"^out_time_us=(\d+)$", decoded_progress, re.MULTILINE)
+            result["decoded"] = bool(times) and "progress=end" in decoded_progress
+            result["decoded_duration_s"] = int(times[-1]) / 1000000.0 if times else None
             code, _o, tail_err = run([ffmpeg_bin, "-hide_banner", "-nostats",
                                       "-sseof", f"-{TAIL_WINDOW_S}", "-i", path,
                                       "-af", "astats=measure_perchannel=none",
@@ -220,7 +236,8 @@ def analyze(path: str, start_s: Optional[float] = None,
             result["warnings"].append("ffmpeg failed: " + last)
     else:
         result["warnings"].append("ffmpeg not found: no LUFS or true peak")
-    np_stats = _numpy_stats(path, span_start, end_s)
+    # The optional whole-file numpy pass has no interruptible deadline.
+    np_stats = _numpy_stats(path, span_start, end_s) if deadline is None else None
     if np_stats:
         result["engine"].append("numpy")
         for key in ("peak_dbfs", "rms_db", "tail_peak_dbfs"):
@@ -273,22 +290,49 @@ def analyze(path: str, start_s: Optional[float] = None,
 
 
 def verify(path: str, expected_duration_s: Optional[float] = None,
-           tolerance_s: float = 0.05, sample_rate: Optional[int] = None,
+           tolerance_s: float = 0.01, sample_rate: Optional[int] = None,
            bit_depth: Optional[int] = None,
            max_true_peak_dbtp: Optional[float] = None,
            min_lufs: Optional[float] = None, max_lufs: Optional[float] = None,
-           allow_tail_cut: bool = False, **kw: Any) -> Dict[str, Any]:
+           allow_tail_cut: bool = False, expected_encoding: Optional[str] = None, **kw: Any) -> Dict[str, Any]:
     """``analyze`` plus pass/fail checks; ``ok`` is True only if every
     requested check passed and the file is neither silent nor clipped."""
     m = analyze(path, **kw)
     failures: List[str] = []
+    if m.get("decoded") is not True:
+        failures.append("complete decoder pass not verified")
     if expected_duration_s is not None:
-        d = m.get("duration_s")
-        if d is None or abs(d - expected_duration_s) > tolerance_s:
+        d = m.get("decoded_duration_s")
+        if d is None or not math.isfinite(d) or abs(d - expected_duration_s) > tolerance_s:
             failures.append(f"duration {d} s, expected {expected_duration_s} s ±{tolerance_s}")
     if sample_rate is not None and m.get("sample_rate") != sample_rate:
         failures.append(f"sample rate {m.get('sample_rate')}, expected {sample_rate}")
-    if bit_depth is not None and m.get("bit_depth") not in (None, bit_depth):
+    # The requested role is supplied by the export plan, never inferred from
+    # observed codec or filename. Codec names encode PCM subtype/precision;
+    # sample_fmt alone describes the decoder's storage, not source precision.
+    codec = m.get("codec")
+    if expected_encoding is not None:
+        allowed = {"wav": {"pcm_s16le", "pcm_s24le", "pcm_s32le", "pcm_f32le"},
+                   "aiff": {"pcm_s16be", "pcm_s24be", "pcm_s32be", "pcm_f32be"},
+                   "flac": {"flac"}, "mp3": {"mp3"}}
+        m["expected_encoding"] = expected_encoding
+        if (expected_encoding not in allowed or
+                m.get("container") != expected_encoding or
+                codec not in allowed.get(expected_encoding, set())):
+            failures.append(f"encoding {m.get('container')}/{codec}, expected {expected_encoding}")
+        if expected_encoding in ("wav", "aiff") and bit_depth is not None:
+            endian = "le" if expected_encoding == "wav" else "be"
+            subtypes = {f"pcm_s{bit_depth}{endian}"}
+            if bit_depth == 32:
+                subtypes.add(f"pcm_f32{endian}")
+            if codec not in subtypes:
+                failures.append(f"PCM subtype {codec}, expected {bit_depth}-bit {expected_encoding}")
+    lossy = expected_encoding == "mp3" and codec == "mp3" and m.get("container") == "mp3"
+    if expected_encoding is None:
+        # Preserve standalone callers' historical codec-aware behavior.
+        lossy = codec in ("mp3", "aac", "vorbis", "opus")
+    m["bit_depth_check"] = "not_applicable" if lossy else "required" if bit_depth is not None else "not_requested"
+    if not lossy and bit_depth is not None and m.get("bit_depth") != bit_depth:
         failures.append(f"bit depth {m.get('bit_depth')}, expected {bit_depth}")
     tp = m.get("true_peak_dbtp")
     if max_true_peak_dbtp is not None and tp is not None and tp > max_true_peak_dbtp:

@@ -849,7 +849,32 @@ UI worker must reach its next boundary/cleanup first. After admission,
 cancellation only records intent and yields reconciliation, retaining output
 evidence without deleting files, claiming native cancellation or retrying.
 The worker retains ownership through cleanup/verification. Succeeded means
-existing renderer evidence passed (or explicit dry-run), not that the planned
-stricter filename/destination/decoder checks or real Live acceptance passed.
-Those export-verification improvements remain separate work. GUI interaction
+the renderer evidence passed (or explicit dry-run), not real Live acceptance
+or proven engine/device readiness. See the verification scope below. GUI interaction
 by humans/other helpers is outside this server's queue; do not edit during a job.
+
+
+### Export verification scope
+
+Exports now require an exact non-null Save filename and destination readback,
+then fresh, stable requested PCM/MP3 artifacts, a complete error-free decoder
+pass, decoded duration within max(one sample, 0.01 seconds), requested rate and
+known PCM depth. Each requested artifact must independently match its probed
+container and codec (including PCM subtype precision); an MP3 suffix is not
+MP3 evidence. Lossy depth is not applicable only for the requested, verified
+MP3 artifact. Unknown or mismatched encoding fails without re-export. Header duration or
+file existence alone cannot pass. Verification retains the job/UI owner lease.
+UI subprocesses and decoder passes share bounded remaining operation budgets;
+expiry after admission requires reconciliation, never an automatic retry.
+Only exact quoted requested filenames authorize Replace sheets (PCM and MP3
+separately); unrelated/ambiguous sheets remain untouched.
+
+Native limitations remain explicit: engine/device readiness has no verified
+probe in this adapter and is reported unknown, not ready. A capable injected
+adapter can report engine-off and rate mismatch without changing settings.
+Save destination uses the standard AXPathControl AXURL when exposed; otherwise
+export refuses before Save. Localized/unrecognized overwrite prompts and
+renamed per-track stem overwrite prompts refuse safely. Multi-stem enumeration
+still uses existing output discovery, not a proven complete track manifest.
+Real UI/short/long export acceptance remains pending; mock tests are not proof
+of native readiness, AX layout, or timing. No Remote Script/version change.

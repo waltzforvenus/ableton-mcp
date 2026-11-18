@@ -487,6 +487,9 @@ _RENDER_REASONS = {
     "export_button": "the Export button could not be pressed ({detail})",
     "save_panel": "the save panel could not be filled ({detail}); cancelled",
     "save_panel_name": "the save panel shows {shows!r}, not {wanted!r}; cancelled",
+    "save_panel_destination": "the save destination shows {shows!r}, not {wanted!r}; cancelled",
+    "audio_not_ready": "audio engine/device is not ready ({readiness})",
+    "stage_timeout": "the bounded export stage deadline expired",
     "destructive": "{mode} replaces the track's clips and devices; pass confirm_destructive=true",
     "checkpoint_failed": "the safety checkpoint before a destructive bounce failed ({checkpoint})",
     "cannot_freeze": "Live says '{track}' cannot be frozen",
@@ -503,6 +506,8 @@ def render_refusal(e: Any) -> str:
         why = template.format(**details)
     except (KeyError, IndexError, ValueError):
         why = f"{template} ({details})"
+    if details.get("outcome") == "needs_reconciliation":
+        return f"Export outcome uncertain; reconciliation required before retry: {why}."
     return f"Refused, nothing rendered: {why}."
 
 
