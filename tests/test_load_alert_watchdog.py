@@ -195,3 +195,84 @@ def test_a_blind_watchdog_says_the_alert_may_be_open(tmp_path, monkeypatch):
     assert "Accessibility" in result["diagnostics"]["details"]["detail"]
     assert ui.dismissed == []
     client.gate.set()
+
+
+@pytest.mark.parametrize("phase", ["poll", "dismiss", "timeout"])
+@pytest.mark.parametrize("admitted", [False, True])
+def test_watchdog_ui_failure_cancels_pending_admission_or_reports_uncertainty(
+        tmp_path, monkeypatch, phase, admitted):
+    # Removing cancellation permits a late send after a plain preflight error.
+    # Removing dispatch classification hides an already admitted mutation.
+    entered = threading.Event()
+    release = threading.Event()
+    workers = []
+
+    class Gate:
+        def require(self, *args, **kwargs):
+            workers.append(threading.current_thread())
+            if not admitted:
+                entered.set()
+                assert release.wait(3)
+
+    class Client(FakeClient):
+        def send_command(self, command_type, params=None):
+            self.sent.append(command_type)
+            entered.set()
+            assert release.wait(3)
+            return {"loaded": True}
+
+    class FailingUI(FakeUI):
+        def modal_alerts(self):
+            self.calls += 1
+            if self.calls == 1:
+                return []
+            assert entered.wait(1)
+            if phase == "poll":
+                raise RuntimeError("AX polling failed")
+            return [ALERT]
+
+        def dismiss_modal_alert(self, button="OK"):
+            raise RuntimeError("AX dismissal failed")
+
+    class Lock:
+        touches = 0
+
+        def check_write(self, command):
+            pass
+
+        def touch(self):
+            self.touches += 1
+
+    client = Client()
+    lock = Lock()
+    service = AbletonService(client, Gate(), ui=FailingUI(), lock=lock)
+    if phase == "timeout":
+        original = service._send_with_alert_watchdog
+        monkeypatch.setattr(service, "_send_with_alert_watchdog",
+                            lambda c, p, **kw: original(c, p, timeout_s=0, **kw))
+    try:
+        if admitted:
+            result = service.load_device_from_path(4, "/presets/x.adv")
+            assert result["loaded"] is None
+            assert result["reconciliation_required"] is True
+            assert result["retry_safe"] is False
+            if phase == "timeout":
+                assert result["diagnostics"]["reason"] == "live_alert"
+            else:
+                assert "AX " in result["reason"]
+        else:
+            if phase == "timeout":
+                with pytest.raises(render.RenderRefused) as caught:
+                    service.load_device_from_path(4, "/presets/x.adv")
+                assert caught.value.reason == "live_alert"
+            else:
+                with pytest.raises(RuntimeError, match="AX "):
+                    service.load_device_from_path(4, "/presets/x.adv")
+    finally:
+        release.set()
+        for worker in workers:
+            worker.join(2)
+            assert not worker.is_alive()
+    assert client.sent == (["load_browser_item_by_path"] if admitted else [])
+
+    assert lock.touches == (1 if admitted else 0)

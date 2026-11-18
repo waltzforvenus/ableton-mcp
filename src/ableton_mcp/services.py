@@ -210,9 +210,9 @@ class AbletonService:
         if spec.gated:
             self._handshake.require(name, spec.min_script_version,
                                     send_command=self._client.send_command)
+        if on_dispatch is not None:
+            on_dispatch()
         try:
-            if on_dispatch is not None:
-                on_dispatch()
             return self._client.send_command(name, params or {})
         finally:
             # Stamped even when the send raised: a timed-out main-thread task
@@ -1206,61 +1206,77 @@ class AbletonService:
         outcome: Dict[str, Any] = {}
         failure: List[Any] = []
 
+        # Admission and cancellation share one lock: after any watchdog
+        # exit, a still-gated worker cannot subsequently send. Once admitted,
+        # on_dispatch has already marked the outcome uncertain; cancellation
+        # never claims to stop an in-flight native operation.
+        admission_lock = threading.Lock()
+        cancelled = False
+
+        def _admit() -> None:
+            with admission_lock:
+                if cancelled:
+                    raise RuntimeError("Load cancelled before dispatch")
+                if on_dispatch is not None:
+                    on_dispatch()
+
         def _worker() -> None:
             try:
-                outcome["value"] = self._send(command, params, on_dispatch=on_dispatch)
+                outcome["value"] = self._send(command, params, on_dispatch=_admit)
             except Exception as e:  # surfaced by the watchdog loop
                 failure.append(e)
 
         worker = threading.Thread(target=_worker, daemon=True)
-        worker.start()
-        alert = None
-        deadline = time.monotonic() + timeout_s
-        while time.monotonic() < deadline:
-            worker.join(0.25)
-            if not worker.is_alive():
-                break
-            alerts = ui.modal_alerts()
-            if alerts is None:
-                blind = True
-                continue
-            fresh = [a for a in alerts if a not in before]
-            if fresh:
-                alert = fresh[0]
-                press = ui.dismiss_modal_alert("OK")
-                if not press.get("ok"):
-                    press = ui.dismiss_modal_alert("Cancel")
-                if press.get("text") and not alert.get("text"):
-                    alert["text"] = press["text"]
-                worker.join(5.0)
-                break
-        if alert is not None:
-            if worker.is_alive() or failure:
-                if worker.is_alive() and on_dispatch is not None:
-                    on_dispatch()  # pending worker could dispatch after this return
+        try:
+            worker.start()
+            alert = None
+            deadline = time.monotonic() + timeout_s
+            while time.monotonic() < deadline:
+                worker.join(0.25)
+                if not worker.is_alive():
+                    break
+                alerts = ui.modal_alerts()
+                if alerts is None:
+                    blind = True
+                    continue
+                fresh = [a for a in alerts if a not in before]
+                if fresh:
+                    alert = fresh[0]
+                    press = ui.dismiss_modal_alert("OK")
+                    if not press.get("ok"):
+                        press = ui.dismiss_modal_alert("Cancel")
+                    if press.get("text") and not alert.get("text"):
+                        alert["text"] = press["text"]
+                    worker.join(5.0)
+                    break
+            if alert is not None:
+                if worker.is_alive() or failure:
+                    raise render.RenderRefused(
+                        "live_alert", alert_text=alert.get("text") or "",
+                        buttons=alert.get("buttons") or [],
+                        detail=("no reply from Live after the alert was "
+                                "dismissed" if worker.is_alive()
+                                else str(failure[0])[:200]))
+                outcome["value"]["alert"] = alert.get("text") or ""
+                return outcome["value"]
+            worker.join(1.0)
+            if worker.is_alive():
                 raise render.RenderRefused(
-                    "live_alert", alert_text=alert.get("text") or "",
-                    buttons=alert.get("buttons") or [],
-                    detail=("no reply from Live after the alert was "
-                            "dismissed" if worker.is_alive()
-                            else str(failure[0])[:200]))
-            outcome["value"]["alert"] = alert.get("text") or ""
+                    "live_alert", alert_text="", buttons=[],
+                    detail=("no reply from Live, and its dialogs cannot be read "
+                            "(this process lacks the Accessibility permission), "
+                            "so a 'cannot be loaded' alert may be open in Live: "
+                            "dismiss it there before sending anything else"
+                            if blind else
+                            "no reply from Live and no alert seen"))
+            if failure:
+                raise failure[0]
             return outcome["value"]
-        worker.join(1.0)
-        if worker.is_alive():
-            if on_dispatch is not None:
-                on_dispatch()  # not proof of refusal: pending worker may still send
-            raise render.RenderRefused(
-                "live_alert", alert_text="", buttons=[],
-                detail=("no reply from Live, and its dialogs cannot be read "
-                        "(this process lacks the Accessibility permission), "
-                        "so a 'cannot be loaded' alert may be open in Live: "
-                        "dismiss it there before sending anything else"
-                        if blind else
-                        "no reply from Live and no alert seen"))
-        if failure:
-            raise failure[0]
-        return outcome["value"]
+        finally:
+            # Also covers polling/dismissal exceptions and timeouts, retaining
+            # the original diagnostic. Do not join/kill/retry pending workers.
+            with admission_lock:
+                cancelled = True
 
     def load_device_from_path(self, track_index: int, path: str,
                               track_type: str = "regular",
