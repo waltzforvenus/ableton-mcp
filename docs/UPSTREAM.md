@@ -202,3 +202,19 @@ policy (plan §4):
    check is the `get_remote_script_info` tool, and the min-version gate's
    message text is what actually reaches the model. Do not rely on the log
    line.
+
+### R2 lifecycle reliability (1.35.0)
+Network workers never invoke ControlSurface UI/log callbacks. Nonblocking
+MSG_PEEK|MSG_DONTWAIT checks cancel disconnected queued requests before main-thread
+admission. Shutdown stops admission under the same lock, cancels waiters and
+shuts down tracked sockets without joining workers from Live's callback. Once
+admitted, a handler cannot be preempted: cancellation reports outcome unknown,
+not rollback, and never authorizes replay. EOF observation can lag a peer close;
+buffered peer bytes can hide EOF until consumed. Main-thread ticks still govern
+execution, and native long calls remain nonpreemptible.
+
+Transport receives use one monotonic registry-derived budget, not a fresh budget
+per chunk. Failed exchanges discard the socket; replacement invalidates cached
+handshake state. No sent command is retried. This bounds reception, not native
+execution or connection establishment. Native callback/OS socket acceptance is
+still held pending save-verified production handoff; fake tests are not Live proof.

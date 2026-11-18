@@ -40,7 +40,9 @@ class FakeClient(object):
     def settimeout(self, _timeout):
         pass
 
-    def recv(self, _size):
+    def recv(self, _size, flags=0):
+        if flags:
+            raise BlockingIOError()  # Open peer awaiting its response.
         return self._chunks.pop(0) if self._chunks else b""
 
     def sendall(self, data):
@@ -58,7 +60,7 @@ def _serve(chunks, harness=None):
     mcp.running = True
     received = []
 
-    def _process(command):
+    def _process(command, client=None):
         received.append(command)
         return {"status": "success", "result": {"echo": command.get("type")}}
 

@@ -39,7 +39,7 @@ EXPECTED_COMMAND_ERRORS = (ValueError, IndexError, KeyError)
 
 # Bumped whenever the TCP command surface changes; the MCP server compares
 # this to EXPECTED_REMOTE_SCRIPT_VERSION.
-SCRIPT_VERSION = "1.34.0"
+SCRIPT_VERSION = "1.35.0"
 PROTOCOL_VERSION = 1
 
 # The trim eraser (see _trim_arrangement_clip): a temporary Session clip
@@ -358,30 +358,56 @@ class AbletonMCP(ControlSurface):
     _song = property(_current_song, _store_song_fallback)
 
     def disconnect(self):
-        """Called when Ableton closes or the control surface is removed"""
-        self.log_message("AbletonMCP disconnecting...")
-        self.running = False
-        
-        # Stop the server
-        if self.server:
-            try:
-                self.server.close()
-            except:
-                pass
-        
-        # Wait for the server thread to exit
-        if self.server_thread and self.server_thread.is_alive():
-            self.server_thread.join(1.0)
-            
-        # Clean up any client threads
-        for client_thread in self.client_threads[:]:
-            if client_thread.is_alive():
-                # We don't join them as they might be stuck
-                self.log_message("Client thread still alive during disconnect")
-        
+        """Wake network waiters without joining them on Live's thread."""
+        self._shutdown_commands()
         ControlSurface.disconnect(self)
-        self.log_message("AbletonMCP disconnected")
-    
+
+    def _close_client(self, client):
+        try:
+            client.shutdown(socket.SHUT_RDWR)
+        except Exception:
+            pass
+        try:
+            client.close()
+        except Exception:
+            pass
+
+    def _register_client(self, client):
+        with self._lifecycle_lock:
+            if not self._commands_stopped:
+                self._clients.add(client)
+                return True
+        self._close_client(client)
+        return False
+
+    def _client_disconnected(self, client):
+        if client is None:
+            return False
+        try:
+            return client.recv(1, socket.MSG_PEEK | socket.MSG_DONTWAIT) == b''
+        except (BlockingIOError, InterruptedError):
+            return False
+        except OSError:
+            return True
+
+    def _shutdown_commands(self):
+        with self._lifecycle_lock:
+            if self._commands_stopped:
+                return
+            self._commands_stopped = True
+            self.running = False
+            for request in self._requests:
+                request.cancel("Control surface shutting down")
+            self._requests.clear()
+            clients = list(self._clients)
+            self._clients.clear()
+            server = getattr(self, "server", None)
+            self.server = None
+        for client in clients:
+            self._close_client(client)
+        if server is not None:
+            self._close_client(server)
+
     def start_server(self):
         """Start the socket server in a separate thread"""
         try:
@@ -401,49 +427,34 @@ class AbletonMCP(ControlSurface):
             self.show_message("AbletonMCP: Error starting server - " + str(e))
     
     def _server_thread(self):
-        """Server thread implementation - handles client connections"""
+        """Network-only worker; no ControlSurface/LOM callbacks."""
+        server = self.server
         try:
-            self.log_message("Server thread started")
-            # Set a timeout to allow regular checking of running flag
-            self.server.settimeout(1.0)
-            
+            server.settimeout(1.0)
             while self.running:
                 try:
-                    # Accept connections with timeout
-                    client, address = self.server.accept()
-                    self.log_message("Connection accepted from " + str(address))
-                    self.show_message("AbletonMCP: Client connected")
-                    
-                    # Handle client in a separate thread
-                    client_thread = threading.Thread(
-                        target=self._handle_client,
-                        args=(client,)
-                    )
-                    client_thread.daemon = True
-                    client_thread.start()
-                    
-                    # Keep track of client threads
-                    self.client_threads.append(client_thread)
-                    
-                    # Clean up finished client threads
-                    self.client_threads = [t for t in self.client_threads if t.is_alive()]
-                    
+                    client, address = server.accept()
                 except socket.timeout:
-                    # No connection yet, just continue
                     continue
-                except Exception as e:
-                    if self.running:  # Only log if still running
-                        self.log_message("Server accept error: " + str(e))
-                    time.sleep(0.5)
-            
-            self.log_message("Server thread stopped")
-        except Exception as e:
-            self.log_message("Server thread error: " + str(e))
-    
+                except OSError:
+                    break
+                if not self._register_client(client):
+                    break
+                worker = threading.Thread(target=self._handle_client, args=(client,))
+                worker.daemon = True
+                try:
+                    worker.start()
+                except Exception:
+                    with self._lifecycle_lock:
+                        self._clients.discard(client)
+                    self._close_client(client)
+        except OSError:
+            pass
+
     def _handle_client(self, client):
         """Handle communication with a connected client"""
-        self.log_message("Client handler started")
-        client.settimeout(None)  # No timeout for client socket
+        if not self._register_client(client):
+            return
         # Accumulate raw bytes, never per-chunk text. A multi-byte UTF-8
         # character (an accented clip name, an emoji) can straddle two recv()
         # boundaries; decoding each chunk on its own raises there, and the old
@@ -453,6 +464,7 @@ class AbletonMCP(ControlSurface):
         buffer = b''
 
         try:
+            client.settimeout(None)
             while self.running:
                 try:
                     # Receive data
@@ -460,7 +472,6 @@ class AbletonMCP(ControlSurface):
 
                     if not data:
                         # Client disconnected
-                        self.log_message("Client disconnected")
                         break
 
                     buffer += data
@@ -480,17 +491,14 @@ class AbletonMCP(ControlSurface):
 
                     buffer = b''  # Clear buffer after successful parse
 
-                    self.log_message("Received command: " + str(command.get("type", "unknown")))
 
                     # Process the command and get response
-                    response = self._process_command(command)
+                    response = self._process_command(command, client)
 
                     # Send the response with explicit encoding
                     client.sendall(json.dumps(response).encode('utf-8'))
 
                 except Exception as e:
-                    self.log_message("Error handling client data: " + str(e))
-                    self.log_message(traceback.format_exc())
 
                     # Every error that reaches here leaves the request/response
                     # stream in an unknown state, so report it and close rather
@@ -504,19 +512,24 @@ class AbletonMCP(ControlSurface):
                     except Exception:
                         pass
                     break
-        except Exception as e:
-            self.log_message("Error in client handler: " + str(e))
+        except Exception:
+            pass
         finally:
+            with self._lifecycle_lock:
+                self._clients.discard(client)
             try:
                 client.close()
             except:
                 pass
-            self.log_message("Client handler stopped")
     
     def _initialize_command_dispatch(self, clock=None):
         self._command_clock = clock or time.monotonic
         self._command_thread = threading.current_thread().ident
         self._command_queue = queue.Queue(maxsize=MAX_PENDING_COMMANDS)
+        self._lifecycle_lock = threading.Lock()
+        self._commands_stopped = False
+        self._clients = set()
+        self._requests = set()
 
     def _assert_command_thread(self):
         if threading.current_thread().ident != self._command_thread:
@@ -527,10 +540,15 @@ class AbletonMCP(ControlSurface):
         budget = (spec[2] if spec else None) or 10.0
         request = _CommandRequest(command, self._command_clock() + budget,
                                   self._command_clock, client)
-        try:
-            self._command_queue.put_nowait(request)
-        except queue.Full:
-            request.cancel("Command queue full")
+        with self._lifecycle_lock:
+            if self._commands_stopped:
+                request.cancel("Control surface shutting down")
+            else:
+                try:
+                    self._command_queue.put_nowait(request)
+                    self._requests.add(request)
+                except queue.Full:
+                    request.cancel("Command queue full")
         return request
 
     def _process_command(self, command, client=None):
@@ -539,10 +557,24 @@ class AbletonMCP(ControlSurface):
             return {"status": "error", "message":
                     "Main-thread handoff refused; command not executed"}
         request = self._enqueue_command(command, client)
+        # Real wait budget remains bounded even with an injected stationary clock.
         remaining = max(0.0, request.deadline - self._command_clock())
-        if not request.done.wait(remaining):
-            return request.cancel("Timeout waiting for operation to complete")
-        return request.response
+        wait_deadline = time.monotonic() + remaining
+        try:
+            while not request.done.is_set():
+                if self._client_disconnected(client):
+                    request.cancel("Client disconnected")
+                    break
+                remaining = min(request.deadline - self._command_clock(),
+                                wait_deadline - time.monotonic())
+                if remaining <= 0:
+                    request.cancel("Timeout waiting for operation to complete")
+                    break
+                request.done.wait(min(remaining, 0.05))
+            return request.response
+        finally:
+            with self._lifecycle_lock:
+                self._requests.discard(request)
 
     def update_display(self):
         ControlSurface.update_display(self)
@@ -557,8 +589,16 @@ class AbletonMCP(ControlSurface):
                 request = self._command_queue.get_nowait()
             except queue.Empty:
                 break
-            if request.begin():
+            with self._lifecycle_lock:
+                if self._commands_stopped:
+                    request.cancel("Control surface shutting down")
+                elif self._client_disconnected(request.client):
+                    request.cancel("Client disconnected")
+                started = request.begin()
+            if started:
                 request.complete(self._execute_command(request.command))
+            with self._lifecycle_lock:
+                self._requests.discard(request)
 
     def _execute_command(self, command):
         """Main-thread internal seam; reads and writes share thread affinity."""

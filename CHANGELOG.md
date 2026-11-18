@@ -985,3 +985,10 @@ there is upstream's build, which has telemetry; install this fork from git.
   active/uncertain jobs block save-verified handoff. No Remote Script reinstall
   required for this server-only change. Stronger export verification and Live
   acceptance remain pending; cancellation never promises native render abort.
+
+## 1.35.0 — lifecycle reliability
+- Cancel queued commands on observed peer EOF and shutdown; report unknown outcome
+  if already started. Close tracked sockets without main-thread worker joins.
+- Remove network-worker ControlSurface callbacks and bound total response reception.
+- Script/package version pair and generated bundle synchronized. No installation or
+  Live verification performed; the existing production handoff hold remains.
