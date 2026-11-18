@@ -7,7 +7,7 @@
           "plan_id": "plan"
         }
       },
-      "expect": "{\n  \"matched\": 1,\n  \"verified\": true,\n  \"verified_changed\": 1\n}",
+      "expect": "{\n  \"expression_preservation\": \"native_api_guarantee_not_measured\",\n  \"fingerprint_scope\": \"serialized_notes_markers_excludes_opaque_expression\",\n  \"matched\": 1,\n  \"opaque_expression_verified\": false,\n  \"verification_scope\": \"serialized_notes_markers_groove\",\n  \"verified\": true,\n  \"verified_changed\": 1\n}",
       "name": "verified_patch",
       "wire": [
         {
@@ -19,7 +19,11 @@
             }
           },
           "response": {
+            "expression_preservation": "native_api_guarantee_not_measured",
+            "fingerprint_scope": "serialized_notes_markers_excludes_opaque_expression",
             "matched": 1,
+            "opaque_expression_verified": false,
+            "verification_scope": "serialized_notes_markers_groove",
             "verified": true,
             "verified_changed": 1
           }

@@ -261,7 +261,9 @@ def plan_note_edits(ctx: Context, snapshot: dict, edits: list[dict]) -> str:
 
     Times are clip-source beats, never arrangement positions. Keep read_token
     and fingerprint intact. Only named fields change; hidden notes, expression
-    and groove remain native. Full replacement is unsupported, never clear/re-add.
+    and groove remain native. Fingerprints exclude opaque expression envelopes;
+    opaque-only intervening edits are not detected. Full replacement is unsupported,
+    never clear/re-add.
     """
     result = _deps(ctx).service.plan_note_edits(snapshot, edits)
     return presenters.plan_note_edits(result)
@@ -273,6 +275,8 @@ def apply_note_edits(ctx: Context, plan: dict) -> str:
 
     Uses native ID modifications, not clear/re-add or global undo. Inspect
     verified and readback; an API failure may require reconciliation, not retry.
+    verified covers serialized notes, markers and groove only. Opaque expression
+    is preserved by the native API guarantee, not measured or fingerprinted.
     """
     result = _deps(ctx).service.apply_note_edits(plan)
     return presenters.apply_note_edits(result)
@@ -292,6 +296,8 @@ def set_notes_probability(ctx: Context, track_index: int, clip_index: int,
     omitted span reaches end_marker. Empty/stale IDs refuse. Probability clamps
     0..1, deviation -127..127; nonfinite values refuse. Requires native extended
     APIs and complete read authority. Check verified readback, not input count.
+    Verification/fingerprints exclude opaque envelopes; their preservation relies
+    on the native API guarantee, not measured coverage.
     """
     result = _deps(ctx).service.set_notes_probability(
         track_index, clip_index, probability, velocity_deviation, note_ids, pitch,

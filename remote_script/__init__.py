@@ -3128,9 +3128,13 @@ class AbletonMCP(ControlSurface):
 
             before = self._count_clip_notes(clip, window)
 
-            # Add the notes
+            # Advanced creation is additive: never retry after an uncertain write.
+            add_error = None
             if advanced:
-                clip.add_new_notes(tuple(specifications))
+                try:
+                    clip.add_new_notes(tuple(specifications))
+                except Exception as exc:
+                    add_error = str(exc)
             else:
                 clip.set_notes(tuple(live_notes))
 
@@ -3167,8 +3171,19 @@ class AbletonMCP(ControlSurface):
                     result.setdefault("expression_verified", False)
                     result["added"] = len(added)
                     result["clip_note_count"] = len(after_extended)
-                except Exception:
-                    result["expression_verified"] = False
+                    result["new_note_ids"] = [n["note_id"] for n in added]
+                    result["state"] = "verified" if result["expression_verified"] else "partial"
+                    result["reconciliation_required"] = not result["expression_verified"]
+                    if add_error is not None:
+                        result.update(expression_verified=False, reconciliation_required=True,
+                                      state="partial", stage="add_new_notes", error=add_error)
+                except Exception as exc:
+                    result.update(expression_verified=False, reconciliation_required=True,
+                                  added=None, clip_note_count=None, new_note_ids=None,
+                                  state="unknown", stage="readback", error=str(exc))
+                    if add_error is not None:
+                        result.update(stage="add_new_notes", error=add_error,
+                                      readback_error=str(exc))
             return result
         except Exception as e:
             self.log_message("Error adding notes to clip: " + str(e))
@@ -6385,18 +6400,24 @@ class AbletonMCP(ControlSurface):
             if patch["note_id"] not in by_id or any(not hasattr(by_id[patch["note_id"]], k) for k in patch):
                 raise ValueError("Requested note field unsupported")
         self._note_edit_plans.pop(plan["plan_id"])
-        changed = []
-        for patch in patches:
-            note = by_id[patch["note_id"]]
-            for key, value in patch.items():
-                if key != "note_id":
-                    setattr(note, key, value)
-            changed.append(note)
+        scope = {"verification_scope": "serialized_notes_markers_groove",
+                 "opaque_expression_verified": False,
+                 "fingerprint_scope": "serialized_notes_markers_excludes_opaque_expression",
+                 "expression_preservation": "native_api_guarantee_not_measured"}
+        stage = "set_fields"
         try:
-            clip.apply_note_modifications(tuple(changed))
+            for patch in patches:
+                note = by_id[patch["note_id"]]
+                for key, value in patch.items():
+                    if key != "note_id":
+                        setattr(note, key, value)
+            stage = "apply_note_modifications"
+            # Live requires its returned MidiNoteVector, not a Python tuple.
+            # Keep unrequested native objects intact, including per-note events.
+            clip.apply_note_modifications(raw)
         except Exception as exc:
-            return {"matched": len(patches), "verified_changed": None, "verified": False,
-                    "reconciliation_required": True, "error": str(exc), "notes": []}
+            return dict(scope, matched=len(patches), verified_changed=None, verified=False,
+                        reconciliation_required=True, stage=stage, error=str(exc), notes=[])
         try:
             after = self._get_clip_notes(target[2], target[3], target[4], limit=10000)
             actual = {n["note_id"]: n for n in after["notes"]}
@@ -6410,13 +6431,13 @@ class AbletonMCP(ControlSurface):
             for key in ("start_marker", "end_marker", "loop_start", "loop_end", "looping",
                         "arrangement_start", "arrangement_end"):
                 preserved = preserved and current.get(key) == after.get(key)
-            return {"matched": len(patches), "verified_changed": changed_count,
-                    "verified": len(verified) == len(patches) and preserved,
-                    "reconciliation_required": not preserved,
-                    "notes": [actual[p["note_id"]] for p in patches if p["note_id"] in actual]}
-        except Exception:
-            return {"matched": len(patches), "verified_changed": None,
-                    "verified": False, "notes": []}
+            return dict(scope, matched=len(patches), verified_changed=changed_count,
+                        verified=len(verified) == len(patches) and preserved,
+                        reconciliation_required=not preserved,
+                        notes=[actual[p["note_id"]] for p in patches if p["note_id"] in actual])
+        except Exception as exc:
+            return dict(scope, matched=len(patches), verified_changed=None, verified=False,
+                        reconciliation_required=True, stage="readback", error=str(exc), notes=[])
 
     def _snapshot_track_selection(self, tracks):
         """Resolve a snapshot's `tracks` filter to a set of song-track indices.

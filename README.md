@@ -776,3 +776,13 @@ Advanced add_notes_to_clip accepts probability/deviation only with supported
 MidiNoteSpecification/add_new_notes and reliable extended readback; explicit
 default values also refuse on unsupported versions. Check expression_verified.
 Live acceptance remains pending; these paths are verified with unit fakes only.
+
+MIDI verification scope: verified measures serialized note fields, markers and
+association with the groove; opaque per-note expression envelopes are neither
+serialized nor fingerprinted. Opaque-only intervening edits are not detected.
+The native apply_note_modifications guarantee preserves per-note events; this is
+not measured envelope verification. Results explicitly report verification_scope,
+fingerprint_scope and opaque_expression_verified=false. Full replacement remains
+unsupported. Setter/apply/readback failures consume the plan and require explicit
+reconciliation; do not retry. Advanced-add failures report partial measured IDs
+or unknown counts after one best-effort readback, never retry or roll back.

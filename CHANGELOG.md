@@ -1,5 +1,9 @@
 ## Unreleased — lossless MIDI edits
 
+- Retain native MidiNoteVector on apply; structured post-write reconciliation
+  for setter/apply/readback failures and partial advanced adds. Public verification
+  scope explicitly excludes opaque expression envelopes and their fingerprints.
+
 - Native note-ID patch plans bound to server-held complete reads and fingerprints;
   strict identity validation, stale-plan refusal, expression/groove preservation.
 - Probability/deviation creation and edits with explicit API gates and readback.

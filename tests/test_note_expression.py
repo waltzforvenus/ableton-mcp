@@ -100,3 +100,29 @@ def test_advanced_truncated_expect_count_refuses_before_add(monkeypatch):
     with pytest.raises(ValueError,match='expect_count'):
         h.mcp._add_notes_to_clip(notes=[{'probability':.5}],expect_count=2)
     assert c._notes==before
+
+
+@pytest.mark.parametrize('failure',['partial_add','readback'])
+def test_advanced_add_failure_reconciles_without_retry(monkeypatch,failure):
+    h,c=editable(); calls=[]
+    monkeypatch.setitem(sys.modules,'Live',SimpleNamespace(Clip=SimpleNamespace(MidiNoteSpecification=lambda **kw:SimpleNamespace(**kw))))
+    def fail_read(): raise RuntimeError('readback unavailable')
+    def add(notes):
+        calls.append(1)
+        for n in notes:
+            c._store_note(vars(n)); c._notes[-1].update(vars(n))
+            if failure=='partial_add': raise RuntimeError('partial add')
+        c.get_all_notes_extended=fail_read
+    c.add_new_notes=add
+    r=h.mcp._add_notes_to_clip(notes=[{'probability':.2},{'probability':.3}])
+    assert calls==[1]
+    assert r['expression_verified'] is False
+    assert r['reconciliation_required'] is True
+    if failure=='partial_add':
+        assert len(c._notes)==51 and r['added']==1
+        assert r['new_note_ids']==[51] and r['state']=='partial'
+        assert r['stage']=='add_new_notes' and r['error']=='partial add'
+    else:
+        assert len(c._notes)==52 and r['added'] is None
+        assert r['new_note_ids'] is None and r['state']=='unknown'
+        assert r['stage']=='readback' and r['error']=='readback unavailable'
