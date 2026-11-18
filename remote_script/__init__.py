@@ -39,7 +39,7 @@ EXPECTED_COMMAND_ERRORS = (ValueError, IndexError, KeyError)
 
 # Bumped whenever the TCP command surface changes; the MCP server compares
 # this to EXPECTED_REMOTE_SCRIPT_VERSION.
-SCRIPT_VERSION = "1.30.0"
+SCRIPT_VERSION = "1.31.0"
 PROTOCOL_VERSION = 1
 
 # The trim eraser (see _trim_arrangement_clip): a temporary Session clip
@@ -1633,51 +1633,156 @@ class AbletonMCP(ControlSurface):
                 return i, clip
         return None, None
 
+    def _audio_import_state(self, track):
+        """Only documented track/song state; unknown safety state refuses."""
+        return (bool(track.has_audio_input), bool(track.has_midi_input),
+                bool(track.is_frozen), bool(self._song.record_mode),
+                bool(self._song.session_record), bool(track.arm),
+                int(track.current_monitoring_state),
+                tuple((slot.clip, bool(slot.clip.is_recording))
+                      for slot in track.clip_slots if slot.has_clip))
+
+    def _audio_source_identity(self, path):
+        stat = os.stat(path)
+        return (os.path.realpath(path), stat.st_dev, stat.st_ino, stat.st_size,
+                stat.st_mtime, stat.st_ctime)
+
     def _create_arrangement_audio_clip(self, track_index=0, path="",
                                        start_time=0.0, allow_overlap=False,
                                        name=None, expect_track_name=None,
                                        warping=False, source_offset_seconds=0,
                                        duration_seconds=None,
                                        destination_length_beats=None,
-                                       source_span=None):
-        """Preflight only until Live guarantees the footprint BEFORE import.
+                                       source_span=None, preflight=False,
+                                       preflight_token=None):
+        """Whole-file import on an EMPTY audio arrangement track only.
 
-        Track.create_audio_clip(path,time) obeys auto-warp preferences and has
-        no source-trim/warp/length arguments. Marker writes afterwards cannot
-        undo crops made by import, nor prove arrangement length.
+        Native Track.create_audio_clip(path,time) returns Clip. Unknown extent
+        cannot crop an empty track; measure it afterwards, never infer it from
+        current tempo or pretend marker edits resize arrangement footage.
+        Both preflight and import dispatch on Live's main thread.
         """
         track = self._resolve_track(track_index, expect_track_name=expect_track_name)
+        if getattr(self, "_audio_import_reconciliation", False):
+            return {"supported": False, "mutated": False,
+                    "reconciliation_required": True, "retry_safe": False,
+                    "reason": "Prior audio import needs manual reconciliation; automatic retries disabled for this script instance"}
         if not path or not os.path.isabs(path) or not os.path.isfile(path):
             raise ValueError("path must be an existing absolute audio file path")
         def finite(value, label, positive=False):
             value = float(value)
-            if math.isnan(value) or math.isinf(value) or value < 0 or (positive and value == 0):
-                raise ValueError(label + " must be finite and " + ("positive" if positive else "nonnegative"))
+            if not math.isfinite(value) or value < 0 or (positive and value == 0):
+                raise ValueError(label + " must be finite and valid")
             return value
         start = finite(start_time, "start_time")
-        if not isinstance(warping, bool):
-            raise ValueError("warping must be a boolean")
-        if not isinstance(source_span, dict) or source_span.get("decoded") is not True:
-            raise ValueError("Unresolved decoded source span; use the server media probe")
-        total = finite(source_span.get("duration_seconds"), "decoded duration", True)
+        if start > 1576800:
+            raise ValueError("start_time exceeds native arrangement limit 1576800")
         offset = finite(source_offset_seconds, "source_offset_seconds")
-        duration = total - offset if duration_seconds is None else finite(duration_seconds, "duration_seconds", True)
-        if offset >= total or duration <= 0 or offset + duration > total:
-            raise ValueError("Source offset/duration exceeds decoded source span")
+        if duration_seconds is not None:
+            finite(duration_seconds, "duration_seconds", True)
         if destination_length_beats is not None:
             finite(destination_length_beats, "destination_length_beats", True)
-        # A current tempo value is not proof of a constant tempo envelope.
-        # No supported LOM primitive exposes both that proof and an atomic,
-        # pre-import warp/footprint contract. A caller beat claim is not one.
-        return {"supported": False, "mutated": False,
-                "reason": "Unsupported pre-import warp/trim/footprint guarantee and constant-tempo proof",
-                "track_index": track_index, "track_name": track.name,
-                "start_time": start, "source_offset_seconds": offset,
-                "duration_seconds": duration, "source_duration_seconds": total,
-                "warping": warping, "gain_policy": "unchanged",
-                "destination_length_beats": None,
-                "requested_destination_length_beats": destination_length_beats,
-                "overlap_check": "unresolved_footprint", "allow_overlap": bool(allow_overlap)}
+        if not isinstance(warping, bool):
+            raise ValueError("warping must be a boolean")
+        result = {"supported": False, "mutated": False,
+                  "reason": "Unsupported pre-import warp/trim/footprint guarantee and constant-tempo proof",
+                  "track_index": track_index, "track_name": track.name,
+                  "start_time": start, "source_offset_seconds": offset,
+                  "duration_seconds": duration_seconds, "warping": warping,
+                  "gain_policy": "unchanged", "destination_length_beats": None,
+                  "requested_destination_length_beats": destination_length_beats,
+                  "overlap_check": "unresolved_footprint", "allow_overlap": bool(allow_overlap)}
+        # Legacy direct wire calls cannot authorize a write with caller span
+        # assertions. Keep useful validation, but require our held preflight.
+        if not preflight:
+            if not isinstance(source_span, dict) or source_span.get("decoded") is not True:
+                raise ValueError("Unresolved decoded source span; use the server media probe")
+            total = finite(source_span.get("duration_seconds"), "decoded duration", True)
+            duration = total - offset if duration_seconds is None else float(duration_seconds)
+            if offset >= total or duration <= 0 or offset + duration > total:
+                raise ValueError("Source offset/duration exceeds decoded source span")
+            result.update(duration_seconds=duration, source_duration_seconds=total)
+        if offset != 0 or duration_seconds is not None or destination_length_beats is not None:
+            return result
+        try:
+            state = self._audio_import_state(track)
+        except Exception:
+            result["reason"] = "Unknown track recording/frozen state; no import"
+            return result
+        if (not state[0] or state[1] or state[2] or state[3] or state[4]
+                or any(recording for clip, recording in state[7])
+                or not callable(getattr(track, "create_audio_clip", None))):
+            result["reason"] = "Requires native import on nonfrozen, nonrecording audio track"
+            return result
+        if list(track.arrangement_clips):
+            return result
+        request = (track_index, path, start, name, expect_track_name, warping,
+                   offset, duration_seconds, destination_length_beats, bool(allow_overlap))
+        identity = self._audio_source_identity(path)
+        if preflight:
+            # One retained candidate bounds memory and invalidates older plans.
+            serial = getattr(self, "_audio_import_serial", 0) + 1
+            self._audio_import_serial = serial
+            token = str(serial)
+            self._audio_import_candidate = (token, track, request, identity, state)
+            return {"eligible": True, "supported": False, "mutated": False,
+                    "preflight_token": token, "placement_mode": "empty_track_whole_file"}
+        candidate = getattr(self, "_audio_import_candidate", None)
+        self._audio_import_candidate = None  # one-shot, including all uncertain writes
+        if (not candidate or candidate[0] != preflight_token or candidate[1] != track
+                or candidate[2:] != (request, identity, state)):
+            result["reason"] = "Missing/stale preflight identity, source file or track state"
+            return result
+        # Fresh main-thread admission immediately before the ONLY native call.
+        if (self._resolve_track(track_index, expect_track_name=expect_track_name) != track
+                or list(track.arrangement_clips) or self._audio_import_state(track) != state
+                or self._audio_source_identity(path) != identity):
+            result["reason"] = "Track/source changed before import"
+            return result
+        try:
+            clip = track.create_audio_clip(path, start)
+            if clip is None or list(track.arrangement_clips) != [clip]:
+                raise ValueError("Native returned Clip/topology not verified")
+            if (not clip.is_audio_clip or os.path.realpath(clip.file_path) != identity[0]):
+                raise ValueError("Native returned audio source not verified")
+            gain = float(clip.gain)
+            if not math.isfinite(gain):
+                raise ValueError("Native gain unknown")
+            clip.warping = warping
+            if bool(clip.warping) != warping:
+                raise ValueError("Warp readback mismatch")
+            if name is not None:
+                clip.name = name
+            actual_start, actual_end = float(clip.start_time), float(clip.end_time)
+            if (not math.isfinite(actual_start) or not math.isfinite(actual_end)
+                    or actual_start != start or actual_end <= actual_start):
+                raise ValueError("Native arrangement footprint not verified")
+            if (list(track.arrangement_clips) != [clip]
+                    or self._resolve_track(track_index) != track
+                    or self._audio_import_state(track) != state
+                    or self._audio_source_identity(path) != identity
+                    or os.path.realpath(clip.file_path) != identity[0]
+                    or float(clip.gain) != gain
+                    or bool(clip.warping) != warping
+                    or (name is not None and clip.name != name)):
+                raise ValueError("Post-import identity/topology/state/gain mismatch")
+            return {"supported": True, "mutated": True,
+                    "placement_mode": "empty_track_whole_file",
+                    "track_index": track_index, "track_name": track.name,
+                    "clip_index": 0, "clip_name": clip.name,
+                    "start_time": actual_start, "end_time": actual_end,
+                    "file_path": clip.file_path, "warping": bool(clip.warping),
+                    "gain": gain, "gain_policy": "native_import_preserved",
+                    "cropped_or_replaced": [], "extent_source": "native_readback",
+                    "tempo_conversion": "not_claimed"}
+        except Exception as exc:
+            self._audio_import_reconciliation = True
+            # Import can throw AFTER mutation. No retry, undo or guessed repair.
+            return {"supported": False, "reconciliation_required": True,
+                    "mutation_state": "unknown", "mutated": None,
+                    "reason": str(exc), "track_index": track_index,
+                    "placement_mode": "empty_track_whole_file",
+                    "retry_safe": False}
 
     def _create_arrangement_midi_clip(self, track_index=0, start_time=0.0,
                                       length=4.0, notes=None, name=None,

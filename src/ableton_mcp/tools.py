@@ -1881,9 +1881,13 @@ def create_arrangement_audio_clip(ctx: Context, track_index: int, path: str,
 
     Source offset/duration are seconds (None means the remaining source).
     Warping defaults false; requested beat length is NOT footprint proof.
-    Currently returns supported=false without import: Live's native import
-    cannot guarantee warp/trim/footprint before cropping existing material.
-    allow_overlap cannot bypass unknown footprint or tempo. Gain is unchanged.
+    Supports whole-file import ONLY onto an empty arrangement audio track.
+    Occupied/trimmed/requested-beat placement returns supported=false with no
+    import. Cheap native preflight precedes bounded decoding; identity and
+    emptiness are rechecked before import. Returned native Clip provides actual
+    measured start/end; no constant-tempo conversion is claimed. Imported gain
+    is preserved. Uncertain writes return reconciliation_required; never retry
+    or undo automatically. allow_overlap cannot bypass these restrictions.
     """
     result = _deps(ctx).service.create_arrangement_audio_clip(
         track_index, path, start_time, allow_overlap, name, expect_track_name,

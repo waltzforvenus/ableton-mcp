@@ -440,6 +440,8 @@ def set_device_sidechain(result: Dict[str, Any]) -> str:
 
 
 def create_arrangement_audio_clip(result: Dict[str, Any]) -> str:
+    if result.get("supported") is False or result.get("reconciliation_required"):
+        return as_json(result)
     text = (f"Placed '{result.get('clip_name')}' on '{result.get('track_name')}' "
             f"at beats {result.get('start_time')}-{result.get('end_time')} "
             f"(arrangement clip {result.get('clip_index')}, file "

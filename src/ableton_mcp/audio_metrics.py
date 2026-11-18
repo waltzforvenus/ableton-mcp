@@ -29,6 +29,7 @@ import os
 import re
 import shutil
 import subprocess
+import time
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 RunResult = Tuple[int, str, str]
@@ -313,9 +314,19 @@ def probe_source_span(path: str) -> Dict[str, Any]:
     rate, frames, channels = audio_analysis.file_info(path)
     if rate <= 0 or frames <= 0 or channels <= 0:
         raise ValueError("Unresolved decoded source span")
+    # Finite work policy: at most 10 minutes at 192 kHz stereo and 15 s
+    # wall time between decoder reads. A blocking native decoder read cannot
+    # be interrupted here; each read is capped at 65536 frames.
+    if frames * channels > 230400000:
+        raise ValueError("Source decode budget exceeded; use shorter media")
+    deadline = time.monotonic() + 15.0
     for first in range(0, frames, 65536):
+        if time.monotonic() > deadline:
+            raise ValueError("Source decode deadline budget exceeded")
         count = min(65536, frames - first)
         if len(audio_analysis.read_frames(path, first, count)) != count:
             raise ValueError("Incomplete decoded source span")
+    if time.monotonic() > deadline:
+        raise ValueError("Source decode deadline budget exceeded")
     return {"duration_seconds": frames / float(rate), "decoded": True,
             "sample_rate": rate, "frames": frames}

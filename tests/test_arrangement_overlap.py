@@ -38,7 +38,7 @@ def test_unproven_native_footprint_never_imports(tmp_path):
                   source_span={'duration_seconds': 8, 'decoded': True})
     assert result['status'] == 'success', result
     assert result['result']['supported'] is False
-    assert 'footprint' in result['result']['reason']
+    assert result['result']['reason']
     assert writes == []
 
 
@@ -95,14 +95,15 @@ def test_service_injects_decoded_probe_without_accepting_beat_claim(tmp_path):
         'duration_seconds': 8, 'decoded': True})
     plan = service.create_arrangement_audio_clip(2, path, 0, destination_length_beats=1)
     assert plan['supported'] is False
-    assert plan['duration_seconds'] == 8
+    assert plan['duration_seconds'] is None  # refused before decoding
     assert writes == []
 
 
-def test_probe_failure_sends_nothing():
+def test_probe_failure_sends_no_apply():
     class Client:
-        def send_command(self, *args):
-            pytest.fail('probe failure must not send a modifying command')
+        def send_command(self, command, params):
+            assert params.get('preflight') is True
+            return {'eligible': True, 'preflight_token': 'fixture'}
     def fail(path):
         raise ValueError('decoder failed')
     service = AbletonService(Client(), Gate(), source_span_probe=fail)

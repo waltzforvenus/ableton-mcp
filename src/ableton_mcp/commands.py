@@ -207,7 +207,7 @@ COMMANDS: dict[str, CommandSpec] = {
     # Importing a file happens on the main thread, like create_audio_clip:
     # the script waits 60 s, the socket must outlast it by 5 s.
     "create_arrangement_audio_clip": CommandSpec(modifying=True, timeout=65.0,
-                                                 gated=True, min_script_version="1.30.0"),
+                                                 gated=True, min_script_version="1.31.0"),
     "create_arrangement_midi_clip": CommandSpec(modifying=True, gated=True),
     "insert_chain_device": CommandSpec(modifying=True, gated=True),
     "set_chain_mixer": CommandSpec(modifying=True, gated=True),

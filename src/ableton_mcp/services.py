@@ -1044,22 +1044,33 @@ class AbletonService:
                                       duration_seconds: Optional[float] = None,
                                       destination_length_beats: Optional[float] = None
                                       ) -> Dict[str, Any]:
-        if self._source_span_probe is None:
-            raise ValueError("Decoded source-span probe unavailable")
         path = os.path.expanduser(path)
-        span = self._source_span_probe(path)
         params: Dict[str, Any] = {"track_index": track_index, "path": path,
                                   "start_time": start_time,
                                   "allow_overlap": allow_overlap,
                                   "warping": warping,
                                   "source_offset_seconds": source_offset_seconds,
                                   "duration_seconds": duration_seconds,
-                                  "destination_length_beats": destination_length_beats,
-                                  "source_span": span}
+                                  "destination_length_beats": destination_length_beats}
         if name is not None:
             params["name"] = name
-        return self._send("create_arrangement_audio_clip",
-                          _guarded(params, expect_track_name))
+        _guarded(params, expect_track_name)
+        preflight = self._send("create_arrangement_audio_clip", dict(params, preflight=True))
+        if not preflight.get("eligible"):
+            return preflight
+        if self._source_span_probe is None:
+            raise ValueError("Decoded source-span probe unavailable")
+        params["source_span"] = self._source_span_probe(path)
+        params["preflight_token"] = preflight["preflight_token"]
+        try:
+            return self._send("create_arrangement_audio_clip", params)
+        except Exception as exc:
+            # The transport cannot tell us whether the native import ran.
+            # Never replay an accepted candidate or claim zero mutation.
+            return {"supported": False, "reconciliation_required": True,
+                    "mutated": None, "mutation_state": "unknown",
+                    "retry_safe": False, "reason": str(exc),
+                    "track_index": track_index}
 
     def create_arrangement_midi_clip(self, track_index: int, start_time: float,
                                      length: float,
