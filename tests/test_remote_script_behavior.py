@@ -1783,10 +1783,12 @@ def test_load_browser_item_loads_onto_the_selected_track():
     result = _ok(harness.process(_cmd("load_browser_item", track_index=1,
                                       item_uri="query:Synths#Operator",
                                       track_type="regular")))
-    assert result == {"loaded": True, "item_name": "Operator",
-                      "track_name": "Drums", "uri": "query:Synths#Operator",
-                      "new_devices": ["Operator"],
-                      "devices_after": ["Impulse", "Operator"]}
+    assert {k: result[k] for k in ("loaded", "item_name", "track_name", "uri", "new_devices", "devices_after")} == {
+        "loaded": True, "item_name": "Operator", "track_name": "Drums",
+        "uri": "query:Synths#Operator", "new_devices": ["Operator"],
+        "devices_after": ["Impulse", "Operator"]}
+    assert result["changed_state"] == []
+    assert result["state_preservation"] == "unchanged_at_return"
     drums = harness.song.tracks[1]
     assert harness.song.view.selected_track is drums
     assert [d.name for d in drums.devices] == ["Impulse", "Operator"]

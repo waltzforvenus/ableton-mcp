@@ -1,3 +1,31 @@
+## Unreleased — load failure outcomes (1.33.0)
+
+- Keep completed rack evidence on read-only kit lookup errors and later lock/gate
+  refusals; explicitly prevent replay of the whole partially completed workflow.
+- Shared URI/path post-dispatch uncertainty contract preserves watchdog diagnostics
+  and proven preflight refusal semantics. No automatic retry or rollback.
+- Native load exceptions retain bounded best-effort device evidence, never infer
+  completion from device presence after a failure.
+- Detection/non-clobber scope and temporary restart-only latch recovery accepted;
+  automatic arm restoration/new-track disarming remain open. A4-HUMAN-ACK is a
+  named follow-up, not a new recovery tool shipped here.
+- Protocol1.33.0 requires re-running ableton-mcp-install-script and restarting Live
+  when deploying (not performed here). Native acceptance remains pending.
+
+## Unreleased — load-state evidence and non-clobber guard (1.32.0)
+
+- Shared native loader snapshots all track identities/arm/monitor states before
+  selection and returns changed_state and immediate verification scope.
+- Unexpected state/topology, no verified device arrival or partial failure
+  requires reconciliation, not blind restoration. Further loads stop; batch/kit
+  calls retain per-load results and validate a prior-state token between loads.
+- Public responses expose reconciliation instead of hiding it behind Loaded.
+- Limitation: automatic Exclusive Arm restoration/new-track disarming is not
+  supported without trustworthy change provenance. No compensating writes overwrite observed state;
+  asynchronous plugin completion and native restoration acceptance remain pending.
+- Re-run ableton-mcp-install-script and restart Live when deploying protocol1.32.0
+  (not performed here). Existing successful unchanged-state loads remain usable.
+
 ## Unreleased — bounded arrangement audio subset (1.31.0)
 
 - Unsupported plans now remain visibly unsupported, not a false placement success.

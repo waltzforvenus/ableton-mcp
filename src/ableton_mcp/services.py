@@ -185,7 +185,7 @@ class AbletonService:
 
     def _send(self, name: str,
               params: Optional[Dict[str, Any]] = None,
-              authorized: bool = True) -> Dict[str, Any]:
+              authorized: bool = True, on_dispatch: Any = None) -> Dict[str, Any]:
         """Send one wire command, applying the registry's gate first.
 
         A ``COMMANDS[name].gated`` row routes through
@@ -210,6 +210,8 @@ class AbletonService:
         if spec.gated:
             self._handshake.require(name, spec.min_script_version,
                                     send_command=self._client.send_command)
+        if on_dispatch is not None:
+            on_dispatch()
         try:
             return self._client.send_command(name, params or {})
         finally:
@@ -976,9 +978,34 @@ class AbletonService:
             params["scale_mode"] = scale_mode
         return self._send("set_song_scale", params)
 
+    def _send_load(self, command: str, params: Dict[str, Any],
+                   watchdog: bool = False) -> Dict[str, Any]:
+        """One send; preserve proven preflight refusal and uncertain outcomes.
+
+        Per-call Event crosses the existing watchdog thread safely. No shared
+        client wrapping, retry, environment lookup or duplicate command gates.
+        """
+        dispatched = threading.Event()
+        try:
+            if watchdog:
+                return self._send_with_alert_watchdog(command, params,
+                                                      on_dispatch=dispatched.set)
+            return self._send(command, params, on_dispatch=dispatched.set)
+        except Exception as exc:
+            if not dispatched.is_set():
+                raise
+            result = {"loaded": None, "reconciliation_required": True,
+                      "retry_safe": False, "changed_state": None,
+                      "state_preservation": "unknown", "reason": str(exc),
+                      "command": command}
+            if isinstance(exc, render.RenderRefused):
+                result["diagnostics"] = {"reason": exc.reason, "details": exc.details}
+            return result
+
     def load_browser_item(self, track_index: int, item_uri: str,
                           track_type: Optional[str] = None,
-                          expect_track_name: Optional[str] = None
+                          expect_track_name: Optional[str] = None,
+                          expect_load_state_token: Optional[str] = None
                           ) -> Dict[str, Any]:
         """The wire command behind all three load tools. The drum-kit
         orchestration has never sent a track_type, so the params dict only
@@ -990,7 +1017,9 @@ class AbletonService:
         }
         if track_type is not None:
             params["track_type"] = track_type
-        return self._send("load_browser_item",
+        if expect_load_state_token is not None:
+            params["expect_load_state_token"] = expect_load_state_token
+        return self._send_load("load_browser_item",
                           _guarded(params, expect_track_name))
 
     # Device placement and sidechain (Live 12)
@@ -1151,7 +1180,8 @@ class AbletonService:
             return self._send(command, params)
 
     def _send_with_alert_watchdog(self, command: str, params: Dict[str, Any],
-                                  timeout_s: float = 45.0) -> Dict[str, Any]:
+                                  timeout_s: float = 45.0,
+                                  on_dispatch: Any = None) -> Dict[str, Any]:
         """Send a load command while watching for a Live alert.
 
         A preset Live cannot load answers with a MODAL ALERT on Live's main
@@ -1164,7 +1194,7 @@ class AbletonService:
         """
         ui = getattr(self, "_ui", None)
         if ui is None or not getattr(ui, "available", False):
-            return self._send(command, params)
+            return self._send(command, params, on_dispatch=on_dispatch)
         before = ui.modal_alerts()
         # None means the alerts cannot be read (no Accessibility permission
         # for this process): the load still goes, but an alert it opens
@@ -1176,57 +1206,77 @@ class AbletonService:
         outcome: Dict[str, Any] = {}
         failure: List[Any] = []
 
+        # Admission and cancellation share one lock: after any watchdog
+        # exit, a still-gated worker cannot subsequently send. Once admitted,
+        # on_dispatch has already marked the outcome uncertain; cancellation
+        # never claims to stop an in-flight native operation.
+        admission_lock = threading.Lock()
+        cancelled = False
+
+        def _admit() -> None:
+            with admission_lock:
+                if cancelled:
+                    raise RuntimeError("Load cancelled before dispatch")
+                if on_dispatch is not None:
+                    on_dispatch()
+
         def _worker() -> None:
             try:
-                outcome["value"] = self._send(command, params)
+                outcome["value"] = self._send(command, params, on_dispatch=_admit)
             except Exception as e:  # surfaced by the watchdog loop
                 failure.append(e)
 
         worker = threading.Thread(target=_worker, daemon=True)
-        worker.start()
-        alert = None
-        deadline = time.monotonic() + timeout_s
-        while time.monotonic() < deadline:
-            worker.join(0.25)
-            if not worker.is_alive():
-                break
-            alerts = ui.modal_alerts()
-            if alerts is None:
-                blind = True
-                continue
-            fresh = [a for a in alerts if a not in before]
-            if fresh:
-                alert = fresh[0]
-                press = ui.dismiss_modal_alert("OK")
-                if not press.get("ok"):
-                    press = ui.dismiss_modal_alert("Cancel")
-                if press.get("text") and not alert.get("text"):
-                    alert["text"] = press["text"]
-                worker.join(5.0)
-                break
-        if alert is not None:
-            if worker.is_alive() or failure:
+        try:
+            worker.start()
+            alert = None
+            deadline = time.monotonic() + timeout_s
+            while time.monotonic() < deadline:
+                worker.join(0.25)
+                if not worker.is_alive():
+                    break
+                alerts = ui.modal_alerts()
+                if alerts is None:
+                    blind = True
+                    continue
+                fresh = [a for a in alerts if a not in before]
+                if fresh:
+                    alert = fresh[0]
+                    press = ui.dismiss_modal_alert("OK")
+                    if not press.get("ok"):
+                        press = ui.dismiss_modal_alert("Cancel")
+                    if press.get("text") and not alert.get("text"):
+                        alert["text"] = press["text"]
+                    worker.join(5.0)
+                    break
+            if alert is not None:
+                if worker.is_alive() or failure:
+                    raise render.RenderRefused(
+                        "live_alert", alert_text=alert.get("text") or "",
+                        buttons=alert.get("buttons") or [],
+                        detail=("no reply from Live after the alert was "
+                                "dismissed" if worker.is_alive()
+                                else str(failure[0])[:200]))
+                outcome["value"]["alert"] = alert.get("text") or ""
+                return outcome["value"]
+            worker.join(1.0)
+            if worker.is_alive():
                 raise render.RenderRefused(
-                    "live_alert", alert_text=alert.get("text") or "",
-                    buttons=alert.get("buttons") or [],
-                    detail=("no reply from Live after the alert was "
-                            "dismissed" if worker.is_alive()
-                            else str(failure[0])[:200]))
-            outcome["value"]["alert"] = alert.get("text") or ""
+                    "live_alert", alert_text="", buttons=[],
+                    detail=("no reply from Live, and its dialogs cannot be read "
+                            "(this process lacks the Accessibility permission), "
+                            "so a 'cannot be loaded' alert may be open in Live: "
+                            "dismiss it there before sending anything else"
+                            if blind else
+                            "no reply from Live and no alert seen"))
+            if failure:
+                raise failure[0]
             return outcome["value"]
-        worker.join(1.0)
-        if worker.is_alive():
-            raise render.RenderRefused(
-                "live_alert", alert_text="", buttons=[],
-                detail=("no reply from Live, and its dialogs cannot be read "
-                        "(this process lacks the Accessibility permission), "
-                        "so a 'cannot be loaded' alert may be open in Live: "
-                        "dismiss it there before sending anything else"
-                        if blind else
-                        "no reply from Live and no alert seen"))
-        if failure:
-            raise failure[0]
-        return outcome["value"]
+        finally:
+            # Also covers polling/dismissal exceptions and timeouts, retaining
+            # the original diagnostic. Do not join/kill/retry pending workers.
+            with admission_lock:
+                cancelled = True
 
     def load_device_from_path(self, track_index: int, path: str,
                               track_type: str = "regular",
@@ -1240,11 +1290,11 @@ class AbletonService:
             raise render.RenderRefused("preset_corrupt", path=path,
                                        summary=broken["summary"],
                                        problems=broken["problems"])
-        return self._send_with_alert_watchdog("load_browser_item_by_path", _guarded({
+        return self._send_load("load_browser_item_by_path", _guarded({
             "track_index": track_index,
             "path": path,
             "track_type": track_type,
-        }, expect_track_name))
+        }, expect_track_name), watchdog=True)
 
     def get_plugin_state(self, source_path: str, track: Optional[str] = None,
                          plugin: Optional[str] = None,
@@ -1271,19 +1321,35 @@ class AbletonService:
         failed = None
         devices_after: List[str] = []
         track_name = None
+        load_guard = {}
         for uri in uris:
             try:
                 r = self.load_browser_item(track_index, uri, track_type,
-                                           expect_track_name)
-            except LockError:
-                raise
-            except Exception as e:
-                failed = {"uri": uri, "error": str(e)}
+                                           expect_track_name, **load_guard)
+            except (LockError, CapabilityError) as exc:
+                if not loaded:
+                    raise
+                failed = {"uri": uri, "error": str(exc), "result": {
+                    "loaded": False, "state_preservation": "not_attempted",
+                    "reason": getattr(exc, "reason", str(exc)),
+                    "details": getattr(exc, "details", {}), "reconciliation_required": False}}
                 break
-            loaded.append({"uri": uri, "item_name": r.get("item_name"),
-                           "new_devices": r.get("new_devices")})
-            devices_after = list(r.get("devices_after") or [])
+            except Exception as e:
+                failed = {"uri": uri, "error": str(e),
+                          "result": {"loaded": None, "reconciliation_required": True,
+                                     "retry_safe": False, "changed_state": None,
+                                     "state_preservation": "unknown"}}
+                break
+            if "devices_after" in r:
+                devices_after = list(r.get("devices_after") or [])
             track_name = r.get("track_name", track_name)
+            if r.get("reconciliation_required") or r.get("loaded") is False:
+                failed = {"uri": uri, "error": r.get("reason", "Load needs reconciliation"),
+                          "result": r}
+                break
+            if r.get("load_state_token") is not None:
+                load_guard = {"expect_load_state_token": r["load_state_token"]}
+            loaded.append(dict(r, uri=uri))
         return {
             "track_index": track_index,
             "track_name": track_name,
@@ -1291,6 +1357,9 @@ class AbletonService:
             "loaded_count": len(loaded),
             "loaded": loaded,
             "failed": failed,
+            "partial_completion": bool(loaded and failed),
+            "whole_workflow_retry_safe": False if failed else None,
+            "reconciliation_required": bool(failed and (failed.get("result") or {}).get("reconciliation_required")),
             "not_attempted": list(uris[len(loaded) + (1 if failed else 0):]),
             "devices": [{"index": i, "name": n} for i, n in enumerate(devices_after)],
         }
@@ -1351,14 +1420,21 @@ class AbletonService:
         # whatever rack the first one found.
         result = self.load_browser_item(track_index, rack_uri,
                                         expect_track_name=expect_track_name)
-        if not result.get("loaded", False):
-            return {"stage": "rack_failed", "rack_uri": rack_uri}
+        if result.get("reconciliation_required") or not result.get("loaded", False):
+            return {"stage": "rack_failed", "rack_uri": rack_uri,
+                    "rack_result": result,
+                    "reconciliation_required": bool(result.get("reconciliation_required"))}
 
         # Step 2: Get the drum kit items at the specified path
-        kit_result = self.get_browser_items_at_path(kit_path)
+        try:
+            kit_result = self.get_browser_items_at_path(kit_path)
+        except Exception as exc:
+            kit_result = {"error": str(exc)}
         if "error" in kit_result:
-            return {"stage": "kit_lookup_failed",
-                    "error": kit_result.get("error")}
+            return {"stage": "kit_lookup_failed", "rack_result": result,
+                    "error": kit_result.get("error"), "partial_completion": True,
+                    "whole_workflow_retry_safe": False, "kit_load_attempted": False,
+                    "reconciliation_required": False, "failure_phase": "read_only_lookup"}
 
         # Step 3: Find a loadable drum kit. kit_path may name a folder (load
         # its first loadable kit) or point directly at a kit file such as
@@ -1370,13 +1446,35 @@ class AbletonService:
                 and kit_result.get("uri"):
             loadable_kits = [kit_result]
         if not loadable_kits:
-            return {"stage": "no_loadable", "kit_path": kit_path}
+            return {"stage": "no_loadable", "kit_path": kit_path, "rack_result": result,
+                    "partial_completion": True, "whole_workflow_retry_safe": False,
+                    "kit_load_attempted": False, "reconciliation_required": False}
 
         # Step 4: Load the first loadable kit
-        self.load_browser_item(track_index, loadable_kits[0].get("uri"),
-                               expect_track_name=expect_track_name)
+        load_guard = ({"expect_load_state_token": result["load_state_token"]}
+                      if result.get("load_state_token") is not None else {})
+        try:
+            kit_result = self.load_browser_item(track_index, loadable_kits[0].get("uri"),
+                                                expect_track_name=expect_track_name, **load_guard)
+        except (LockError, CapabilityError) as exc:
+            return {"stage": "kit_failed", "rack_result": result,
+                    "kit_result": {"loaded": False, "reason": getattr(exc, "reason", str(exc)),
+                                   "details": getattr(exc, "details", {}),
+                                   "state_preservation": "not_attempted"},
+                    "partial_completion": True, "whole_workflow_retry_safe": False,
+                    "kit_load_attempted": False, "reconciliation_required": False,
+                    "failure_phase": "preflight_refusal"}
+        except Exception as exc:
+            kit_result = {"loaded": None, "reconciliation_required": True,
+                          "retry_safe": False, "reason": str(exc),
+                          "changed_state": None, "state_preservation": "unknown"}
+        if kit_result.get("reconciliation_required") or kit_result.get("loaded") is False:
+            return {"stage": "kit_failed", "rack_result": result, "kit_result": kit_result,
+                    "partial_completion": True, "whole_workflow_retry_safe": False,
+                    "kit_load_attempted": None,
+                    "reconciliation_required": bool(kit_result.get("reconciliation_required"))}
         return {"stage": "ok", "kit_name": loadable_kits[0].get("name"),
-                "track_index": track_index}
+                "track_index": track_index, "rack_result": result, "kit_result": kit_result}
 
     # ── Arrangement view commands ─────────────────────────────────────────────
 

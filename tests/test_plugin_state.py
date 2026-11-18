@@ -178,7 +178,8 @@ def test_a_load_that_adds_no_device_reports_loaded_false():
     assert resp["status"] == "success", resp
     assert resp["result"]["loaded"] is False
     assert resp["result"]["new_devices"] == []
-    assert "no device appeared" in resp["result"]["reason"]
+    assert resp["result"]["reconciliation_required"] is True
+    assert "arrival" in resp["result"]["reason"]
 
 
 def test_reloading_a_same_named_preset_still_counts_as_loaded():

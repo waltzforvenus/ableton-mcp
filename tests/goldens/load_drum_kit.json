@@ -126,7 +126,7 @@
         "rack_uri": "Drums/Drum Rack",
         "track_index": 0
       },
-      "expect": "Loaded drum rack but failed to find drum kit: Path part 'missing' not found",
+      "expect": "{\n  \"stage\": \"kit_lookup_failed\",\n  \"rack_result\": {\n    \"loaded\": true\n  },\n  \"error\": \"Path part 'missing' not found\",\n  \"partial_completion\": true,\n  \"whole_workflow_retry_safe\": false,\n  \"kit_load_attempted\": false,\n  \"reconciliation_required\": false,\n  \"failure_phase\": \"read_only_lookup\"\n}",
       "name": "bail_kit_path_error",
       "wire": [
         {
@@ -156,7 +156,7 @@
         "rack_uri": "Drums/Drum Rack",
         "track_index": 0
       },
-      "expect": "Loaded drum rack but no loadable drum kits found at 'drums/empty'",
+      "expect": "{\n  \"stage\": \"no_loadable\",\n  \"kit_path\": \"drums/empty\",\n  \"rack_result\": {\n    \"loaded\": true\n  },\n  \"partial_completion\": true,\n  \"whole_workflow_retry_safe\": false,\n  \"kit_load_attempted\": false,\n  \"reconciliation_required\": false\n}",
       "name": "bail_no_loadable_kits",
       "wire": [
         {
@@ -188,11 +188,90 @@
     },
     {
       "args": {
+        "kit_path": "kit",
+        "rack_uri": "rack",
+        "track_index": 0
+      },
+      "expect": "{\n  \"stage\": \"rack_failed\",\n  \"rack_uri\": \"rack\",\n  \"rack_result\": {\n    \"async_completion\": \"unverified\",\n    \"changed_state\": [\n      {\n        \"after\": {\n          \"arm\": true,\n          \"monitoring\": 0\n        },\n        \"before\": {\n          \"arm\": false,\n          \"monitoring\": 1\n        },\n        \"identity\": 12\n      }\n    ],\n    \"devices_after\": [\n      \"Device\"\n    ],\n    \"item_name\": \"Device\",\n    \"loaded\": true,\n    \"new_devices\": [\n      \"Device\"\n    ],\n    \"reason\": \"Unattributed arm/monitor/identity change; no compensating writes performed\",\n    \"reconciliation_required\": true,\n    \"retry_safe\": false,\n    \"state_preservation\": \"unresolved\",\n    \"state_scope\": \"immediate_main_thread_return\",\n    \"topology_changed\": false,\n    \"track_name\": \"Track\"\n  },\n  \"reconciliation_required\": true\n}",
+      "name": "rack_state_reconciliation",
+      "wire": [
+        {
+          "command": "load_browser_item",
+          "params": {
+            "item_uri": "rack",
+            "track_index": 0
+          },
+          "response": {
+            "async_completion": "unverified",
+            "changed_state": [
+              {
+                "after": {
+                  "arm": true,
+                  "monitoring": 0
+                },
+                "before": {
+                  "arm": false,
+                  "monitoring": 1
+                },
+                "identity": 12
+              }
+            ],
+            "devices_after": [
+              "Device"
+            ],
+            "item_name": "Device",
+            "loaded": true,
+            "new_devices": [
+              "Device"
+            ],
+            "reason": "Unattributed arm/monitor/identity change; no compensating writes performed",
+            "reconciliation_required": true,
+            "retry_safe": false,
+            "state_preservation": "unresolved",
+            "state_scope": "immediate_main_thread_return",
+            "topology_changed": false,
+            "track_name": "Track"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "kit_path": "drums",
+        "rack_uri": "rack",
+        "track_index": 0
+      },
+      "expect": "{\n  \"stage\": \"kit_lookup_failed\",\n  \"rack_result\": {\n    \"changed_state\": [],\n    \"loaded\": true,\n    \"state_preservation\": \"unchanged_at_return\"\n  },\n  \"error\": \"lookup response lost\",\n  \"partial_completion\": true,\n  \"whole_workflow_retry_safe\": false,\n  \"kit_load_attempted\": false,\n  \"reconciliation_required\": false,\n  \"failure_phase\": \"read_only_lookup\"\n}",
+      "name": "lookup_exception_after_rack",
+      "wire": [
+        {
+          "command": "load_browser_item",
+          "params": {
+            "item_uri": "rack",
+            "track_index": 0
+          },
+          "response": {
+            "changed_state": [],
+            "loaded": true,
+            "state_preservation": "unchanged_at_return"
+          }
+        },
+        {
+          "command": "get_browser_items_at_path",
+          "params": {
+            "path": "drums"
+          },
+          "raise": "lookup response lost"
+        }
+      ]
+    },
+    {
+      "args": {
         "kit_path": "drums/acoustic",
         "rack_uri": "Drums/Drum Rack",
         "track_index": 0
       },
-      "expect": "Error loading drum kit: boom",
+      "expect": "{\n  \"stage\": \"rack_failed\",\n  \"rack_uri\": \"Drums/Drum Rack\",\n  \"rack_result\": {\n    \"loaded\": null,\n    \"reconciliation_required\": true,\n    \"retry_safe\": false,\n    \"changed_state\": null,\n    \"state_preservation\": \"unknown\",\n    \"reason\": \"boom\",\n    \"command\": \"load_browser_item\"\n  },\n  \"reconciliation_required\": true\n}",
       "name": "error",
       "wire": [
         {

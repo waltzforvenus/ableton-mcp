@@ -34,10 +34,60 @@
     },
     {
       "args": {
+        "path": "/fixture.adv",
+        "track_index": 0
+      },
+      "expect": "{\n  \"async_completion\": \"unverified\",\n  \"changed_state\": [\n    {\n      \"after\": {\n        \"arm\": true,\n        \"monitoring\": 0\n      },\n      \"before\": {\n        \"arm\": false,\n        \"monitoring\": 1\n      },\n      \"identity\": 12\n    }\n  ],\n  \"devices_after\": [\n    \"Device\"\n  ],\n  \"item_name\": \"Device\",\n  \"loaded\": true,\n  \"new_devices\": [\n    \"Device\"\n  ],\n  \"path\": \"/fixture.adv\",\n  \"reason\": \"Unattributed arm/monitor/identity change; no compensating writes performed\",\n  \"reconciliation_required\": true,\n  \"retry_safe\": false,\n  \"state_preservation\": \"unresolved\",\n  \"state_scope\": \"immediate_main_thread_return\",\n  \"topology_changed\": false,\n  \"track_name\": \"Track\"\n}",
+      "name": "state_reconciliation",
+      "wire": [
+        {
+          "command": "load_browser_item_by_path",
+          "params": {
+            "path": "/fixture.adv",
+            "track_index": 0,
+            "track_type": "regular"
+          },
+          "response": {
+            "async_completion": "unverified",
+            "changed_state": [
+              {
+                "after": {
+                  "arm": true,
+                  "monitoring": 0
+                },
+                "before": {
+                  "arm": false,
+                  "monitoring": 1
+                },
+                "identity": 12
+              }
+            ],
+            "devices_after": [
+              "Device"
+            ],
+            "item_name": "Device",
+            "loaded": true,
+            "new_devices": [
+              "Device"
+            ],
+            "path": "/fixture.adv",
+            "reason": "Unattributed arm/monitor/identity change; no compensating writes performed",
+            "reconciliation_required": true,
+            "retry_safe": false,
+            "state_preservation": "unresolved",
+            "state_scope": "immediate_main_thread_return",
+            "topology_changed": false,
+            "track_name": "Track"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
         "path": "/Users/x/Music/Ableton/User Library/Presets/Audio Effects/Amp A.adv",
         "track_index": 1
       },
-      "expect": "Error loading the preset file: boom",
+      "expect": "{\n  \"loaded\": null,\n  \"reconciliation_required\": true,\n  \"retry_safe\": false,\n  \"changed_state\": null,\n  \"state_preservation\": \"unknown\",\n  \"reason\": \"boom\",\n  \"command\": \"load_browser_item_by_path\"\n}",
       "name": "error",
       "wire": [
         {
