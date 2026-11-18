@@ -182,7 +182,7 @@ def test_timeout_drops_the_socket_and_the_stale_reply_is_never_read(make_peer):
     peer = make_peer(handler)
     client = AbletonClient("127.0.0.1", peer.port, receive_timeout=0.3)
     try:
-        with pytest.raises(Exception, match="No data received"):
+        with pytest.raises(Exception, match="^Timeout waiting for Ableton response$"):
             client.send_command("get_session_info")
 
         # The timed-out socket was closed and discarded, not kept around.
