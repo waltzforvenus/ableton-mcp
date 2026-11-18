@@ -1682,6 +1682,39 @@ def verify_audio(ctx: Context, path: str,
 
 
 @tool
+def start_export_audio(ctx: Context, idempotency_key: str, request: Dict[str, Any]) -> str:
+    """Queue an export without waiting for Live. request uses export_audio's
+    options, including explicit allow_ui_automation consent. Reuse the SAME
+    key and request after a connector timeout; a different request with the
+    same key refuses. Poll get_export_job. Process restart never re-exports
+    interrupted work; needs_reconciliation blocks new exports and handoff.
+    Completion uses existing renderer checks, not yet A1b/Live acceptance.
+    """
+    result = _deps(ctx).service.start_export_audio(idempotency_key, request)
+    return presenters.start_export_audio(result)
+
+
+@tool
+def get_export_job(ctx: Context, job_id: str) -> str:
+    """Read local export status without waiting on Live/UI. Terminal unknown
+    outcomes require human reconciliation, not another export. Journal
+    ownership and results survive connector disconnect, not process replay.
+    """
+    result = _deps(ctx).service.get_export_job(job_id)
+    return presenters.get_export_job(result)
+
+
+@tool
+def cancel_export_job(ctx: Context, job_id: str) -> str:
+    """Request a cooperative stop before render admission. After admission
+    this cannot cancel Live or prove files absent; inspect reconciliation
+    and retained evidence. Never automatically retries or deletes output.
+    """
+    result = _deps(ctx).service.cancel_export_job(job_id)
+    return presenters.cancel_export_job(result)
+
+
+@tool
 def export_audio(ctx: Context, output_dir: str, file_stem: str,
                  scope: str = "main", track: Optional[int] = None,
                  start_beat: float = 0.0, end_beat: Optional[float] = None,

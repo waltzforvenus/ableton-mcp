@@ -9,6 +9,8 @@ exist).
 
 from __future__ import annotations
 
+import time
+from concurrent.futures import ThreadPoolExecutor
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -18,6 +20,7 @@ from typing import Any, AsyncIterator, Dict, Mapping, Optional, Protocol
 from mcp.server.fastmcp import FastMCP
 
 from . import tools
+from .render_jobs import AtomicJobStore, RenderJobService
 from .connection import AbletonClient
 from .handshake import ScriptHandshake
 from .live_lock import DEFAULT_LOCK_FILE, LiveLock
@@ -90,6 +93,8 @@ class Deps:
     client: AbletonClientProtocol
     handshake: ScriptHandshake
     service: AbletonService
+    render_jobs: Any = None
+    render_executor: Any = None
 
 
 def build_deps(settings: Settings) -> Deps:
@@ -100,13 +105,19 @@ def build_deps(settings: Settings) -> Deps:
     client = AbletonClient(settings.host, settings.port,
                            on_reconnect=handshake.invalidate)
     lock = LiveLock(settings.lock_file, require=settings.require_lock)
-    service = AbletonService(client, handshake, lock=lock, ui=MacUI(),
+    executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ableton-export")
+    jobs = RenderJobService(AtomicJobStore(os.path.expanduser(settings.lock_file) + ".exports.json"),
+                            executor, time.time,
+                            lambda request, stage: service.run_export_job(request, stage),
+                            lambda: service._export_owner())
+    service = AbletonService(client, handshake, lock=lock, ui=MacUI(), render_jobs=jobs,
                              allow_ui=settings.allow_ui,
                              evidence_dir=settings.evidence_dir,
                              ffmpeg=settings.ffmpeg,
                              require_audio_auth=settings.require_audio_auth,
                              source_span_probe=probe_source_span)
-    return Deps(client=client, handshake=handshake, service=service)
+    return Deps(client=client, handshake=handshake, service=service,
+                render_jobs=jobs, render_executor=executor)
 
 
 def build_app(settings: Optional[Settings] = None,
@@ -141,6 +152,10 @@ def build_app(settings: Optional[Settings] = None,
 
             yield d
         finally:
+            if d.render_executor is not None:
+                d.render_executor.shutdown(wait=True)  # never abandon admitted native work
+            if d.render_jobs is not None:
+                d.render_jobs.close()
             # `connected` mirrors the old `_ableton_connection is not None`
             # check; bare-Protocol fakes report False via the getattr default
             # and are simply left alone.

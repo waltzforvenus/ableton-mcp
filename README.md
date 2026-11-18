@@ -203,7 +203,7 @@ and routing tools are new here:
 | **Clips & tracks** | `set_clip_gain`, `set_clip_warp`, `duplicate_track`, `delete_track` |
 | **Warp vision** | `analyze_clip_audio` (spectrogram + waveform image with the clip's warp markers, transients and the song grid, plus JSON), `suggest_warp_markers` (dry-run proposals with a before/after image; `apply=True` executes and verifies), `edit_clip_warp_markers` (batch add/move/remove, read back and verified), `get_clip_warp_markers` — needs the optional `analysis` extra for the two audio tools |
 | **Transport & session** | `back_to_arrangement`, `set_count_in`, `save_set`, `get_song_scale` / `set_song_scale` (Live 12's song-wide key and scale) |
-| **Rendering** | `export_audio` (Live's offline export, fields read back by label), `bounce_track` (freeze / bounce via the Edit menu), `analyze_audio` / `verify_audio` (LUFS, true peak, silence, clipping, cut tails) |
+| **Rendering** | async export jobs (start/status/cancel), synchronous export_audio, bounce_track, analyze_audio / verify_audio |
 | **Saving** | `save_set` (API, else Live's File menu with consent; verified), `checkpoint_set` (labelled, hash-verified copies) |
 | **Shared-Live safety** | `get_live_status` (one-call preflight: transport/record, soloed/muted/armed tracks, set name and unsaved marker, modal dialogs, user idle, lock holder), `acquire_live_lock` / `release_live_lock` (one editor at a time; release only after a verified save) |
 
@@ -483,6 +483,9 @@ are not present upstream.
 | `set_plugin_preset` † | `track_index`, `device_index`, `preset_index`?, `preset_name`?, `track_type`? | Select a plugin's factory preset by index or by name (exact, then an unambiguous fragment); refuses ambiguous names, out-of-range indices and devices without presets |
 | `delete_device` † | `track_index`, `device_index`, `track_type`? | Remove a device from a track's chain |
 | `load_devices` † | `track_index`, `uris`, `track_type`?, `expect_track_name`? | Load several browser items onto one track in order (a whole chain); stops at failure or state reconciliation; reports per-load arm/monitor evidence |
+| `start_export_audio` † | idempotency_key, request | Queue an idempotent export without a UI wait. |
+| `get_export_job` † | job_id | Read journal status and retained evidence. |
+| `cancel_export_job` † | job_id | Cooperative stop; no native abort claim. |
 | `export_audio` † | `output_dir`, `file_stem`, `scope`?, `track`?, `start_beat`?, `end_beat`?, `tail_beats`?, `sample_rate`?, `bit_depth`?, `file_type`?, … `allow_ui_automation`, `dry_run`? | Live's own offline render via File › Export Audio/Video, driven over Accessibility: range from the LOM, every field set by label and read back, Export by its button, files measured. No playback |
 | `bounce_track` † | `track_index`, `mode`?, `allow_ui_automation`, `expect_track_name`?, `confirm_destructive`? | Freeze / Bounce to New Track / Bounce Track in Place through the Edit menu, verified through the LOM (frozen flag, track count, the new clip's file) |
 | `analyze_audio` † | `path`, `start_s`?, `end_s`? | Measure a file offline: duration, rate, LUFS-I, LRA, true peak, sample peak, RMS, clipping, L/R balance/correlation, silence, cut tail (ffmpeg) |
@@ -815,3 +818,38 @@ bound to a fresh state/identity fingerprint. Clear only the application-owned
 latch/candidate, invalidate stale tokens, and perform no arm/monitor/load writes.
 Changed snapshots must refuse; quiet time is not asynchronous-completion proof.
 This follow-up is not implemented in the current detection/non-clobber increment.
+
+### Durable export jobs (server-local, native acceptance pending)
+
+| Tool | Purpose |
+|---|---|
+| start_export_audio † | Enqueue export_audio options with an idempotency key; return without waiting on UI. |
+| get_export_job † | Read journal status/results without waiting on the UI worker. |
+| cancel_export_job † | Stop queued/pre-render admission; no native render cancellation guarantee. |
+
+Production synchronous export_audio and bounce_track delegate to the same
+single worker and wait; their responses include job_id/job_state. For long
+exports prefer start_export_audio and poll. Reuse the exact key/request after
+connector loss, never blindly start again. Status distinguishes queued,
+preflight, configuring, rendering (admitted, not proof of native progress),
+verifying, succeeded, failed, cancelled and needs_reconciliation.
+
+The atomic local journal beside the configured Live lock (.exports.json)
+retains requests/results. One process owns its non-expiring OS lease; another
+active process refuses. Restart marks interrupted work needs_reconciliation,
+never resumes/re-exports. Uncertainty and persistence failure block new jobs
+and lock release, including save-first handoff. No journal entries are
+silently pruned. There is intentionally no automated reconciliation/reset
+endpoint yet: preserve journal/output evidence for human review; a restart
+alone does not clear an uncertain job. Existing lock ownership checks are
+not the stronger authenticated transfer protocol planned separately.
+
+Cancellation before render admission is cooperative; an already configuring
+UI worker must reach its next boundary/cleanup first. After admission,
+cancellation only records intent and yields reconciliation, retaining output
+evidence without deleting files, claiming native cancellation or retrying.
+The worker retains ownership through cleanup/verification. Succeeded means
+existing renderer evidence passed (or explicit dry-run), not that the planned
+stricter filename/destination/decoder checks or real Live acceptance passed.
+Those export-verification improvements remain separate work. GUI interaction
+by humans/other helpers is outside this server's queue; do not edit during a job.
