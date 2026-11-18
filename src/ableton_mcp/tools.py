@@ -217,8 +217,8 @@ def acquire_live_lock(ctx: Context, holder: str, task: str = "") -> str:
 
     Parameters:
     - holder: a stable name for who you are — your session key or task
-      name. If you already took the lock under this same name with the
-      shared command-line helper, this adopts it rather than refusing.
+      name. A name is not proof: another process must use authorized resume;
+      legacy/helper locks are never adopted by name alone.
     - task: a short description of what you are doing, shown to anyone who
       finds Live locked.
 
@@ -228,6 +228,32 @@ def acquire_live_lock(ctx: Context, holder: str, task: str = "") -> str:
     """
     result = _deps(ctx).service.acquire_live_lock(holder, task)
     return presenters.acquire_live_lock(result)
+
+
+@tool
+def resume_live_lock(ctx: Context, owner: str, owner_proof: dict,
+                     expected_generation: str) -> str:
+    """Resume only with established owner authorization and current generation.
+
+    Unsupported unless the deployment injects a trusted authorization verifier.
+    Names and caller assertions alone are never proof; no stale-lock stealing.
+    """
+    result = _deps(ctx).service.resume_live_lock(owner, owner_proof, expected_generation)
+    return presenters.resume_live_lock(result)
+
+
+@tool
+def transfer_live_lock(ctx: Context, from_owner: str, to_owner: str,
+                       save_proof: dict, expected_generation: str) -> str:
+    """Atomic saved handoff, never an unlock/reacquire gap.
+
+    Requires a configured trusted verifier of owner/recipient authorization and
+    fresh saved current-set evidence bound to this generation. Default unsupported.
+    Active or uncertain operations and export jobs block handoff. Does not save or touch Live.
+    """
+    result = _deps(ctx).service.transfer_live_lock(from_owner, to_owner,
+                                                save_proof, expected_generation)
+    return presenters.transfer_live_lock(result)
 
 
 @tool
@@ -244,10 +270,11 @@ def release_live_lock(ctx: Context, holder: str, set_path: Optional[str] = None,
     - save_first: save (as save_set does) and then release, in one call.
     - allow_ui_automation: consent for save_first to use Live's File menu.
 
-    Refused (and the lock stays held) unless the .als on disk is at least as
-    new as your last edit through this server, and — where Live's window
-    titles can be read — Live shows that set with no unsaved marker and no
-    Save or Export dialog open.
+    Refused unless this server observed a fresh save bound to the current
+    generation, with matching AXDocument paths before/after save and at release,
+    an explicitly clean title, no dialog, and file freshness after acquisition
+    and edits. Caller path/title/mtime alone and API saved=True without observed
+    verification cannot unlock. Active/uncertain operations retain ownership.
     """
     result = _deps(ctx).service.release_live_lock(
         holder, set_path, save_first=save_first,

@@ -106,7 +106,7 @@ def test_in_memory_session_matches_direct_calls():
     assert payload["note_count"] == 3
 
 
-def test_in_memory_session_lists_all_92_tools():
+def test_in_memory_session_lists_all_94_tools():
     deps, _harness = _make_deps()
     app = build_app(deps=deps)
 
@@ -117,7 +117,7 @@ def test_in_memory_session_lists_all_92_tools():
     listed = asyncio.run(run())
     names = [tool.name for tool in listed.tools]
     expected = (Path(__file__).parent / "data" / "tool_names.txt").read_text().splitlines()
-    assert len(names) == len(set(names)) == len(expected) == 92
+    assert len(names) == len(set(names)) == len(expected) == 94
     assert sorted(names) == sorted(expected)
     assert {"plan_note_edits", "apply_note_edits", "set_notes_probability"} <= set(names)
 

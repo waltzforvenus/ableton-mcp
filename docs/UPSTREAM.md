@@ -218,3 +218,19 @@ per chunk. Failed exchanges discard the socket; replacement invalidates cached
 handshake state. No sent command is retried. This bounds reception, not native
 execution or connection establishment. Native callback/OS socket acceptance is
 still held pending save-verified production handoff; fake tests are not Live proof.
+
+A7 changes the shared lock schema additively: instance_id, generation and
+save_state; acquisition last_edit_ts=null (not a musical edit). Name-only helper
+adoption is intentionally removed. Older writers are not trusted to preserve
+these fields; missing identity/generation fails closed. Resume/transfer require
+an injected trusted verifier, default unsupported, and must never expire/steal a
+lock or use mtime alone as native save proof. No wire command/version changes.
+
+A7 review repair adds persisted operations and internal save_observation. All
+cooperating guarded dispatch/UI workflows reserve before mutation; ownership
+changes refuse active/uncertain reservations. Save admission is exclusive.
+Old writers that discard these fields are incompatible. Never auto-clear a crash
+reservation. Release requires generation-bound workflow evidence plus observed
+AXDocument equality before/after save and at release, explicit clean state,
+mtime advancement and acquisition/edit freshness. Unknown/ambiguous evidence
+retains ownership. No native save attestation or recovery provider is invented.

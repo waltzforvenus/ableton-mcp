@@ -240,8 +240,13 @@ def test_watchdog_ui_failure_cancels_pending_admission_or_reports_uncertainty(
         def check_write(self, command):
             pass
 
-        def touch(self):
-            self.touches += 1
+        from contextlib import contextmanager
+        @contextmanager
+        def operation(self, command, edit=False):
+            # Reservation is now before dispatch admission, not after send.
+            if edit:
+                self.touches += 1
+            yield {"uncertain": False}
 
     client = Client()
     lock = Lock()
@@ -275,4 +280,4 @@ def test_watchdog_ui_failure_cancels_pending_admission_or_reports_uncertainty(
             assert not worker.is_alive()
     assert client.sent == (["load_browser_item_by_path"] if admitted else [])
 
-    assert lock.touches == (1 if admitted else 0)
+    assert lock.touches == 1  # even cancelled admission is conservatively reserved

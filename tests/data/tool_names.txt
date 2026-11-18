@@ -58,6 +58,7 @@ move_arrangement_clip
 move_device
 plan_note_edits
 release_live_lock
+resume_live_lock
 save_set
 set_arrangement_clip_name
 set_arrangement_time
@@ -88,5 +89,6 @@ stop_clip
 stop_playback
 suggest_warp_markers
 switch_to_arrangement_view
+transfer_live_lock
 trim_arrangement_clip
 verify_audio

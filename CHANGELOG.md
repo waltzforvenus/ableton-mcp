@@ -1,3 +1,20 @@
+## Unreleased — A7 review safety repair
+
+- Recheck current readable/explicitly-clean/modal-free structured window state
+  at release; historical clean evidence cannot authorize unknown current state.
+- Run pure render authorization/options preflight before creating reservations,
+  including job entry; preserve unrelated genuine uncertainty on refusal.
+
+- Persist mutation/UI admission before dispatch; refuse transfer/resume/release
+  until quiescent, retaining timeout/crash uncertainty across process instances.
+- Make save evidence capture exclusive; invalidate it on edit admission.
+- Refuse old same-name files and unknown save baselines. Release requires internal
+  generation-bound observed save with matching AXDocument before/after save and
+  at release, an explicit clean title, and acquisition/edit freshness.
+- Default authenticated transfer/resume and unresolved-operation recovery remain
+  unsupported; bare-title/unknown dirty-state saves cannot authorize release.
+- Server-local changes only; native bundle/version pair remain unchanged.
+
 ## Unreleased — bounded main-thread dispatch (1.34.0)
 
 - Serialize all command handlers, including reads and handshake, on Live's
@@ -992,3 +1009,9 @@ there is upstream's build, which has telemetry; install this fork from git.
 - Remove network-worker ControlSurface callbacks and bound total response reception.
 - Script/package version pair and generated bundle synchronized. No installation or
   Live verification performed; the existing production handoff hold remains.
+
+## A7 — fail-closed owner resume and handoff seam
+- Separate process instance from owner label; conservative legacy records.
+- Atomic generation-checked transfer/resume with injected authority; unsupported
+  by default without trusted fresh identity/current-set/save evidence.
+- Acquisition is not an edit. Unknown UI save evidence now prevents release.

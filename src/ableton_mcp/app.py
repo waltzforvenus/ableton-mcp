@@ -97,14 +97,15 @@ class Deps:
     render_executor: Any = None
 
 
-def build_deps(settings: Settings) -> Deps:
+def build_deps(settings: Settings, *, lock_authorization_verifier=None) -> Deps:
     """The one wiring function: every production dependency is constructed
     here and nowhere else. The client invalidates the handshake cache
     whenever it establishes a replacement socket (§3.5 hardening 3)."""
     handshake = ScriptHandshake()
     client = AbletonClient(settings.host, settings.port,
                            on_reconnect=handshake.invalidate)
-    lock = LiveLock(settings.lock_file, require=settings.require_lock)
+    lock = LiveLock(settings.lock_file, require=settings.require_lock,
+                    authorization_verifier=lock_authorization_verifier)
     executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ableton-export")
     jobs = RenderJobService(AtomicJobStore(os.path.expanduser(settings.lock_file) + ".exports.json"),
                             executor, time.time,
