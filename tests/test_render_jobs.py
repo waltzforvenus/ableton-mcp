@@ -252,7 +252,7 @@ def test_public_tools_keep_one_job_and_return_structured_status(tmp_path):
     status = json.loads(tools.get_export_job(ctx, first["job_id"]))
     assert status["state"] == "succeeded"
     assert status["result"]["files"][0]["path"] == "fixture.wav"
-    assert "A1b_pending" in status["verification_scope"]
+    assert "native_readiness_probe_pending" in status["verification_policy"]
     assert json.loads(tools.cancel_export_job(ctx, first["job_id"]))["state"] == "succeeded"
     j.close()
 
@@ -374,3 +374,14 @@ def test_synchronous_service_delegates_and_waits_on_same_queue(tmp_path, monkeyp
         assert service.get_export_job(result["job_id"])["state"] == "succeeded"
         assert len(calls) == 1
         j.close()
+
+
+def test_old_result_does_not_gain_new_verification_proof(tmp_path):
+    ex = ManualExecutor()
+    j = jobs(tmp_path, good, ex)
+    first = j.start('legacy', {})
+    ex.run()
+    status = j.status(first['job_id'])
+    assert status['verification_scope'] == 'legacy_renderer_evidence_only'
+    assert 'native_readiness_probe_pending' in status['verification_policy']
+    j.close()

@@ -136,7 +136,9 @@ class RenderJobService:
         result["blocked_by_reconciliation"] = result["state"] == "queued" and any(
             j["state"] == "needs_reconciliation" for j in self._jobs.values())
         result["retry_safe"] = False
-        result["verification_scope"] = "existing_renderer_checks; A1b_pending"
+        result["verification_policy"] = "decoded_artifact_and_save_readback; native_readiness_probe_pending"
+        evidence = result.get("result") or {}
+        result["verification_scope"] = evidence.get("verification_scope", "legacy_renderer_evidence_only")
         return result
 
     def status(self, job_id):

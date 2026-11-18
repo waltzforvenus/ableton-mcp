@@ -37,6 +37,7 @@ the tests pin, not observations.
 from __future__ import annotations
 
 import glob
+from functools import wraps
 import math
 import os
 import time
@@ -274,6 +275,32 @@ def _diff(fields: Dict[str, Any], readback: Dict[str, Any]) -> List[Dict[str, An
     return diffs
 
 
+def _bounded_export(fn):
+    @wraps(fn)
+    def bounded(service, ui, **options):
+        timeout = options.get("timeout_s", 900.0)
+        if not math.isfinite(timeout) or timeout <= 0:
+            raise ValueError("timeout_s must be positive and finite")
+        clock = options.get("clock", time.monotonic)
+        phase = ["preflight"]
+        callback = options.get("job_stage")
+        def stage(name):
+            if callback:
+                callback(name)
+            phase[0] = name
+        options["job_stage"] = stage
+        try:
+            with ui.operation_budget(timeout, clock):
+                return fn(service, ui, **options)
+        except (TimeoutError, RenderRefused) as exc:
+            refusal = exc if isinstance(exc, RenderRefused) else RenderRefused("stage_timeout", detail=str(exc))
+            if phase[0] in ("rendering", "verifying"):
+                refusal.details["outcome"] = "needs_reconciliation"
+            raise refusal
+    return bounded
+
+
+@_bounded_export
 def export_audio(service: Any, ui: Any, *, scope: str = "main",
                  track: Optional[int] = None, start_beat: float = 0.0,
                  end_beat: Optional[float] = None, tail_beats: float = 8.0,
@@ -289,6 +316,14 @@ def export_audio(service: Any, ui: Any, *, scope: str = "main",
                  clock: Callable[[], float] = time.monotonic,
                  job_stage: Optional[Callable[[str], None]] = None) -> Dict[str, Any]:
     started = clock()
+    if not math.isfinite(timeout_s) or timeout_s <= 0:
+        raise ValueError("timeout_s must be positive and finite")
+    deadline = started + timeout_s
+    def remaining(stage):
+        left = deadline - clock()
+        if left <= 0:
+            raise RenderRefused("stage_timeout", stage=stage)
+        return left
     warnings: List[str] = []
     output_dir = os.path.abspath(os.path.expanduser(output_dir or ""))
     if not file_stem or "/" in file_stem:
@@ -313,6 +348,14 @@ def export_audio(service: Any, ui: Any, *, scope: str = "main",
         raise RenderRefused("transport_busy", is_playing=status.get("is_playing"),
                             record_mode=status.get("record_mode"),
                             session_record=status.get("session_record"))
+    readiness = ui.export_readiness()
+    if readiness.get("engine_enabled") is False or readiness.get("output_device") == "none":
+        raise RenderRefused("audio_not_ready", readiness=readiness)
+    if readiness.get("engine_enabled") is not True or not readiness.get("output_device"):
+        warnings.append("audio engine/device readiness unknown: native readiness probe unavailable")
+    device_rate = readiness.get("sample_rate")
+    if device_rate is not None and device_rate != sample_rate:
+        warnings.append(f"device sample rate {device_rate} differs from requested export rate {sample_rate}")
     soloed = status.get("soloed") or []
     if soloed:
         names = [s.get("name") for s in soloed]
@@ -338,12 +381,26 @@ def export_audio(service: Any, ui: Any, *, scope: str = "main",
     target = os.path.join(output_dir, file_stem + ext)
     if scope == "main" and os.path.exists(target) and not overwrite:
         raise RenderRefused("exists", path=target)
+    extensions = [ext] + ([".mp3"] if mp3 else [])
+    if scope == "main" and not overwrite:
+        for suffix in extensions:
+            existing = os.path.join(output_dir, file_stem + suffix)
+            if os.path.exists(existing):
+                raise RenderRefused("exists", path=existing)
     os.makedirs(output_dir, exist_ok=True)
-    before = set(glob.glob(os.path.join(glob.escape(output_dir), glob.escape(file_stem) + "*" + ext)))
+    def candidates():
+        if scope == "main":
+            return {os.path.join(output_dir, file_stem + suffix) for suffix in extensions
+                    if os.path.isfile(os.path.join(output_dir, file_stem + suffix))}
+        return {p for suffix in extensions for p in glob.glob(
+            os.path.join(glob.escape(output_dir), glob.escape(file_stem) + "*" + suffix))}
+    before = candidates()
 
+    before_state = {p: (os.stat(p).st_size, os.stat(p).st_mtime_ns, os.stat(p).st_ino) for p in before}
+    remaining("preparation")
     previous_app = ui.frontmost_app()
     result: Dict[str, Any] = {"ok": False, "plan": plan, "warnings": warnings,
-                              "preflight": {"soloed": [s.get("name") for s in soloed],
+                              "preflight": {"audio_readiness": readiness, "soloed": [s.get("name") for s in soloed],
                                             "muted": [m.get("name") for m in status.get("muted") or []],
                                             "armed": [a.get("name") for a in status.get("armed") or []],
                                             "playing": status.get("is_playing"),
@@ -354,7 +411,7 @@ def export_audio(service: Any, ui: Any, *, scope: str = "main",
         click = ui.click_menu_item("File", "Export Audio/Video")
         if not click.get("ok"):
             raise RenderRefused("menu", menu=click)
-        if not ui.wait_for(lambda: (ui.read_window(EXPORT_WINDOW) or {}).get("ok"), 8.0):
+        if not ui.wait_for(lambda: (ui.read_window(EXPORT_WINDOW) or {}).get("ok"), min(8.0, remaining("open_dialog"))):
             raise RenderRefused("dialog_did_not_open")
         opened = True
 
@@ -367,11 +424,13 @@ def export_audio(service: Any, ui: Any, *, scope: str = "main",
         # 4. set each field, then re-read everything and diff
         problems = []
         for key, want in plan["fields"].items():
+            remaining("configure")
             r = _apply_field(ui, mapping, key, want)
             if not r.get("ok"):
                 problems.append({"field": key, **r})
             mapping = map_dialog_fields(
                 ui.read_window(EXPORT_WINDOW).get("elements") or [], labels)
+        remaining("readback")
         readback = _readback(mapping)
         result["dialog_readback"] = readback
         diffs = _diff(plan["fields"], readback)
@@ -387,7 +446,7 @@ def export_audio(service: Any, ui: Any, *, scope: str = "main",
         if dry_run:
             ui.press_escape()
             opened = False
-            result.update(ok=True, dry_run=True)
+            result.update(ok=True, dry_run=True, verification_scope="dialog_only_no_render")
             return result
 
         # 6. Export by its button, then the save panel
@@ -404,11 +463,18 @@ def export_audio(service: Any, ui: Any, *, scope: str = "main",
         if not filled.get("ok"):
             ui.save_panel("cancel")
             raise RenderRefused("save_panel", detail=filled)
-        if filled.get("filename") not in (None, file_stem + ext, file_stem):
+        if filled.get("filename") != file_stem + ext:
             ui.save_panel("cancel")
             raise RenderRefused("save_panel_name", shows=filled.get("filename"),
                                 wanted=file_stem + ext)
-        saved = ui.save_panel("save", overwrite=overwrite)
+        shown_dir = filled.get("directory")
+        if not isinstance(shown_dir, str) or not os.path.isabs(shown_dir) or os.path.realpath(shown_dir) != os.path.realpath(output_dir):
+            ui.save_panel("cancel")
+            raise RenderRefused("save_panel_destination", shows=shown_dir, wanted=output_dir)
+        result["save_readback"] = {"filename": filled["filename"], "directory": shown_dir}
+        remaining("render_admission")
+        saved = ui.save_panel("save", overwrite=overwrite,
+                              expected_filenames=[file_stem + suffix for suffix in extensions])
         if not saved.get("ok"):
             if saved.get("error") == "exists":
                 raise RenderRefused("exists", path=target)
@@ -416,21 +482,23 @@ def export_audio(service: Any, ui: Any, *, scope: str = "main",
 
         # 7. the filesystem is the completion signal
         def finished():
-            now = set(glob.glob(os.path.join(glob.escape(output_dir),
-                                             glob.escape(file_stem) + "*" + ext)))
-            fresh = sorted(p for p in now if p not in before or overwrite)
-            if not fresh:
+            now = candidates()
+            fresh = sorted(p for p in now if p not in before or (overwrite and
+                           (os.stat(p).st_size, os.stat(p).st_mtime_ns, os.stat(p).st_ino) != before_state[p]))
+            if not fresh or any(not any(p.endswith(suffix) for p in fresh) for suffix in extensions):
+                return None
+            if mp3 and {os.path.splitext(p)[0] for p in fresh if p.endswith(ext)} != {os.path.splitext(p)[0] for p in fresh if p.endswith(".mp3")}:
                 return None
             sizes = [os.path.getsize(p) for p in fresh]
             sleep(2.0)
             if [os.path.getsize(p) for p in fresh] != sizes or 0 in sizes:
                 return None
             busy = summarize_windows(ui.live_windows())
-            if busy.get("modal_dialog"):
+            if not busy.get("readable") or busy.get("modal_dialog"):
                 return None
             return fresh
 
-        files = ui.wait_for(finished, timeout_s, interval_s=1.0)
+        files = ui.wait_for(finished, remaining("render_wait"), interval_s=1.0)
         if not files:
             result.update(error="timeout", partial=sorted(
                 set(glob.glob(os.path.join(glob.escape(output_dir), glob.escape(file_stem) + "*"))) - before))
@@ -446,12 +514,15 @@ def export_audio(service: Any, ui: Any, *, scope: str = "main",
             base = os.path.splitext(os.path.basename(path))[0]
             suffix = base[len(file_stem):].strip()
             m = audio_metrics.verify(path, expected_duration_s=plan["expected_duration_s"],
-                                     tolerance_s=0.1, sample_rate=sample_rate,
-                                     bit_depth=bit_depth, ffmpeg=ffmpeg, ffprobe=ffprobe)
+                                     tolerance_s=max(1.0 / sample_rate, 0.01), sample_rate=sample_rate,
+                                     bit_depth=bit_depth, ffmpeg=ffmpeg, ffprobe=ffprobe,
+                                     timeout_s=remaining("verification"), clock=clock)
+            remaining("verification")
             m["track"] = suffix or ("Main" if scope == "main" else None)
             all_ok = all_ok and m.get("ok")
             out_files.append(m)
         result.update(ok=all_ok, files=out_files,
+                      verification_scope="decoded_artifacts_and_save_readback; native_readiness_unknown" if not readiness.get("supported") else "decoded_artifacts_and_save_readback",
                       expected_duration_s=plan["expected_duration_s"])
         if track_names:
             result["unmatched_stems"] = [f["track"] for f in out_files

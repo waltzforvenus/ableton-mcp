@@ -180,15 +180,27 @@ def _finite(x: Optional[float]) -> Optional[float]:
 def analyze(path: str, start_s: Optional[float] = None,
             end_s: Optional[float] = None, ffmpeg: Optional[str] = None,
             ffprobe: Optional[str] = None,
-            runner: Optional[Runner] = None) -> Dict[str, Any]:
+            runner: Optional[Runner] = None, timeout_s: Optional[float] = None,
+            clock: Callable[[], float] = time.monotonic) -> Dict[str, Any]:
     """Every measurement for ``path`` (or ``[start_s, end_s]`` of it)."""
     path = os.path.expanduser(path or "")
     if not os.path.isfile(path):
         raise ValueError(f"no such audio file: {path!r}")
-    run = runner or _default_runner
+    base_run = runner or _default_runner
+    deadline = clock() + timeout_s if timeout_s is not None else None
+    def run(args, timeout):
+        if deadline is not None:
+            left = deadline - clock()
+            if left <= 0:
+                raise TimeoutError("audio verification budget expired")
+            timeout = min(timeout, left)
+        result = base_run(args, timeout)
+        if deadline is not None and clock() >= deadline:
+            raise TimeoutError("audio verification budget expired")
+        return result
     ffmpeg_bin = find_tool("ffmpeg", ffmpeg)
     ffprobe_bin = find_tool("ffprobe", ffprobe)
-    result: Dict[str, Any] = {"path": path, "engine": [], "warnings": []}
+    result: Dict[str, Any] = {"path": path, "engine": [], "warnings": [], "decoded": False}
     if ffprobe_bin:
         result.update(_probe(ffprobe_bin, path, run))
         result["engine"].append("ffprobe")
@@ -201,7 +213,7 @@ def analyze(path: str, start_s: Optional[float] = None,
     span_end = float(end_s) if end_s is not None else result.get("duration_s")
     stats: Dict[str, Any] = {}
     if ffmpeg_bin:
-        code, _out, err = run([ffmpeg_bin, "-hide_banner", "-nostats"] + window +
+        code, decoded_progress, err = run([ffmpeg_bin, "-hide_banner", "-nostats", "-xerror", "-progress", "pipe:1"] + window +
                               ["-i", path, "-af",
                                "ebur128=peak=true,astats=measure_perchannel=none,"
                                f"silencedetect=n={SILENCE_DB}dB:d={SILENCE_MIN_S}",
@@ -209,6 +221,9 @@ def analyze(path: str, start_s: Optional[float] = None,
         if code == 0:
             stats = parse_ffmpeg_summary(err)
             result["engine"].append("ffmpeg")
+            times = re.findall(r"^out_time_us=(\d+)$", decoded_progress, re.MULTILINE)
+            result["decoded"] = bool(times) and "progress=end" in decoded_progress
+            result["decoded_duration_s"] = int(times[-1]) / 1000000.0 if times else None
             code, _o, tail_err = run([ffmpeg_bin, "-hide_banner", "-nostats",
                                       "-sseof", f"-{TAIL_WINDOW_S}", "-i", path,
                                       "-af", "astats=measure_perchannel=none",
@@ -220,7 +235,8 @@ def analyze(path: str, start_s: Optional[float] = None,
             result["warnings"].append("ffmpeg failed: " + last)
     else:
         result["warnings"].append("ffmpeg not found: no LUFS or true peak")
-    np_stats = _numpy_stats(path, span_start, end_s)
+    # The optional whole-file numpy pass has no interruptible deadline.
+    np_stats = _numpy_stats(path, span_start, end_s) if deadline is None else None
     if np_stats:
         result["engine"].append("numpy")
         for key in ("peak_dbfs", "rms_db", "tail_peak_dbfs"):
@@ -273,7 +289,7 @@ def analyze(path: str, start_s: Optional[float] = None,
 
 
 def verify(path: str, expected_duration_s: Optional[float] = None,
-           tolerance_s: float = 0.05, sample_rate: Optional[int] = None,
+           tolerance_s: float = 0.01, sample_rate: Optional[int] = None,
            bit_depth: Optional[int] = None,
            max_true_peak_dbtp: Optional[float] = None,
            min_lufs: Optional[float] = None, max_lufs: Optional[float] = None,
@@ -282,13 +298,17 @@ def verify(path: str, expected_duration_s: Optional[float] = None,
     requested check passed and the file is neither silent nor clipped."""
     m = analyze(path, **kw)
     failures: List[str] = []
+    if m.get("decoded") is not True:
+        failures.append("complete decoder pass not verified")
     if expected_duration_s is not None:
-        d = m.get("duration_s")
-        if d is None or abs(d - expected_duration_s) > tolerance_s:
+        d = m.get("decoded_duration_s")
+        if d is None or not math.isfinite(d) or abs(d - expected_duration_s) > tolerance_s:
             failures.append(f"duration {d} s, expected {expected_duration_s} s ±{tolerance_s}")
     if sample_rate is not None and m.get("sample_rate") != sample_rate:
         failures.append(f"sample rate {m.get('sample_rate')}, expected {sample_rate}")
-    if bit_depth is not None and m.get("bit_depth") not in (None, bit_depth):
+    lossy = m.get("codec") in ("mp3", "aac", "vorbis", "opus")
+    m["bit_depth_check"] = "not_applicable" if lossy else "required" if bit_depth is not None else "not_requested"
+    if not lossy and bit_depth is not None and m.get("bit_depth") != bit_depth:
         failures.append(f"bit depth {m.get('bit_depth')}, expected {bit_depth}")
     tp = m.get("true_peak_dbtp")
     if max_true_peak_dbtp is not None and tp is not None and tp > max_true_peak_dbtp:

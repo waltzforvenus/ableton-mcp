@@ -23,6 +23,8 @@ Off macOS, or without the Accessibility permission, every read returns
 from __future__ import annotations
 
 import json
+import threading
+from contextlib import contextmanager
 import os
 import re
 import subprocess
@@ -350,23 +352,58 @@ if (ps.length === 0) { JSON.stringify({ok: false, error: "live_not_running"}); }
       se.keystroke("a", {using: ["command down"]}); delay(0.1);
       se.keystroke(want.filename); delay(0.3);
       let shownName = null; try { shownName = nameField(sheetOrWindow(p)).value(); } catch (x) {}
-      JSON.stringify({ok: true, filename: shownName}); } }
+      // AXPathControl's AXURL is an observed destination, not the path typed
+      // into Go-to-folder. Missing/ambiguous AX support must remain unknown.
+      let directoryURL = null;
+      try {
+        const els = sheetOrWindow(p).entireContents();
+        const urls = [];
+        for (const el of els) {
+          try {
+            if (el.role() === "AXPathControl") {
+              const u = el.attributes.byName("AXURL").value();
+              if (typeof u === "string" && u.indexOf("file:///") === 0) urls.push(u);
+            }
+          } catch (x) {}
+        }
+        if (urls.length === 1) directoryURL = urls[0];
+      } catch (x) {}
+      JSON.stringify({ok: true, filename: shownName, directory_url: directoryURL}); } }
     } else if (want.action === "save") {
       const b = panel.buttons.whose({name: "Save"});
       if (!b.length) { JSON.stringify({ok: false, error: "no_save_button"}); }
       else { b[0].click(); delay(0.8);
-        // A Replace alert is a sheet on the panel's window.
-        let replace = null;
-        const wins = p.windows();
-        for (let i = 0; i < wins.length && replace === null; i++) {
-          try { const sh = wins[i].sheets(); for (let j = 0; j < sh.length; j++) {
-            const r = sh[j].buttons.whose({name: "Replace"}); if (r.length) replace = sh[j]; } } catch (x) {}
+        const replaced = [];
+        let outcome = {ok: true, replaced_files: replaced};
+        // Only this job's exact quoted filenames can authorize a sheet.
+        // At most PCM + MP3, and never click the same filename twice.
+        for (let attempt = 0; attempt < 3; attempt++) {
+          const candidates = [];
+          for (const win of p.windows()) {
+            try { for (const sh of win.sheets()) {
+              if (sh.buttons.whose({name: "Replace"}).length) candidates.push(sh);
+            } } catch (x) {}
+          }
+          if (!candidates.length) break;
+          if (candidates.length !== 1) { outcome = {ok:false,error:"ambiguous_replace",replaced_files:replaced}; break; }
+          const sh = candidates[0];
+          let text = "";
+          try { for (const e of sh.entireContents()) {
+            if (e.role() === "AXStaticText") text += String(e.value() || "") + " ";
+          } } catch (x) {}
+          const matches = (want.filenames || []).filter(n =>
+            text.indexOf('“' + n + '”') >= 0 || text.indexOf('"' + n + '"') >= 0);
+          if (matches.length !== 1 || replaced.indexOf(matches[0]) >= 0 ||
+              text.toLowerCase().indexOf("already exists") < 0 || attempt === 2) {
+            outcome = {ok:false,error:"unmatched_replace",replaced_files:replaced}; break;
+          }
+          if (!want.overwrite) {
+            outcome = {ok:false,error:"exists",replaced_files:replaced}; break;
+          }
+          sh.buttons.whose({name:"Replace"})[0].click();
+          replaced.push(matches[0]); delay(0.8);
         }
-        if (replace === null) { JSON.stringify({ok: true, replaced: false}); }
-        else if (want.overwrite) { replace.buttons.whose({name: "Replace"})[0].click();
-          JSON.stringify({ok: true, replaced: true}); }
-        else { replace.buttons.whose({name: "Cancel"})[0].click(); delay(0.3);
-          JSON.stringify({ok: false, error: "exists", replaced: false}); }
+        JSON.stringify(outcome);
       }
     } else if (want.action === "cancel") {
       const b = panel.buttons.whose({name: "Cancel"});
@@ -447,10 +484,34 @@ class MacUI:
                  platform: str = sys.platform,
                  sleep: Callable[[float], None] = time.sleep,
                  clock: Callable[[], float] = time.monotonic) -> None:
-        self._run = runner or _default_runner
+        self._runner = runner or _default_runner
+        self._budget = threading.local()
         self.available = platform == "darwin"
         self.sleep = sleep
         self.clock = clock
+
+    @contextmanager
+    def operation_budget(self, timeout_s, clock):
+        """Thread-scoped budget; a render must not change another reader's limits."""
+        previous = getattr(self._budget, "current", None)
+        self._budget.current = (clock() + timeout_s, clock)
+        try:
+            yield
+        finally:
+            self._budget.current = previous
+
+    def _run(self, args, timeout):
+        budget = getattr(self._budget, "current", None)
+        if budget:
+            deadline, clock = budget
+            left = deadline - clock()
+            if left <= 0:
+                raise TimeoutError("UI operation budget expired")
+            timeout = min(timeout, left)
+        result = self._runner(args, timeout)
+        if budget and clock() >= deadline:
+            raise TimeoutError("UI operation budget expired")
+        return result
 
     def _jxa(self, source: str, timeout: float = 15.0) -> Optional[Any]:
         if not self.available:
@@ -576,18 +637,33 @@ class MacUI:
                                      "spec": json.dumps(spec)}, timeout=20.0)
         return data if isinstance(data, dict) else {"ok": False, "error": "osascript_failed"}
 
+    def export_readiness(self) -> Dict[str, Any]:
+        """No verified native engine/device probe exists in this adapter yet.
+
+        A readable window or an enabled Export menu is not evidence that the
+        engine/device is ready. Keep this explicit until a supported adapter
+        is available; never enable the engine or change the device here.
+        """
+        return {"supported": False, "engine_enabled": None,
+                "output_device": None, "sample_rate": None,
+                "reason": "native_readiness_probe_unavailable"}
+
     def save_panel(self, action: str, directory: Optional[str] = None,
                    filename: Optional[str] = None,
-                   overwrite: bool = False) -> Dict[str, Any]:
+                   overwrite: bool = False,
+                   expected_filenames: Sequence[str] = ()) -> Dict[str, Any]:
         """``fill`` (name + Go-to-folder), ``save`` (then answer a Replace
         alert per ``overwrite``) or ``cancel`` on the native save panel."""
         if not self.available:
             return {"ok": False, "error": "not_macos"}
         spec = {"action": action, "directory": directory, "filename": filename,
-                "overwrite": bool(overwrite)}
+                "overwrite": bool(overwrite), "filenames": list(expected_filenames)}
         data = self._jxa(_JXA_SAVE_PANEL % {"proc": json.dumps(LIVE_PROCESS_PREFIX),
                                             "spec": json.dumps(spec)}, timeout=30.0)
-        return data if isinstance(data, dict) else {"ok": False, "error": "osascript_failed"}
+        if isinstance(data, dict):
+            data["directory"] = _file_url_path(data.get("directory_url"))
+            return data
+        return {"ok": False, "error": "osascript_failed"}
 
     def wait_for(self, predicate: Callable[[], Any], timeout_s: float,
                  interval_s: float = 0.5) -> Any:

@@ -275,11 +275,11 @@ class FakeExportUI(MacUI):
         self.open = False
         return True
 
-    def save_panel(self, action, directory=None, filename=None, overwrite=False):
+    def save_panel(self, action, directory=None, filename=None, overwrite=False, expected_filenames=()):
         self.calls.append(("panel", action, directory, filename, overwrite))
         if action == "fill":
             self.panel = {"dir": directory, "name": filename}
-            return {"ok": True, "filename": filename}
+            return {"ok": True, "filename": filename, "directory": directory}
         if action == "save":
             target = os.path.join(self.panel["dir"], self.panel["name"])
             if os.path.exists(target) and not overwrite:
@@ -616,8 +616,9 @@ def test_nameless_export_button_is_the_left_of_the_bottom_pair():
 
 def test_full_export_against_the_live_12_4_7_dialog(tmp_path):
     ui = FakeExportUI(tmp_path, live_12_4_7=True)
-    result = _export(tmp_path, ui, mp3=True)
-    assert result["ok"] is True, result
+    result = _export(tmp_path, ui, mp3=True, timeout_s=120)
+    # This fixture writes PCM only; missing requested MP3 must not succeed.
+    assert result["ok"] is False, result
     assert ui.state["Render Length"] == [1, 0, 0]          # 4 beats in 4/4, stepped
     assert ui.state["Encode MP3"] == 1 and ui.state["Normalize"] == 0
     assert ("act", "Export", "press", None) in ui.calls
