@@ -2,6 +2,7 @@ acquire_live_lock
 add_notes_to_clip
 analyze_audio
 analyze_clip_audio
+apply_note_edits
 back_to_arrangement
 bounce_track
 checkpoint_set
@@ -53,6 +54,7 @@ load_drum_kit
 load_instrument_or_effect
 move_arrangement_clip
 move_device
+plan_note_edits
 release_live_lock
 save_set
 set_arrangement_clip_name
@@ -65,6 +67,7 @@ set_count_in
 set_device_parameter
 set_device_parameters
 set_device_sidechain
+set_notes_probability
 set_plugin_preset
 set_song_scale
 set_tempo

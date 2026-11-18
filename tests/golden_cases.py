@@ -1698,6 +1698,16 @@ BASE_CASES = [
 ]
 
 
+BASE_CASES += [
+    _case("plan_note_edits", "trusted_snapshot", {"snapshot": {"read_token": "read", "fingerprint": "hash"}, "edits": [{"note_id": 1, "duration": 2}]}, [
+        _ok("plan_note_edits", {"snapshot": {"read_token": "read", "fingerprint": "hash"}, "edits": [{"note_id": 1, "duration": 2}]}, {"plan_id": "plan", "fingerprint": "hash"})]),
+    _case("apply_note_edits", "verified_patch", {"plan": {"plan_id": "plan", "fingerprint": "hash"}}, [
+        _ok("apply_note_edits", {"plan": {"plan_id": "plan", "fingerprint": "hash"}}, {"verification_scope": "serialized_notes_markers_groove", "opaque_expression_verified": False, "fingerprint_scope": "serialized_notes_markers_excludes_opaque_expression", "expression_preservation": "native_api_guarantee_not_measured", "matched": 1, "verified_changed": 1, "verified": True})]),
+    _case("set_notes_probability", "expression", {"track_index": 0, "clip_index": 0, "probability": .25}, [
+        _ok("set_notes_probability", {"track_index": 0, "clip_index": 0, "probability": .25, "velocity_deviation": None, "note_ids": None, "pitch": None, "from_time": 0.0, "time_span": None, "arrangement": False}, {"verification_scope": "serialized_notes_markers_groove", "opaque_expression_verified": False, "fingerprint_scope": "serialized_notes_markers_excludes_opaque_expression", "expression_preservation": "native_api_guarantee_not_measured", "matched": 2, "verified_changed": 2, "verified": True})]),
+]
+
+
 def _generated_error_cases(base_cases):
     """One error case per tool: same args as the tool's first case, first
     send raises RuntimeError("boom"), freezing the tool's error string."""

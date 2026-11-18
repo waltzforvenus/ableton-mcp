@@ -1,0 +1,75 @@
+{
+  "cases": [
+    {
+      "args": {
+        "edits": [
+          {
+            "duration": 2,
+            "note_id": 1
+          }
+        ],
+        "snapshot": {
+          "fingerprint": "hash",
+          "read_token": "read"
+        }
+      },
+      "expect": "{\n  \"fingerprint\": \"hash\",\n  \"plan_id\": \"plan\"\n}",
+      "name": "trusted_snapshot",
+      "wire": [
+        {
+          "command": "plan_note_edits",
+          "params": {
+            "edits": [
+              {
+                "duration": 2,
+                "note_id": 1
+              }
+            ],
+            "snapshot": {
+              "fingerprint": "hash",
+              "read_token": "read"
+            }
+          },
+          "response": {
+            "fingerprint": "hash",
+            "plan_id": "plan"
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "edits": [
+          {
+            "duration": 2,
+            "note_id": 1
+          }
+        ],
+        "snapshot": {
+          "fingerprint": "hash",
+          "read_token": "read"
+        }
+      },
+      "expect": "Error planning note edits: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "plan_note_edits",
+          "params": {
+            "edits": [
+              {
+                "duration": 2,
+                "note_id": 1
+              }
+            ],
+            "snapshot": {
+              "fingerprint": "hash",
+              "read_token": "read"
+            }
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

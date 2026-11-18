@@ -1,0 +1,64 @@
+{
+  "cases": [
+    {
+      "args": {
+        "clip_index": 0,
+        "probability": 0.25,
+        "track_index": 0
+      },
+      "expect": "{\n  \"expression_preservation\": \"native_api_guarantee_not_measured\",\n  \"fingerprint_scope\": \"serialized_notes_markers_excludes_opaque_expression\",\n  \"matched\": 2,\n  \"opaque_expression_verified\": false,\n  \"verification_scope\": \"serialized_notes_markers_groove\",\n  \"verified\": true,\n  \"verified_changed\": 2\n}",
+      "name": "expression",
+      "wire": [
+        {
+          "command": "set_notes_probability",
+          "params": {
+            "arrangement": false,
+            "clip_index": 0,
+            "from_time": 0.0,
+            "note_ids": null,
+            "pitch": null,
+            "probability": 0.25,
+            "time_span": null,
+            "track_index": 0,
+            "velocity_deviation": null
+          },
+          "response": {
+            "expression_preservation": "native_api_guarantee_not_measured",
+            "fingerprint_scope": "serialized_notes_markers_excludes_opaque_expression",
+            "matched": 2,
+            "opaque_expression_verified": false,
+            "verification_scope": "serialized_notes_markers_groove",
+            "verified": true,
+            "verified_changed": 2
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "clip_index": 0,
+        "probability": 0.25,
+        "track_index": 0
+      },
+      "expect": "Error editing note expression: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "set_notes_probability",
+          "params": {
+            "arrangement": false,
+            "clip_index": 0,
+            "from_time": 0.0,
+            "note_ids": null,
+            "pitch": null,
+            "probability": 0.25,
+            "time_span": null,
+            "track_index": 0,
+            "velocity_deviation": null
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

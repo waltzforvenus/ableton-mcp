@@ -39,7 +39,7 @@ EXPECTED_COMMAND_ERRORS = (ValueError, IndexError, KeyError)
 
 # Bumped whenever the TCP command surface changes; the MCP server compares
 # this to EXPECTED_REMOTE_SCRIPT_VERSION.
-SCRIPT_VERSION = "1.28.0"
+SCRIPT_VERSION = "1.29.0"
 PROTOCOL_VERSION = 1
 
 # The trim eraser (see _trim_arrangement_clip): a temporary Session clip
@@ -144,6 +144,9 @@ class _PlainWarpMarker(object):
 # adapter callables): the guardrail tests read it with ast.parse, because this
 # module imports _Framework and cannot be imported outside Live.
 COMMANDS = {
+    "plan_note_edits": ("_plan_note_edits", False, None, True),
+    "apply_note_edits": ("_apply_note_edits", True, None, True),
+    "set_notes_probability": ("_set_notes_probability", True, None, True),
     # Read-only commands — run directly on the socket client thread.
     "get_script_info":            ("_get_script_info",            False, None, True),
     "get_session_info":           ("_get_session_info",           False, None, True),
@@ -3063,6 +3066,30 @@ class AbletonMCP(ControlSurface):
                     "truncated somewhere above this script; re-send the "
                     "chunk." % (int(expect_count), requested))
 
+            advanced = any("probability" in n or "velocity_deviation" in n for n in notes)
+            specifications = None
+            if advanced:
+                if not callable(getattr(clip, "add_new_notes", None)) or not callable(getattr(clip, "get_all_notes_extended", None)):
+                    raise ValueError("Advanced creation requires add_new_notes and reliable extended readback")
+                try:
+                    from Live.Clip import MidiNoteSpecification
+                except ImportError:
+                    try:
+                        import Live
+                        MidiNoteSpecification = Live.Clip.MidiNoteSpecification
+                    except (ImportError, AttributeError):
+                        raise ValueError("MidiNoteSpecification unsupported")
+                specifications = []
+                for note in notes:
+                    values = dict(pitch=note.get("pitch", 60), start_time=note.get("start_time", 0.0),
+                                  duration=note.get("duration", .25), velocity=note.get("velocity", 100),
+                                  mute=note.get("mute", False), probability=note.get("probability", 1.0),
+                                  velocity_deviation=note.get("velocity_deviation", 0.0))
+                    values = self._validate_note_patches([dict(values, note_id=0)], {0})[0]
+                    values.pop("note_id")
+                    specifications.append(MidiNoteSpecification(**values))
+                before_extended = self._notes_from_clip(clip, raw_extended=clip.get_all_notes_extended())
+
             # Convert note data to Live's format
             live_notes = []
             for note in notes:
@@ -3101,8 +3128,15 @@ class AbletonMCP(ControlSurface):
 
             before = self._count_clip_notes(clip, window)
 
-            # Add the notes
-            clip.set_notes(tuple(live_notes))
+            # Advanced creation is additive: never retry after an uncertain write.
+            add_error = None
+            if advanced:
+                try:
+                    clip.add_new_notes(tuple(specifications))
+                except Exception as exc:
+                    add_error = str(exc)
+            else:
+                clip.set_notes(tuple(live_notes))
 
             after = self._count_clip_notes(clip, window)
             result = {
@@ -3118,6 +3152,38 @@ class AbletonMCP(ControlSurface):
                           else after - before),
                 "clip_note_count": after,
             }
+            if advanced:
+                try:
+                    after_extended = self._notes_from_clip(clip, raw_extended=clip.get_all_notes_extended())
+                    old_ids = {n["note_id"] for n in before_extended}
+                    added = [n for n in after_extended if n["note_id"] not in old_ids]
+                    expected = [dict(pitch=n.pitch, start_time=n.start_time, duration=n.duration,
+                                     velocity=n.velocity, mute=n.mute, probability=n.probability,
+                                     velocity_deviation=n.velocity_deviation) for n in specifications]
+                    remaining = list(added)
+                    for wanted in expected:
+                        match = next((n for n in remaining if all(n.get(k) == v for k, v in wanted.items())), None)
+                        if match is None:
+                            break
+                        remaining.remove(match)
+                    else:
+                        result["expression_verified"] = len(added) == len(expected)
+                    result.setdefault("expression_verified", False)
+                    result["added"] = len(added)
+                    result["clip_note_count"] = len(after_extended)
+                    result["new_note_ids"] = [n["note_id"] for n in added]
+                    result["state"] = "verified" if result["expression_verified"] else "partial"
+                    result["reconciliation_required"] = not result["expression_verified"]
+                    if add_error is not None:
+                        result.update(expression_verified=False, reconciliation_required=True,
+                                      state="partial", stage="add_new_notes", error=add_error)
+                except Exception as exc:
+                    result.update(expression_verified=False, reconciliation_required=True,
+                                  added=None, clip_note_count=None, new_note_ids=None,
+                                  state="unknown", stage="readback", error=str(exc))
+                    if add_error is not None:
+                        result.update(stage="add_new_notes", error=add_error,
+                                      readback_error=str(exc))
             return result
         except Exception as e:
             self.log_message("Error adding notes to clip: " + str(e))
@@ -5679,6 +5745,7 @@ class AbletonMCP(ControlSurface):
     def _notes_from_clip(self, clip, raw_extended=None, source_start=0.0, source_end=None):
         """Extract MIDI notes from a clip (incl. MPE/expression when available)."""
         notes = []
+        seen_ids = set()
         if not clip or not getattr(clip, "is_midi_clip", False):
             return notes
 
@@ -5691,6 +5758,12 @@ class AbletonMCP(ControlSurface):
                         for key in ("pitch", "start_time", "duration", "velocity", "mute", "note_id"):
                             if not hasattr(n, key):
                                 raise ValueError("Malformed complete note enumeration")
+                    if raw_extended is not None:
+                        identity = n.note_id
+                        if (isinstance(identity, bool) or not isinstance(identity, int)
+                                or identity < 0 or identity in seen_ids):
+                            raise ValueError("Invalid or duplicate note_id in complete enumeration")
+                        seen_ids.add(identity)
                     entry = {
                         "pitch": int(getattr(n, "pitch", 0)),
                         "start_time": float(getattr(n, "start_time", 0.0)),
@@ -6184,7 +6257,187 @@ class AbletonMCP(ControlSurface):
                   "audible_notes": audible, "audible_projection": "page_source_window_intersection",
                   "fingerprint": fingerprint, "whole_clip_replace_supported": False}
         result.update(metadata)
+        if complete:
+            if not hasattr(self, "_note_edit_reads"):
+                self._note_edit_reads = {}
+            token = uuid.uuid4().hex
+            if len(self._note_edit_reads) >= 128:
+                self._note_edit_reads.pop(next(iter(self._note_edit_reads)))
+            self._note_edit_reads[token] = (clip, fingerprint, track_index,
+                                            clip_index, bool(arrangement), track.name,
+                                            self._safe_attr(clip, "groove"))
+            result["read_token"] = token
         return result
+
+    @staticmethod
+    def _validate_note_patches(edits, ids):
+        if not isinstance(edits, list) or not edits or len(edits) > 10000:
+            raise ValueError("edits must contain 1..10000 ID patches")
+        patches, seen = [], set()
+        for edit in edits:
+            if not isinstance(edit, dict):
+                raise ValueError("Each edit must be a note-ID patch")
+            identity = edit.get("note_id")
+            if (isinstance(identity, bool) or not isinstance(identity, int)
+                    or identity not in ids or identity in seen):
+                raise ValueError("Invalid, duplicate or missing note_id")
+            seen.add(identity)
+            patch = {"note_id": identity}
+            for key, value in edit.items():
+                if key == "note_id":
+                    continue
+                if key not in ("pitch", "start_time", "duration", "velocity", "mute",
+                               "probability", "velocity_deviation", "release_velocity"):
+                    raise ValueError("Unsupported note field: " + key)
+                if key == "mute":
+                    if not isinstance(value, bool):
+                        raise ValueError("mute must be boolean")
+                else:
+                    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+                        raise ValueError("Note values must be finite numbers")
+                    if key == "pitch" and (not isinstance(value, int) or not 0 <= value <= 127):
+                        raise ValueError("pitch must be an integer 0..127")
+                    if key == "duration" and value <= 0:
+                        raise ValueError("duration must be positive")
+                    if key in ("velocity", "release_velocity") and not 0 <= value <= 127:
+                        raise ValueError("velocity must be 0..127")
+                    if key == "probability":
+                        value = max(0.0, min(1.0, value))
+                    if key == "velocity_deviation":
+                        value = max(-127.0, min(127.0, value))
+                patch[key] = value
+            if len(patch) == 1:
+                raise ValueError("Empty note patch")
+            patches.append(patch)
+        return patches
+
+    def _verified_note_read(self, snapshot):
+        if not isinstance(snapshot, dict):
+            raise ValueError("A trusted complete snapshot is required")
+        saved = getattr(self, "_note_edit_reads", {}).get(snapshot.get("read_token"))
+        if saved is None or saved[1] != snapshot.get("fingerprint"):
+            raise ValueError("Invalid complete-read token or fingerprint")
+        clip, fingerprint, ti, ci, arrangement, name, groove = saved
+        _, current_clip = self._resolve_clip_in_view(ti, ci, arrangement, name)
+        if current_clip != clip or self._safe_attr(clip, "groove") != groove:
+            raise ValueError("Stale clip identity or groove association")
+        current = self._get_clip_notes(ti, ci, arrangement, limit=10000)
+        if current["fingerprint"] != fingerprint or current["completeness"] != "complete":
+            raise ValueError("Stale or incomplete note fingerprint")
+        return clip, current, saved
+
+    def _plan_note_edits(self, snapshot=None, edits=None):
+        clip, current, saved = self._verified_note_read(snapshot)
+        # There is no proven lossless replacement API for expression envelopes.
+        # A valid read is necessary, never sufficient authority to clear/re-add.
+        if any(isinstance(e, dict) and e.get("operation") == "replace" for e in (edits or [])):
+            raise ValueError("Lossless full replacement unsupported; use note-ID patches")
+        if not callable(getattr(clip, "apply_note_modifications", None)):
+            raise ValueError("apply_note_modifications unsupported; no destructive fallback")
+        patches = self._validate_note_patches(edits, {n["note_id"] for n in current["notes"]})
+        if not hasattr(self, "_note_edit_plans"):
+            self._note_edit_plans = {}
+        if len(self._note_edit_plans) >= 128:
+            self._note_edit_plans.pop(next(iter(self._note_edit_plans)))
+        token = uuid.uuid4().hex
+        self._note_edit_plans[token] = (json.loads(json.dumps(snapshot)), json.loads(json.dumps(patches)))
+        return {"plan_id": token, "fingerprint": current["fingerprint"],
+                "patches": patches, "time_domain": "clip_source_beats"}
+
+    def _set_notes_probability(self, track_index=0, clip_index=0, probability=None,
+                               velocity_deviation=None, note_ids=None, pitch=None,
+                               from_time=0.0, time_span=None, arrangement=False,
+                               expect_track_name=None):
+        track, clip = self._resolve_clip_in_view(track_index, clip_index, arrangement,
+                                                 expect_track_name)
+        if probability is None and velocity_deviation is None:
+            raise ValueError("Supply at least one expression field")
+        if not callable(getattr(clip, "get_notes_extended", None)):
+            raise ValueError("Extended selection unsupported")
+        if pitch is not None and (isinstance(pitch, bool) or not isinstance(pitch, int) or not 0 <= pitch <= 127):
+            raise ValueError("pitch must be 0..127")
+        if isinstance(from_time, bool) or not math.isfinite(float(from_time)):
+            raise ValueError("from_time must be finite source beats")
+        end = float(clip.end_marker) if time_span is None else float(from_time) + float(time_span)
+        if not math.isfinite(end) or end <= from_time:
+            raise ValueError("time_span must define a positive finite source range")
+        snapshot = self._get_clip_notes(track_index, clip_index, arrangement, limit=10000)
+        ids = {n["note_id"] for n in snapshot["notes"]}
+        if note_ids is not None:
+            if (not isinstance(note_ids, list) or not note_ids or
+                    any(isinstance(i, bool) or not isinstance(i, int) or i not in ids for i in note_ids)
+                    or len(set(note_ids)) != len(note_ids)):
+                raise ValueError("Invalid, empty, duplicate or stale note IDs")
+        fields = {}
+        if probability is not None:
+            fields["probability"] = probability
+        if velocity_deviation is not None:
+            fields["velocity_deviation"] = velocity_deviation
+        selected = clip.get_notes_extended(0 if pitch is None else pitch,
+                                          128 if pitch is None else 1,
+                                          from_time, end - from_time)
+        selected_ids = [n.note_id for n in selected]
+        if len(set(selected_ids)) != len(selected_ids) or any(i not in ids for i in selected_ids):
+            raise ValueError("Invalid extended selection identities")
+        edits = [dict(fields, note_id=i) for i in selected_ids if note_ids is None or i in note_ids]
+        plan = self._plan_note_edits(snapshot, edits)
+        return self._apply_note_edits(plan)
+
+    def _apply_note_edits(self, plan=None):
+        if not isinstance(plan, dict):
+            raise ValueError("A server-held plan is required")
+        saved = getattr(self, "_note_edit_plans", {}).get(plan.get("plan_id"))
+        if saved is None or plan.get("fingerprint") != saved[0].get("fingerprint"):
+            raise ValueError("Invalid or stale edit plan")
+        snapshot, patches = saved
+        clip, current, target = self._verified_note_read(snapshot)
+        if not callable(getattr(clip, "apply_note_modifications", None)):
+            raise ValueError("apply_note_modifications unsupported")
+        raw = clip.get_all_notes_extended()
+        by_id = {n.note_id: n for n in raw}
+        # All validation precedes mutation of native note objects.
+        for patch in patches:
+            if patch["note_id"] not in by_id or any(not hasattr(by_id[patch["note_id"]], k) for k in patch):
+                raise ValueError("Requested note field unsupported")
+        self._note_edit_plans.pop(plan["plan_id"])
+        scope = {"verification_scope": "serialized_notes_markers_groove",
+                 "opaque_expression_verified": False,
+                 "fingerprint_scope": "serialized_notes_markers_excludes_opaque_expression",
+                 "expression_preservation": "native_api_guarantee_not_measured"}
+        stage = "set_fields"
+        try:
+            for patch in patches:
+                note = by_id[patch["note_id"]]
+                for key, value in patch.items():
+                    if key != "note_id":
+                        setattr(note, key, value)
+            stage = "apply_note_modifications"
+            # Live requires its returned MidiNoteVector, not a Python tuple.
+            # Keep unrequested native objects intact, including per-note events.
+            clip.apply_note_modifications(raw)
+        except Exception as exc:
+            return dict(scope, matched=len(patches), verified_changed=None, verified=False,
+                        reconciliation_required=True, stage=stage, error=str(exc), notes=[])
+        try:
+            after = self._get_clip_notes(target[2], target[3], target[4], limit=10000)
+            actual = {n["note_id"]: n for n in after["notes"]}
+            verified = [p for p in patches if all(actual.get(p["note_id"], {}).get(k) == v for k, v in p.items())]
+            before = {n["note_id"]: n for n in current["notes"]}
+            changed_count = sum(any(before[p["note_id"]].get(k) != v for k, v in p.items()) for p in verified)
+            expected = {i: dict(n) for i, n in before.items()}
+            for patch in patches:
+                expected[patch["note_id"]].update(patch)
+            preserved = (actual == expected and self._safe_attr(clip, "groove") == target[6])
+            for key in ("start_marker", "end_marker", "loop_start", "loop_end", "looping",
+                        "arrangement_start", "arrangement_end"):
+                preserved = preserved and current.get(key) == after.get(key)
+            return dict(scope, matched=len(patches), verified_changed=changed_count,
+                        verified=len(verified) == len(patches) and preserved,
+                        reconciliation_required=not preserved,
+                        notes=[actual[p["note_id"]] for p in patches if p["note_id"] in actual])
+        except Exception as exc:
+            return dict(scope, matched=len(patches), verified_changed=None, verified=False,
+                        reconciliation_required=True, stage="readback", error=str(exc), notes=[])
 
     def _snapshot_track_selection(self, tracks):
         """Resolve a snapshot's `tracks` filter to a set of song-track indices.

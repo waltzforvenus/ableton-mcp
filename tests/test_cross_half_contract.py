@@ -255,12 +255,12 @@ def test_min_version_floors_are_exactly_the_broken_but_advertised():
         "set_device_parameter": "1.8.0",
         "trim_arrangement_clip": "1.12.0",
         # New keyword an older handler has no parameter for.
-        "get_clip_notes": "1.28.0",            # source completeness and paging
+        "get_clip_notes": "1.29.0",            # source completeness and paging
         "get_session_snapshot": "1.15.0",      # scoping flags; schema v2 -> v3
         "clear_notes_from_clip": "1.15.0",     # arrangement=True
         "delete_arrangement_clip": "1.15.0",   # start_time / start_times
         # Same call, materially different (and previously wrong) behaviour.
-        "add_notes_to_clip": "1.15.0",         # measured delta, not an echo
+        "add_notes_to_clip": "1.29.0",         # measured delta, not an echo
         "create_audio_clip": "1.15.0",         # imports with warping OFF
         "delete_device": "1.15.0",             # verifies instead of asserting
         # The loop-phase guard: an older script performs the stamp that

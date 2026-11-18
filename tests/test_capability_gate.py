@@ -372,6 +372,7 @@ def test_the_matrix_is_not_vacuous():
     # regained them, but because they now carry a floor, which refuses 1.7.0
     # by the more specific version message instead of the capability one.)
     assert GATED_POST_1_7_0 == [
+        "apply_note_edits",
         "create_arrangement_audio_clip",
         "create_arrangement_midi_clip",
         "delete_locator",
@@ -392,11 +393,13 @@ def test_the_matrix_is_not_vacuous():
         "load_browser_item_by_path",
         "move_arrangement_clip",
         "move_device",
+        "plan_note_edits",
         "select_track",
         "set_chain_mixer",
         "set_clip_warp",
         "set_device_parameters",
         "set_device_sidechain",
+        "set_notes_probability",
         "set_plugin_preset",
         "set_song_scale",
         "set_track_solo",

@@ -91,7 +91,10 @@ COMMANDS: dict[str, CommandSpec] = {
     # 1.15.0 taught it to read arrangement clips (arrangement=True). An
     # older script advertises the name but its handler has no such keyword,
     # so the dispatch's **params call dies on a raw TypeError inside Live.
-    "get_clip_notes": CommandSpec(gated=True, min_script_version="1.28.0"),
+    "get_clip_notes": CommandSpec(gated=True, min_script_version="1.29.0"),
+    "plan_note_edits": CommandSpec(gated=True),
+    "apply_note_edits": CommandSpec(modifying=True, gated=True),
+    "set_notes_probability": CommandSpec(modifying=True, gated=True),
     # Snapshot schema v3: the scoping flags and the tracks filter are new
     # keywords (TypeError on an older handler), and v2 also emitted warp
     # markers and rack chains unconditionally — the same call returns a
@@ -138,7 +141,7 @@ COMMANDS: dict[str, CommandSpec] = {
     # delta. An older script serves it, but serves it in exactly the way
     # that made "Added 262 notes" print when Live took none.
     "add_notes_to_clip": CommandSpec(
-        modifying=True, gated=True, min_script_version="1.15.0"
+        modifying=True, gated=True, min_script_version="1.29.0"
     ),
     "clear_notes_from_clip": CommandSpec(
         modifying=True, gated=True, min_script_version="1.15.0"
