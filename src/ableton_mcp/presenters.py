@@ -1356,3 +1356,8 @@ def error_text(tool_name: str, e: Exception) -> str:
     if any(marker in str(e) for marker in _UNREACHABLE_MARKERS):
         text += UNREACHABLE_HINT
     return text
+
+plan_arrangement_region = as_json
+apply_arrangement_region = as_json
+ERROR_PHRASES["plan_arrangement_region"] = "planning arrangement region"
+ERROR_PHRASES["apply_arrangement_region"] = "applying arrangement region"

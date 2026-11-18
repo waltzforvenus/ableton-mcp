@@ -1,0 +1,20 @@
+{
+  "cases": [
+    {
+      "args": {
+        "request": {}
+      },
+      "expect": "{\n  \"supported\": false,\n  \"applied\": false,\n  \"reason\": \"region manifest service not configured\"\n}",
+      "name": "unconfigured",
+      "wire": []
+    },
+    {
+      "args": {
+        "request": {}
+      },
+      "expect": "{\n  \"supported\": false,\n  \"applied\": false,\n  \"reason\": \"region manifest service not configured\"\n}",
+      "name": "error",
+      "wire": []
+    }
+  ]
+}

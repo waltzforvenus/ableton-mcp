@@ -1,3 +1,14 @@
+## Unreleased — region manifests (1.36.0)
+
+- Plan/apply server-held region manifests with observed checkpoint and fresh-state
+  guards; native whole MIDI clip copy into empty same-track space is supported.
+- Refuse crop/replacement/audio fade verification/atomic multi-clip operations;
+  retain sources and explicit reconciliation after partial native outcomes.
+- Opaque groove/expression relies on native cloning, not reconstructed notes or
+  independent opaque-state verification. Native acceptance remains pending.
+- Paired script version/bundle1.36.0; installation/restart required only at later
+  authorized deployment, not performed by this development unit.
+
 ## Unreleased — A7 review safety repair
 
 - Recheck current readable/explicitly-clean/modal-free structured window state

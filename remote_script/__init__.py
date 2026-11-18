@@ -39,7 +39,7 @@ EXPECTED_COMMAND_ERRORS = (ValueError, IndexError, KeyError)
 
 # Bumped whenever the TCP command surface changes; the MCP server compares
 # this to EXPECTED_REMOTE_SCRIPT_VERSION.
-SCRIPT_VERSION = "1.35.0"
+SCRIPT_VERSION = "1.36.0"
 PROTOCOL_VERSION = 1
 
 # The trim eraser (see _trim_arrangement_clip): a temporary Session clip
@@ -233,6 +233,8 @@ COMMANDS = {
     "trim_arrangement_clip":      ("_trim_arrangement_clip",      True,  None, True),
     "delete_arrangement_clip":    ("_delete_arrangement_clip",    True,  None, True),
     "move_arrangement_clip":      ("_move_arrangement_clip",      True,  None, True),
+    "plan_arrangement_region": ("_plan_arrangement_region", False, None, True),
+    "apply_arrangement_region": ("_apply_arrangement_region", True, None, True),
     "duplicate_arrangement_clip": ("_duplicate_arrangement_clip", True,  None, True),
 }
 
@@ -5129,6 +5131,118 @@ class AbletonMCP(ControlSurface):
         except Exception as e:
             self.log_message("Error moving arrangement clip: " + str(e))
             raise
+
+    def _region_state(self, track):
+        rows = []
+        for clip in track.arrangement_clips:
+            fields = ('name', 'start_time', 'end_time', 'start_marker', 'end_marker',
+                      'loop_start', 'loop_end', 'looping', 'color', 'is_midi_clip', 'is_audio_clip')
+            row = {key: getattr(clip, key) for key in fields}
+            if clip.is_audio_clip:
+                row.update({key: getattr(clip, key) for key in
+                            ('file_path', 'gain', 'warping', 'warp_mode', 'pitch_coarse', 'pitch_fine')})
+            if clip.is_midi_clip:
+                if not callable(getattr(clip, 'get_all_notes_extended', None)):
+                    raise ValueError('complete MIDI source enumeration unavailable')
+                row['notes'] = self._notes_from_clip(clip, raw_extended=clip.get_all_notes_extended())
+            rows.append(row)
+        return rows
+
+    def _plan_arrangement_region(self, request=None):
+        import uuid
+        request = dict(request or {})
+        allowed = {'track_index', 'source_start', 'source_end', 'destination_start',
+                   'operation', 'fade_policy', 'atomic', 'allow_ui_automation', 'set_path'}
+        if set(request) - allowed:
+            raise ValueError('unknown region option')
+        ti = request.get('track_index', 0)
+        if type(ti) is not int or ti < 0 or ti >= len(self._song.tracks):
+            raise ValueError('invalid region track')
+        start, end, destination = [float(request[k]) for k in ('source_start', 'source_end', 'destination_start')]
+        if not all(math.isfinite(x) for x in (start, end, destination)) or start < 0 or end <= start or destination < 0:
+            raise ValueError('invalid region interval')
+        for key in ('atomic', 'allow_ui_automation'):
+            if key in request and type(request[key]) is not bool:
+                raise ValueError(key + ' must be boolean')
+        track = self._song.tracks[ti]
+        sources = self._arrangement_overlaps(track, start, end)
+        victims = self._arrangement_overlaps(track, destination, destination + end - start)
+        missing = []
+        if getattr(self, '_region_reconciliation', False):
+            missing.append('previous region mutation requires reconciliation')
+        if request.get('operation', 'copy') != 'copy': missing.append('non-destructive atomic replacement')
+        if request.get('atomic', False): missing.append('native transactional region edit')
+        if request.get('fade_policy', 'preserve_native') != 'preserve_native': missing.append('verified fade editing')
+        if len(sources) != 1 or sources[0]['start_time'] != start or sources[0]['end_time'] != end:
+            missing.append('lossless region crop/multi-clip staging')
+        if victims: missing.append('empty destination required; overlap replacement unsupported')
+        if not callable(getattr(track, 'duplicate_clip_to_arrangement', None)):
+            missing.append('Track.duplicate_clip_to_arrangement')
+        try:
+            state = self._region_state(track)
+        except Exception as exc:
+            state = None
+            missing.append(str(exc))
+        # Audio fades/warp envelopes have no complete native readback in this
+        # adapter. Preview their exact source span, but do not promise fidelity.
+        if any(track.arrangement_clips[r['index']].is_audio_clip for r in sources):
+            missing.append('complete audio fade/warp-envelope preservation verification')
+        manifest = {'supported': not missing, 'missing_capabilities': missing,
+                    'sources': sources, 'source_state': [state[r['index']] for r in sources] if state is not None else None,
+                    'destination': [destination, destination + end-start],
+                    'predicted_cropped_clips': victims, 'policies': {'offset': 'preserve',
+                    'gain': 'preserve_native', 'warp': 'preserve_native', 'fade': request.get('fade_policy', 'preserve_native')},
+                    'source_media': [getattr(track.arrangement_clips[r['index']], 'file_path')
+                                     for r in sources if track.arrangement_clips[r['index']].is_audio_clip],
+                    'atomic': False, 'verification_scope': 'native whole-clip clone and serialized metadata; opaque expression/groove native cloning, not reconstruction'}
+        token = uuid.uuid4().hex
+        fingerprint = hashlib.sha256(json.dumps([request, state], sort_keys=True, allow_nan=False).encode()).hexdigest()
+        manifest.update(plan_id=token, fingerprint=fingerprint)
+        if not hasattr(self, '_region_plans'): self._region_plans = {}
+        if len(self._region_plans) >= 64: self._region_plans.pop(next(iter(self._region_plans)))
+        self._region_plans[token] = (request, manifest, track, list(track.arrangement_clips), state)
+        return manifest
+
+    def _apply_arrangement_region(self, plan_id=None, fingerprint=None):
+        saved = getattr(self, '_region_plans', {}).pop(plan_id, None)
+        if not saved or saved[1]['fingerprint'] != fingerprint:
+            raise ValueError('unknown/stale native region plan')
+        request, manifest, track, identities, before = saved
+        if not manifest['supported']:
+            return dict(manifest, applied=False)
+        if (getattr(self, '_region_reconciliation', False)
+                or self._song.tracks[request.get('track_index', 0)] != track
+                or list(track.arrangement_clips) != identities or self._region_state(track) != before):
+            raise ValueError('stale region state or unresolved previous mutation')
+        destination, end = manifest['destination']
+        if self._arrangement_overlaps(track, destination, end):
+            raise ValueError('destination changed')
+        source_index = manifest['sources'][0]['index']
+        source = identities[source_index]
+        try:
+            track.duplicate_clip_to_arrangement(source, destination)
+            after = list(track.arrangement_clips)
+            new = [c for c in after if c not in identities]
+            if len(new) != 1 or any(c not in after for c in identities):
+                raise ValueError('clone topology not verified')
+            rows = self._region_state(track)
+            if any(rows[after.index(c)] != before[i] for i, c in enumerate(identities)):
+                raise ValueError('original clip changed')
+            expected = dict(before[source_index], start_time=destination, end_time=end)
+            # Note IDs may be regenerated by native cloning; never edit/rebuild
+            # notes to coerce a match. Unknown readback requires reconciliation.
+            observed = dict(rows[after.index(new[0])])
+            for row in (expected, observed):
+                row['notes'] = [{k: v for k, v in note.items() if k != 'note_id'}
+                                for note in row.get('notes', [])]
+            if observed != expected:
+                raise ValueError('clone metadata/footprint not verified')
+            return {'supported': True, 'applied': True, 'atomic': False,
+                    'applied_steps': [{'operation': 'native_whole_clip_copy', 'destination': [destination, end]}]}
+        except Exception as exc:
+            self._region_reconciliation = True
+            return {'applied': None, 'reconciliation_required': True, 'retry_safe': False,
+                    'reason': str(exc), 'applied_steps': [{'operation': 'native_whole_clip_copy', 'outcome': 'unknown'}]}
 
     def _duplicate_arrangement_clip(self, track_index=0, clip_index=0,
                                     destination_time=0.0,

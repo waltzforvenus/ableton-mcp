@@ -283,6 +283,25 @@ def release_live_lock(ctx: Context, holder: str, set_path: Optional[str] = None,
 
 
 @tool
+def plan_arrangement_region(ctx: Context, request: dict) -> str:
+    """Preview a region manifest. Currently supports whole MIDI clip native copy
+    to an empty span on the same track; crop/replace/fades/atomic batches refuse.
+    Beats are arrangement time. Request includes track_index, source_start,
+    source_end, destination_start; optional operation=copy, fade_policy=preserve_native,
+    allow_ui_automation and set_path for the mandatory checkpoint at apply.
+    """
+    return presenters.plan_arrangement_region(_deps(ctx).service.plan_arrangement_region(request))
+
+
+@tool
+def apply_arrangement_region(ctx: Context, manifest_id: str, fingerprint: str) -> str:
+    """Apply a server-held region manifest only after checkpoint and fresh state.
+    No global undo or automatic replay after partial/uncertain native mutation.
+    """
+    return presenters.apply_arrangement_region(_deps(ctx).service.apply_arrangement_region(manifest_id, fingerprint))
+
+
+@tool
 def plan_note_edits(ctx: Context, snapshot: dict, edits: list[dict]) -> str:
     """Plan per-note-ID patches from a complete get_clip_notes snapshot.
 

@@ -234,3 +234,10 @@ reservation. Release requires generation-bound workflow evidence plus observed
 AXDocument equality before/after save and at release, explicit clean state,
 mtime advancement and acquisition/edit freshness. Unknown/ambiguous evidence
 retains ownership. No native save attestation or recovery provider is invented.
+
+A3b1.36.0 adds gated plan_arrangement_region/apply_arrangement_region. These do
+not alias the older destructive overlap stamper: only one whole MIDI clone into
+empty same-track space is admitted; source/destination revalidated immediately
+before native duplication. Unknown audio fade fidelity/crops/replace/atomicity
+refuse. UI checkpoint and bounded media hashes live in the server/domain layer;
+native main-thread handler retains actual object references and current state.
