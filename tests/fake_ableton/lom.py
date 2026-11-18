@@ -83,7 +83,8 @@ class FakeLiveConfig(object):
                  transport_write_lag=False, device_delete_lands=True,
                  warp_marker_edit_api=True, warp_edit_lands=True,
                  exclusive_solo=False, song_scale_api=True,
-                 song_scale_mode_api=True, unknown_scale_name="ignore"):
+                 song_scale_mode_api=True, unknown_scale_name="ignore",
+                 all_notes_api=False):
         if note_api not in _NOTE_API_GENERATIONS:
             raise ValueError("note_api must be one of %r" % (_NOTE_API_GENERATIONS,))
         if save_owner not in _SAVE_OWNERS:
@@ -91,6 +92,7 @@ class FakeLiveConfig(object):
         if transport_write_lag not in _TRANSPORT_LAG_MODES:
             raise ValueError("transport_write_lag must be one of %r"
                              % (_TRANSPORT_LAG_MODES,))
+        self.all_notes_api = all_notes_api
         self.note_api = note_api
         self.extended_read_raises = extended_read_raises
         self.create_audio_clip_api = create_audio_clip_api
@@ -473,6 +475,9 @@ class FakeClip(object):
             self.get_notes_extended = self._extended_get_notes
             self.remove_notes_extended = self._extended_remove_notes
 
+        if self._config.all_notes_api:
+            self.get_all_notes_extended = self._all_notes_extended
+
         for note in (notes or []):
             self._store_note(note)
 
@@ -501,6 +506,10 @@ class FakeClip(object):
                 and from_time <= record["start_time"] < from_time + time_span)
 
     # -- extended generation (Live 11+): pitch-first argument order ---------
+
+    def _all_notes_extended(self):
+        """Python LOM: no arguments, MidiNoteVector (not Max dictionaries)."""
+        return tuple(FakeNote(record) for record in self._notes)
 
     def _extended_get_notes(self, from_pitch, pitch_span, from_time, time_span):
         if self._config.extended_read_raises:

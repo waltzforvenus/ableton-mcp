@@ -3,6 +3,54 @@
     {
       "args": {
         "clip_index": 2,
+        "limit": 7,
+        "source_end": 24,
+        "source_start": -2,
+        "track_index": 0
+      },
+      "expect": "{\n  \"completeness\": \"partial\",\n  \"next_cursor\": null,\n  \"note_count\": 2,\n  \"notes\": [\n    {\n      \"duration\": 0.5,\n      \"mute\": false,\n      \"pitch\": 60,\n      \"start_time\": 0.0,\n      \"velocity\": 100\n    },\n    {\n      \"duration\": 0.25,\n      \"mute\": true,\n      \"pitch\": 64,\n      \"start_time\": 1.0,\n      \"velocity\": 90\n    }\n  ],\n  \"source_completeness\": \"complete\",\n  \"time_domain\": \"clip_source_beats\",\n  \"whole_clip_replace_supported\": false\n}",
+      "name": "source_page",
+      "wire": [
+        {
+          "command": "get_clip_notes",
+          "params": {
+            "arrangement": false,
+            "clip_index": 2,
+            "limit": 7,
+            "source_end": 24,
+            "source_start": -2,
+            "track_index": 0
+          },
+          "response": {
+            "completeness": "partial",
+            "next_cursor": null,
+            "note_count": 2,
+            "notes": [
+              {
+                "duration": 0.5,
+                "mute": false,
+                "pitch": 60,
+                "start_time": 0.0,
+                "velocity": 100
+              },
+              {
+                "duration": 0.25,
+                "mute": true,
+                "pitch": 64,
+                "start_time": 1.0,
+                "velocity": 90
+              }
+            ],
+            "source_completeness": "complete",
+            "time_domain": "clip_source_beats",
+            "whole_clip_replace_supported": false
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "clip_index": 2,
         "track_index": 0
       },
       "expect": "{\n  \"clip_name\": \"Bassline\",\n  \"length\": 4.0,\n  \"note_count\": 2,\n  \"notes\": [\n    {\n      \"duration\": 0.5,\n      \"mute\": false,\n      \"pitch\": 60,\n      \"start_time\": 0.0,\n      \"velocity\": 100\n    },\n    {\n      \"duration\": 0.25,\n      \"mute\": true,\n      \"pitch\": 64,\n      \"start_time\": 1.0,\n      \"velocity\": 90\n    }\n  ]\n}",
@@ -83,6 +131,9 @@
     {
       "args": {
         "clip_index": 2,
+        "limit": 7,
+        "source_end": 24,
+        "source_start": -2,
         "track_index": 0
       },
       "expect": "Error getting clip notes: boom",
@@ -93,6 +144,9 @@
           "params": {
             "arrangement": false,
             "clip_index": 2,
+            "limit": 7,
+            "source_end": 24,
+            "source_start": -2,
             "track_index": 0
           },
           "raise": "boom"

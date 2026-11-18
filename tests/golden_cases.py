@@ -181,6 +181,16 @@ BASE_CASES = [
           {"holder": "session-a", "set_path": "/nonexistent/song.als"}, []),
 
     # ── get_clip_notes (gated) ────────────────────────────────────────────
+    _case("get_clip_notes", "source_page",
+          {"track_index": 0, "clip_index": 2, "source_start": -2,
+           "source_end": 24, "limit": 7}, [
+        _ok("get_clip_notes", {"track_index": 0, "clip_index": 2,
+            "arrangement": False, "source_start": -2, "source_end": 24,
+            "limit": 7}, {"notes": NOTES, "note_count": 2,
+            "time_domain": "clip_source_beats", "completeness": "partial",
+            "source_completeness": "complete", "next_cursor": None,
+            "whole_clip_replace_supported": False}),
+    ]),
     _case("get_clip_notes", "success", {"track_index": 0, "clip_index": 2}, [
         _ok("get_clip_notes",
             {"track_index": 0, "clip_index": 2, "arrangement": False}, {

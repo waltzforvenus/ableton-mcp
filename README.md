@@ -519,7 +519,7 @@ are not present upstream.
 | `set_clip_name` | `track_index`, `clip_index`, `name` | Set the name of a clip |
 | `set_clip_gain` † | `track_index`, `clip_index`, `gain`, `arrangement`? | Set one audio clip's gain, leaving every other clip on the track untouched |
 | `set_clip_warp` † | `track_index`, `clip_index`, `warping`, `warp_mode`?, `arrangement`? | Turn a clip's warping on or off — the fix for stems Live auto-warped to different tempos |
-| `get_clip_notes` | `track_index`, `clip_index`, `arrangement`? | Read all MIDI notes from a clip, in either view |
+| `get_clip_notes` | `track_index`, `clip_index`, `arrangement`?, `source_start`?, `source_end`?, `cursor`?, `limit`? | Source-beat MIDI pages with explicit completeness, offsets and audible-window projection |
 | `add_notes_to_clip` | `track_index`, `clip_index`, `notes`, `expect_count`?, `arrangement`? | Add MIDI notes to a clip in either view; reports what Live actually took, and `expect_count` refuses a truncated list |
 | `clear_notes_from_clip` | `track_index`, `clip_index`, `arrangement`? | Remove all MIDI notes from a clip, in either view |
 

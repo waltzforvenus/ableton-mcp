@@ -4,6 +4,8 @@ from __future__ import absolute_import, print_function, unicode_literals
 from _Framework.ControlSurface import ControlSurface
 import os
 import socket
+import hashlib
+import uuid
 import json
 import math
 import re
@@ -37,7 +39,7 @@ EXPECTED_COMMAND_ERRORS = (ValueError, IndexError, KeyError)
 
 # Bumped whenever the TCP command surface changes; the MCP server compares
 # this to EXPECTED_REMOTE_SCRIPT_VERSION.
-SCRIPT_VERSION = "1.27.0"
+SCRIPT_VERSION = "1.28.0"
 PROTOCOL_VERSION = 1
 
 # The trim eraser (see _trim_arrangement_clip): a temporary Session clip
@@ -5674,16 +5676,21 @@ class AbletonMCP(ControlSurface):
         except Exception:
             return default
 
-    def _notes_from_clip(self, clip):
+    def _notes_from_clip(self, clip, raw_extended=None, source_start=0.0, source_end=None):
         """Extract MIDI notes from a clip (incl. MPE/expression when available)."""
         notes = []
         if not clip or not getattr(clip, "is_midi_clip", False):
             return notes
 
-        if hasattr(clip, "get_notes_extended"):
+        source_end = float(clip.length) + 1.0 if source_end is None else source_end
+        if raw_extended is not None or hasattr(clip, "get_notes_extended"):
             try:
-                raw = clip.get_notes_extended(0, 128, 0.0, float(clip.length) + 1.0)
+                raw = (raw_extended if raw_extended is not None else clip.get_notes_extended(0, 128, source_start, source_end - source_start))
                 for n in raw:
+                    if raw_extended is not None:
+                        for key in ("pitch", "start_time", "duration", "velocity", "mute", "note_id"):
+                            if not hasattr(n, key):
+                                raise ValueError("Malformed complete note enumeration")
                     entry = {
                         "pitch": int(getattr(n, "pitch", 0)),
                         "start_time": float(getattr(n, "start_time", 0.0)),
@@ -5711,11 +5718,13 @@ class AbletonMCP(ControlSurface):
                     notes.append(entry)
                 return notes
             except Exception as e:
+                if raw_extended is not None:
+                    raise
                 self.log_message("get_notes_extended failed, falling back: " + str(e))
 
         if hasattr(clip, "get_notes"):
             try:
-                raw = clip.get_notes(0.0, 0, float(clip.length) + 1.0, 128)
+                raw = clip.get_notes(source_start, 0, source_end - source_start, 128)
                 for n in raw:
                     notes.append({
                         "pitch": int(n[0]),
@@ -6088,35 +6097,94 @@ class AbletonMCP(ControlSurface):
             self.log_message("master_track serialize failed: " + str(e))
             return None
 
-    def _get_clip_notes(self, track_index=0, clip_index=0, arrangement=False):
-        """Read one clip's MIDI notes, from either view.
+    def _get_clip_notes(self, track_index=0, clip_index=0, arrangement=False,
+                        source_start=None, source_end=None, cursor=None, limit=1000):
+        """Read source beats; only the all-notes API proves source coverage.
 
-        arrangement=True reads a clip on the timeline instead of a Session
-        slot — the pairing that lets a caller read the bar it is about to
-        edit, edit it, and read it back without going through the Session
-        clip it was stamped from. Note times are the clip's own beats in
-        both views, so they can be handed straight back to
-        add_notes_to_clip.
+        Python Live 12.1.11 documents get_all_notes_extended() -> MidiNoteVector,
+        including notes outside markers/loops (not the Max dictionary API).
+        Cursor records retain clip identity, query and complete note fingerprint;
+        they authorize continuation only, never edits.
         """
-        try:
-            track, clip = self._resolve_clip_in_view(
-                track_index, clip_index, arrangement=arrangement)
-            if not getattr(clip, "is_midi_clip", False):
-                raise Exception("Clip is not a MIDI clip")
-            notes = self._notes_from_clip(clip)
-            return {
-                "track_index": track_index,
-                "track_name": track.name,
-                "clip_index": clip_index,
-                "clip_name": clip.name,
-                "arrangement": bool(arrangement),
-                "length": float(clip.length),
-                "note_count": len(notes),
-                "notes": notes,
-            }
-        except Exception as e:
-            self.log_message("Error getting clip notes: " + str(e))
-            raise
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 10000:
+            raise ValueError("limit must be an integer from 1 to 10000")
+        for value in (source_start, source_end):
+            if value is not None and (isinstance(value, bool) or not math.isfinite(float(value))):
+                raise ValueError("source bounds must be finite beats")
+        source_start = float(source_start) if source_start is not None else None
+        source_end = float(source_end) if source_end is not None else None
+        if source_start is not None and source_end is not None and source_end <= source_start:
+            raise ValueError("source_end must exceed source_start")
+        track, clip = self._resolve_clip_in_view(track_index, clip_index, arrangement)
+        if not getattr(clip, "is_midi_clip", False):
+            raise ValueError("Clip is not a MIDI clip")
+        metadata = {key: self._safe_attr(clip, key, float) for key in
+                    ("start_marker", "end_marker", "loop_start", "loop_end")}
+        metadata["looping"] = self._safe_attr(clip, "looping", bool)
+        metadata["arrangement_start"] = self._safe_attr(clip, "start_time", float) if arrangement else None
+        metadata["arrangement_end"] = self._safe_attr(clip, "end_time", float) if arrangement else None
+        all_supported = callable(getattr(clip, "get_all_notes_extended", None))
+        if all_supported:
+            # Failure is not an empty successful enumeration. Propagate it.
+            raw = clip.get_all_notes_extended()
+            notes = self._notes_from_clip(clip, raw_extended=raw)
+            if len(notes) != len(raw):
+                raise ValueError("Complete note enumeration could not be serialized")
+        else:
+            lo = source_start if source_start is not None else min(0.0, metadata["start_marker"] or 0.0, metadata["loop_start"] or 0.0)
+            hi = source_end if source_end is not None else max(float(clip.length) + 1.0, metadata["end_marker"] or 0.0, metadata["loop_end"] or 0.0, lo + 1.0)
+            # Omitted bounds are inferred from markers, not an unbounded source.
+            # Validate the effective window before either legacy API can swallow
+            # an inverted/empty interval into a misleading successful empty read.
+            if not math.isfinite(lo) or not math.isfinite(hi) or hi <= lo:
+                raise ValueError("Legacy note reads require a finite positive range; "
+                                 "provide source_start strictly below source_end")
+            notes = self._notes_from_clip(clip, source_start=lo, source_end=hi)
+        notes.sort(key=lambda n: (n["start_time"], n["pitch"], n.get("note_id", -1)))
+        extent = ({"start": min(n["start_time"] for n in notes),
+                   "end": max(n["start_time"] + n["duration"] for n in notes)}
+                  if notes and all_supported else None)
+        fingerprint = hashlib.sha256(json.dumps([notes, metadata, all_supported],
+                                    sort_keys=True, allow_nan=False).encode("utf-8")).hexdigest()
+        selected = [n for n in notes if
+                    (source_start is None or n["start_time"] >= source_start) and
+                    (source_end is None or n["start_time"] < source_end)]
+        query = (track_index, clip_index, bool(arrangement), source_start, source_end)
+        # Instance-owned, bounded continuation state; no controller globals or IO.
+        if not hasattr(self, "_note_read_cursors"):
+            self._note_read_cursors = {}
+        offset = 0
+        if cursor is not None:
+            saved = self._note_read_cursors.get(cursor)
+            if (saved is None or saved[0] != clip or saved[1] != fingerprint or saved[2] != query):
+                raise ValueError("Stale or invalid note cursor; restart the read")
+            offset = saved[3]
+        page = selected[offset:offset + limit]
+        next_cursor = None
+        if offset + limit < len(selected):
+            if len(self._note_read_cursors) >= 128:
+                self._note_read_cursors.pop(next(iter(self._note_read_cursors)))
+            next_cursor = uuid.uuid4().hex
+            self._note_read_cursors[next_cursor] = (clip, fingerprint, query, offset + limit)
+        complete = (all_supported and source_start is None and source_end is None
+                    and offset == 0 and next_cursor is None)
+        lo = metadata["loop_start"] if metadata["looping"] else metadata["start_marker"]
+        hi = metadata["loop_end"] if metadata["looping"] else metadata["end_marker"]
+        audible = [n for n in page if lo is not None and hi is not None and
+                   n["start_time"] < hi and n["start_time"] + n["duration"] > lo]
+        result = {"track_index": track_index, "track_name": track.name,
+                  "clip_index": clip_index, "clip_name": clip.name,
+                  "arrangement": bool(arrangement), "length": float(clip.length),
+                  "time_domain": "clip_source_beats", "source_extent": extent,
+                  "completeness": "complete" if complete else "partial",
+                  "source_completeness": "complete" if all_supported else "unknown",
+                  "next_cursor": next_cursor, "note_count": len(page),
+                  "total_note_count": len(notes) if all_supported else None,
+                  "selected_note_count": len(selected), "notes": page,
+                  "audible_notes": audible, "audible_projection": "page_source_window_intersection",
+                  "fingerprint": fingerprint, "whole_clip_replace_supported": False}
+        result.update(metadata)
+        return result
 
     def _snapshot_track_selection(self, tracks):
         """Resolve a snapshot's `tracks` filter to a set of song-track indices.

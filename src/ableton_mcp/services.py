@@ -108,6 +108,30 @@ def _fit_snapshot(snapshot: Dict[str, Any], max_chars: int) -> Dict[str, Any]:
     return build(min(lo, len(tracks)))
 
 
+def _browser_uri_to_path(path: str) -> str:
+    """Accept the URI form the browser itself reports.
+
+    Every item get_browser_items_at_path returns carries a uri like
+    query:Plugins#VST3:AIDA%20DSP, but the remote-script walker takes
+    /-separated attribute paths (Plugins/VST3/AIDA DSP) - so feeding a
+    reported URI back in walked nothing and Plug-Ins enumeration looked
+    empty. Translate query:X#Y#Z (percent-decoded) to X/Y/Z; anything
+    without the query: prefix passes through unchanged.
+    """
+    if not path.startswith("query:"):
+        return path
+    from urllib.parse import unquote
+    # Levels separate with # after the root and : below it; split before
+    # unquoting so a %3A inside a name never becomes a separator.
+    segments = [unquote(s) for s in re.split("[#:]", path[len("query:"):]) if s]
+    # Browser roots use display names (AudioFx) where the walker expects
+    # snake_case attributes (audio_effects) - alias the root so translated
+    # paths stay walkable. Hit live loading stock FX, 2026-10-30.
+    aliases = {"audiofx": "audio_effects"}
+    if segments and segments[0].lower() in aliases:
+        segments[0] = aliases[segments[0].lower()]
+    return "/".join(segments)
+
 def _sha256(path: str) -> str:
     digest = hashlib.sha256()
     with open(path, "rb") as f:
@@ -282,15 +306,18 @@ class AbletonService:
         return result
 
     def get_clip_notes(self, track_index: int, clip_index: int,
-                       arrangement: bool = False) -> Dict[str, Any]:
-        return self._send(
-            "get_clip_notes",
-            {
-                "track_index": track_index,
-                "clip_index": clip_index,
-                "arrangement": arrangement,
-            },
-        )
+                       arrangement: bool = False, source_start: float | None = None,
+                       source_end: float | None = None, cursor: str | None = None,
+                       limit: int = 1000) -> Dict[str, Any]:
+        params = {"track_index": track_index, "clip_index": clip_index,
+                  "arrangement": arrangement}
+        for key, value in (("source_start", source_start), ("source_end", source_end),
+                           ("cursor", cursor)):
+            if value is not None:
+                params[key] = value
+        if limit != 1000:
+            params["limit"] = limit
+        return self._send("get_clip_notes", params)
 
     def get_session_snapshot(
         self,
@@ -1259,7 +1286,7 @@ class AbletonService:
 
     def get_browser_items_at_path(self, path: str) -> Dict[str, Any]:
         return self._send("get_browser_items_at_path", {
-            "path": path
+            "path": _browser_uri_to_path(path)
         })
 
     def load_drum_kit(self, track_index: int, rack_uri: str, kit_path: str,
