@@ -305,3 +305,17 @@ def verify(path: str, expected_duration_s: Optional[float] = None,
     m["failures"] = failures
     m["ok"] = not failures
     return m
+
+
+def probe_source_span(path: str) -> Dict[str, Any]:
+    """Decode all source frames in bounded chunks using the shared decoder."""
+    from . import audio_analysis
+    rate, frames, channels = audio_analysis.file_info(path)
+    if rate <= 0 or frames <= 0 or channels <= 0:
+        raise ValueError("Unresolved decoded source span")
+    for first in range(0, frames, 65536):
+        count = min(65536, frames - first)
+        if len(audio_analysis.read_frames(path, first, count)) != count:
+            raise ValueError("Incomplete decoded source span")
+    return {"duration_seconds": frames / float(rate), "decoded": True,
+            "sample_rate": rate, "frames": frames}

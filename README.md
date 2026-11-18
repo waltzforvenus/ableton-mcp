@@ -491,7 +491,7 @@ are not present upstream.
 | `move_device` † | `track_index`, `device_index`, `to_index`, `to_track_index`? | Reorder a chain or move a device to another track (`Song.move_device`) |
 | `get_device_sidechain` † | `track_index`, `device_index` | A device's sidechain source/channel, the choices Live offers, and the S/C switch |
 | `set_device_sidechain` † | `track_index`, `device_index`, `source`, `channel`?, `enable`? | Key a Compressor/Gate/… from another track and switch sidechain on; read back |
-| `create_arrangement_audio_clip` † | `track_index`, `path`, `start_time`, `allow_overlap`?, `name`? | Place an audio file straight onto the arrangement at a beat (Live 12) — no Session slot |
+| `create_arrangement_audio_clip` † | track_index, path, start_time, warping?, source_offset_seconds?, duration_seconds?, destination_length_beats?, allow_overlap?, name? | Decoded-source preflight; currently unsupported without mutation because native import cannot guarantee pre-import warp/trim/footprint |
 | `create_arrangement_midi_clip` † | `track_index`, `start_time`, `length`?, `notes`?, `allow_overlap`? | Create (and fill) a MIDI clip directly on the arrangement (Live 12) |
 | `get_rack_chains` † | `track_index`, `device_index`, `track_type`? | A rack's chains: name, volume/pan (value + display), mute, solo, Drum Rack `in_note`, devices |
 | `insert_rack_chain` † | `track_index`, `device_index`, `index`?, `name`? | Add a chain to a rack (Live 12 `RackDevice.insert_chain`) — parallel blends |

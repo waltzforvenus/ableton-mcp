@@ -1,3 +1,15 @@
+## Unreleased — arrangement audio safety
+
+- Decoded source-span probe, explicit seconds-based source offset/duration and
+  warp policy. Requested beat duration is not accepted as proof of footprint.
+- Native arrangement audio creation now returns an unsupported plan, without
+  importing: Live's path/time API cannot guarantee warp/trim/footprint before
+  cropping existing clips. Unknown constant-tempo coverage is not guessed.
+  allow_overlap cannot bypass unresolved footprint. The existing half-open
+  interval helper now refuses invalid extents; exact adjacency remains allowed.
+- Protocol 1.30.0: re-run ableton-mcp-install-script and restart Live when
+  deploying (not performed here). Unit/mock evidence only; Live acceptance pending.
+
 ## Unreleased — lossless MIDI edits
 
 - Retain native MidiNoteVector on apply; structured post-write reconciliation

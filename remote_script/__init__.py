@@ -39,7 +39,7 @@ EXPECTED_COMMAND_ERRORS = (ValueError, IndexError, KeyError)
 
 # Bumped whenever the TCP command surface changes; the MCP server compares
 # this to EXPECTED_REMOTE_SCRIPT_VERSION.
-SCRIPT_VERSION = "1.29.0"
+SCRIPT_VERSION = "1.30.0"
 PROTOCOL_VERSION = 1
 
 # The trim eraser (see _trim_arrangement_clip): a temporary Session clip
@@ -1606,9 +1606,13 @@ class AbletonMCP(ControlSurface):
     # (529 stamp calls in one session) or by editing the set's XML.
 
     def _arrangement_overlaps(self, track, start, end):
+        if not all(math.isfinite(v) for v in (start, end)) or end <= start:
+            raise ValueError("Unresolved arrangement interval")
         hits = []
         for i, clip in enumerate(track.arrangement_clips):
             s, e = float(clip.start_time), float(clip.end_time)
+            if not all(math.isfinite(v) for v in (s, e)) or e <= s:
+                raise ValueError("Unresolved existing clip interval")
             if s < end and e > start:
                 hits.append({"index": i, "name": clip.name, "start_time": s,
                              "end_time": e})
@@ -1631,38 +1635,49 @@ class AbletonMCP(ControlSurface):
 
     def _create_arrangement_audio_clip(self, track_index=0, path="",
                                        start_time=0.0, allow_overlap=False,
-                                       name=None, expect_track_name=None):
-        """Place an audio file on the timeline at a beat, directly."""
+                                       name=None, expect_track_name=None,
+                                       warping=False, source_offset_seconds=0,
+                                       duration_seconds=None,
+                                       destination_length_beats=None,
+                                       source_span=None):
+        """Preflight only until Live guarantees the footprint BEFORE import.
+
+        Track.create_audio_clip(path,time) obeys auto-warp preferences and has
+        no source-trim/warp/length arguments. Marker writes afterwards cannot
+        undo crops made by import, nor prove arrangement length.
+        """
         track = self._resolve_track(track_index, expect_track_name=expect_track_name)
-        create = getattr(track, "create_audio_clip", None)
-        if not callable(create):
-            raise Exception("This Live build has no Track.create_audio_clip(path, "
-                            "time) (Live 12 API); use create_audio_clip + "
-                            "duplicate_to_arrangement")
         if not path or not os.path.isabs(path) or not os.path.isfile(path):
             raise ValueError("path must be an existing absolute audio file path")
-        start = float(start_time)
-        covering = self._arrangement_overlaps(track, start, start + 1e-6)
-        if covering and not allow_overlap:
-            raise ValueError("Refusing: beat %.3f is inside an existing clip %s; "
-                             "pass allow_overlap=true to let Live crop it"
-                             % (start, covering))
-        before = self._arrangement_snapshot(track)
-        create(path, start)
-        index, clip = self._find_new_arrangement_clip(track, before, start)
-        if clip is None:
-            raise Exception("create_audio_clip returned but no clip starts at "
-                            "beat %.3f" % start)
-        if name:
-            clip.name = name
-        changed = [c for c in before if c not in self._arrangement_snapshot(track)]
-        return {"track_index": track_index, "track_name": track.name,
-                "clip_index": index, "clip_name": clip.name,
-                "start_time": float(clip.start_time), "end_time": float(clip.end_time),
-                "file_path": getattr(clip, "file_path", path),
-                "warping": bool(getattr(clip, "warping", False)),
-                "cropped_or_replaced": [{"name": n, "start_time": s, "end_time": e}
-                                        for n, s, e in changed]}
+        def finite(value, label, positive=False):
+            value = float(value)
+            if math.isnan(value) or math.isinf(value) or value < 0 or (positive and value == 0):
+                raise ValueError(label + " must be finite and " + ("positive" if positive else "nonnegative"))
+            return value
+        start = finite(start_time, "start_time")
+        if not isinstance(warping, bool):
+            raise ValueError("warping must be a boolean")
+        if not isinstance(source_span, dict) or source_span.get("decoded") is not True:
+            raise ValueError("Unresolved decoded source span; use the server media probe")
+        total = finite(source_span.get("duration_seconds"), "decoded duration", True)
+        offset = finite(source_offset_seconds, "source_offset_seconds")
+        duration = total - offset if duration_seconds is None else finite(duration_seconds, "duration_seconds", True)
+        if offset >= total or duration <= 0 or offset + duration > total:
+            raise ValueError("Source offset/duration exceeds decoded source span")
+        if destination_length_beats is not None:
+            finite(destination_length_beats, "destination_length_beats", True)
+        # A current tempo value is not proof of a constant tempo envelope.
+        # No supported LOM primitive exposes both that proof and an atomic,
+        # pre-import warp/footprint contract. A caller beat claim is not one.
+        return {"supported": False, "mutated": False,
+                "reason": "Unsupported pre-import warp/trim/footprint guarantee and constant-tempo proof",
+                "track_index": track_index, "track_name": track.name,
+                "start_time": start, "source_offset_seconds": offset,
+                "duration_seconds": duration, "source_duration_seconds": total,
+                "warping": warping, "gain_policy": "unchanged",
+                "destination_length_beats": None,
+                "requested_destination_length_beats": destination_length_beats,
+                "overlap_check": "unresolved_footprint", "allow_overlap": bool(allow_overlap)}
 
     def _create_arrangement_midi_clip(self, track_index=0, start_time=0.0,
                                       length=4.0, notes=None, name=None,
