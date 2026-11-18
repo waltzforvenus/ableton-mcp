@@ -9,6 +9,13 @@ separately, and a script change means **re-run
 
 ## [Unreleased]
 
+### MIDI source reads (Remote Script 1.28.0)
+- Complete reads use Python LOM `get_all_notes_extended()` when available, preserving negative/pre-roll, hidden notes and expression fields. Legacy bounded reads disclose unknown source coverage.
+- Pages default to 1000 notes (max 10000); follow `next_cursor` with unchanged bounds. Changed notes, clip identity or markers invalidate cursors. Source filters are half-open note-start ranges. `note_count` counts this page; `total_note_count` is null for unknown coverage. `source_extent` is stored-note min(start)..max(end), null for empty or unknown source.
+- `audible_notes` is this page’s source loop/marker intersection, not rendered sound or unfolded repetitions. `whole_clip_replace_supported` remains false; read cursors never authorize edits.
+- **Re-run `ableton-mcp-install-script` and restart Live after an authorized production handoff.** Unit/mock verification only; Live acceptance remains pending. No automatic installation.
+
+
 ### Documentation
 
 - Added a branch-scoped [fork comparison](docs/FORK_FEATURES.md), separating

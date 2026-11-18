@@ -95,6 +95,15 @@ def test_read_sends_correct_command_and_params(fake_conn):
                                              "arrangement": False})]
 
 
+def test_source_paging_arguments_reach_wire(fake_conn):
+    conn = fake_conn(response=_sample_response())
+    tools.get_clip_notes(conn.ctx, 2, 5, True, source_start=-2,
+                         source_end=24, cursor="page-token", limit=7)
+    assert conn.sent == [("get_clip_notes", {"track_index": 2, "clip_index": 5,
+        "arrangement": True, "source_start": -2, "source_end": 24,
+        "cursor": "page-token", "limit": 7})]
+
+
 def test_read_returns_the_payload_as_json(fake_conn):
     conn = fake_conn(response=_sample_response(name="Fred Pattern", length=8.0))
     payload = json.loads(tools.get_clip_notes(conn.ctx, 0, 0))

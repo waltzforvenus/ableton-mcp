@@ -91,7 +91,7 @@ COMMANDS: dict[str, CommandSpec] = {
     # 1.15.0 taught it to read arrangement clips (arrangement=True). An
     # older script advertises the name but its handler has no such keyword,
     # so the dispatch's **params call dies on a raw TypeError inside Live.
-    "get_clip_notes": CommandSpec(gated=True, min_script_version="1.15.0"),
+    "get_clip_notes": CommandSpec(gated=True, min_script_version="1.28.0"),
     # Snapshot schema v3: the scoping flags and the tracks filter are new
     # keywords (TypeError on an older handler), and v2 also emitted warp
     # markers and rack chains unconditionally — the same call returns a

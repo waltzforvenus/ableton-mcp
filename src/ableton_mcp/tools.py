@@ -261,15 +261,23 @@ def get_clip_notes(
     track_index: int,
     clip_index: int,
     arrangement: bool = False,
+    source_start: float | None = None,
+    source_end: float | None = None,
+    cursor: str | None = None,
+    limit: int = 1000,
 ) -> str:
     """
-    Read all MIDI notes from a clip, in either view.
+    Read paged MIDI notes in clip source beats, in either view.
 
     Returns pitch, start_time, duration, velocity, mute (and extended fields when available).
 
     Note times are the clip's own beats in both views — an arrangement clip
-    sitting at bar 60 still reports its first note at 0.0 — so what comes
-    back can be edited and handed straight to add_notes_to_clip. Read the
+    may contain negative, offset and hidden notes; times are never rebased.
+    Follow next_cursor with unchanged source bounds (half-open start-time filter).
+    limit defaults to 1000, maximum 10000. Only completeness=complete means
+    this response contains all source notes; legacy source coverage is unknown.
+    audible_notes is this page's source-window intersection, not rendered sound.
+    Never clear/re-add from a partial read. Read the
     arrangement clip itself (arrangement=True) when you are about to edit
     one bar in place; read the Session clip when it is the pattern you are
     about to re-stamp.
@@ -282,8 +290,8 @@ def get_clip_notes(
     - arrangement: True to read a clip on the timeline, False (default) for
       a Session slot
     """
-    result = _deps(ctx).service.get_clip_notes(track_index, clip_index,
-                                               arrangement)
+    result = _deps(ctx).service.get_clip_notes(
+        track_index, clip_index, arrangement, source_start, source_end, cursor, limit)
     return presenters.get_clip_notes(result)
 
 

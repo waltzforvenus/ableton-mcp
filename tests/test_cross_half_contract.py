@@ -255,7 +255,7 @@ def test_min_version_floors_are_exactly_the_broken_but_advertised():
         "set_device_parameter": "1.8.0",
         "trim_arrangement_clip": "1.12.0",
         # New keyword an older handler has no parameter for.
-        "get_clip_notes": "1.15.0",            # arrangement=True
+        "get_clip_notes": "1.28.0",            # source completeness and paging
         "get_session_snapshot": "1.15.0",      # scoping flags; schema v2 -> v3
         "clear_notes_from_clip": "1.15.0",     # arrangement=True
         "delete_arrangement_clip": "1.15.0",   # start_time / start_times

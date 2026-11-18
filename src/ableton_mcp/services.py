@@ -306,15 +306,18 @@ class AbletonService:
         return result
 
     def get_clip_notes(self, track_index: int, clip_index: int,
-                       arrangement: bool = False) -> Dict[str, Any]:
-        return self._send(
-            "get_clip_notes",
-            {
-                "track_index": track_index,
-                "clip_index": clip_index,
-                "arrangement": arrangement,
-            },
-        )
+                       arrangement: bool = False, source_start: float | None = None,
+                       source_end: float | None = None, cursor: str | None = None,
+                       limit: int = 1000) -> Dict[str, Any]:
+        params = {"track_index": track_index, "clip_index": clip_index,
+                  "arrangement": arrangement}
+        for key, value in (("source_start", source_start), ("source_end", source_end),
+                           ("cursor", cursor)):
+            if value is not None:
+                params[key] = value
+        if limit != 1000:
+            params["limit"] = limit
+        return self._send("get_clip_notes", params)
 
     def get_session_snapshot(
         self,
