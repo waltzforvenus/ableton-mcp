@@ -1,5 +1,8 @@
 ## Unreleased — stricter export artifact evidence
 
+- Bind each artifact to its requested container/codec and PCM subtype precision;
+  mislabeled/swapped PCM and MP3 cannot pass or waive requested PCM depth.
+
 - Require exact Save name/destination evidence, fresh PCM/MP3 outputs and full
   decoder duration/rate/depth verification; missing depth no longer passes.
 - Bound UI/decoder subprocess work from preparation through verification;

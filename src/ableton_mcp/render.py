@@ -515,7 +515,9 @@ def export_audio(service: Any, ui: Any, *, scope: str = "main",
             suffix = base[len(file_stem):].strip()
             m = audio_metrics.verify(path, expected_duration_s=plan["expected_duration_s"],
                                      tolerance_s=max(1.0 / sample_rate, 0.01), sample_rate=sample_rate,
-                                     bit_depth=bit_depth, ffmpeg=ffmpeg, ffprobe=ffprobe,
+                                     bit_depth=bit_depth,
+                                     expected_encoding="mp3" if path.endswith(".mp3") else file_type,
+                                     ffmpeg=ffmpeg, ffprobe=ffprobe,
                                      timeout_s=remaining("verification"), clock=clock)
             remaining("verification")
             m["track"] = suffix or ("Main" if scope == "main" else None)

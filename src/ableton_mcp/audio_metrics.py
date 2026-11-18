@@ -108,7 +108,7 @@ def parse_ffmpeg_summary(stderr: str) -> Dict[str, Any]:
 
 def _probe(ffprobe: str, path: str, run: Runner) -> Dict[str, Any]:
     code, out, err = run([ffprobe, "-v", "error", "-show_entries",
-                          "format=duration:stream=sample_rate,channels,"
+                          "format=duration,format_name:stream=sample_rate,channels,"
                           "bits_per_sample,bits_per_raw_sample,sample_fmt,codec_name",
                           "-select_streams", "a:0", "-of", "json", path], 30.0)
     if code != 0:
@@ -128,6 +128,7 @@ def _probe(ffprobe: str, path: str, run: Runner) -> Dict[str, Any]:
         "channels": int(stream.get("channels") or 0) or None,
         "bit_depth": bits,
         "codec": stream.get("codec_name"),
+        "container": (data.get("format") or {}).get("format_name"),
     }
 
 
@@ -293,7 +294,7 @@ def verify(path: str, expected_duration_s: Optional[float] = None,
            bit_depth: Optional[int] = None,
            max_true_peak_dbtp: Optional[float] = None,
            min_lufs: Optional[float] = None, max_lufs: Optional[float] = None,
-           allow_tail_cut: bool = False, **kw: Any) -> Dict[str, Any]:
+           allow_tail_cut: bool = False, expected_encoding: Optional[str] = None, **kw: Any) -> Dict[str, Any]:
     """``analyze`` plus pass/fail checks; ``ok`` is True only if every
     requested check passed and the file is neither silent nor clipped."""
     m = analyze(path, **kw)
@@ -306,7 +307,30 @@ def verify(path: str, expected_duration_s: Optional[float] = None,
             failures.append(f"duration {d} s, expected {expected_duration_s} s ±{tolerance_s}")
     if sample_rate is not None and m.get("sample_rate") != sample_rate:
         failures.append(f"sample rate {m.get('sample_rate')}, expected {sample_rate}")
-    lossy = m.get("codec") in ("mp3", "aac", "vorbis", "opus")
+    # The requested role is supplied by the export plan, never inferred from
+    # observed codec or filename. Codec names encode PCM subtype/precision;
+    # sample_fmt alone describes the decoder's storage, not source precision.
+    codec = m.get("codec")
+    if expected_encoding is not None:
+        allowed = {"wav": {"pcm_s16le", "pcm_s24le", "pcm_s32le", "pcm_f32le"},
+                   "aiff": {"pcm_s16be", "pcm_s24be", "pcm_s32be", "pcm_f32be"},
+                   "flac": {"flac"}, "mp3": {"mp3"}}
+        m["expected_encoding"] = expected_encoding
+        if (expected_encoding not in allowed or
+                m.get("container") != expected_encoding or
+                codec not in allowed.get(expected_encoding, set())):
+            failures.append(f"encoding {m.get('container')}/{codec}, expected {expected_encoding}")
+        if expected_encoding in ("wav", "aiff") and bit_depth is not None:
+            endian = "le" if expected_encoding == "wav" else "be"
+            subtypes = {f"pcm_s{bit_depth}{endian}"}
+            if bit_depth == 32:
+                subtypes.add(f"pcm_f32{endian}")
+            if codec not in subtypes:
+                failures.append(f"PCM subtype {codec}, expected {bit_depth}-bit {expected_encoding}")
+    lossy = expected_encoding == "mp3" and codec == "mp3" and m.get("container") == "mp3"
+    if expected_encoding is None:
+        # Preserve standalone callers' historical codec-aware behavior.
+        lossy = codec in ("mp3", "aac", "vorbis", "opus")
     m["bit_depth_check"] = "not_applicable" if lossy else "required" if bit_depth is not None else "not_requested"
     if not lossy and bit_depth is not None and m.get("bit_depth") != bit_depth:
         failures.append(f"bit depth {m.get('bit_depth')}, expected {bit_depth}")

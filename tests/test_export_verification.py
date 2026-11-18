@@ -239,3 +239,65 @@ def test_invalid_audio_is_never_success(tmp_path):
     path = tmp_path/'invalid.wav'
     path.write_bytes(b'not audio')
     with pytest.raises(ValueError): audio_metrics.verify(str(path),expected_duration_s=2)
+
+
+@pytest.mark.parametrize('container,codec,depth,expected,ok', [
+    ('mp3', 'mp3', 32, 'wav', False),
+    ('wav', 'pcm_s24le', 24, 'mp3', False),
+    ('aiff', 'pcm_s24be', 24, 'wav', False),
+    (None, 'pcm_s24le', 24, 'wav', False),
+    ('wav', None, 24, 'wav', False),
+    ('wav', 'pcm_s16le', 16, 'wav', False),
+    ('wav', 'pcm_s16le', 24, 'wav', False),
+    ('wav', 'pcm_s24le', 24, 'wav', True),
+    ('aiff', 'pcm_s24be', 24, 'aiff', True),
+    ('flac', 'flac', 24, 'flac', True),
+    ('mp3', 'mp3', 32, 'mp3', True),
+])
+def test_requested_encoding_not_inferred_from_suffix(monkeypatch, container, codec, depth, expected, ok):
+    monkeypatch.setattr(audio_metrics, 'analyze', lambda *a, **k: dict(
+        decoded=True, decoded_duration_s=2, sample_rate=44100,
+        container=container, codec=codec, bit_depth=depth, warnings=[]))
+    result = audio_metrics.verify('misleading.wav', expected_encoding=expected,
+                                  expected_duration_s=2, sample_rate=44100, bit_depth=24)
+    assert result['ok'] is ok, result
+    if expected == 'wav':
+        assert result['bit_depth_check'] == 'required'
+
+
+@pytest.mark.parametrize('swapped', [False, True])
+def test_paired_export_checks_each_requested_encoding(tmp_path, monkeypatch, swapped):
+    from pathlib import Path
+    class UI(FakeExportUI):
+        def save_panel(self, action, **kw):
+            result = super().save_panel(action, **kw)
+            if action == 'save':
+                path = tmp_path/'renders'/'mix.wav'
+                path.with_suffix('.mp3').write_bytes(path.read_bytes())
+            return result
+    def analyze(path, **kw):
+        mp3 = Path(path).suffix == '.mp3'
+        if swapped: mp3 = not mp3
+        return dict(path=path, decoded=True, decoded_duration_s=2, sample_rate=44100,
+                    container='mp3' if mp3 else 'wav', codec='mp3' if mp3 else 'pcm_s24le',
+                    bit_depth=32 if mp3 else 24, warnings=[])
+    monkeypatch.setattr(audio_metrics, 'analyze', analyze)
+    ui = UI(tmp_path)
+    result = _export(tmp_path, ui, mp3=True)
+    assert result['ok'] is (not swapped), result
+    assert len(result['files']) == 2
+    assert sum(c[:2] == ('panel', 'save') for c in ui.calls) == 1
+    assert len(list((tmp_path/'renders').iterdir())) == 2
+
+
+def test_wav_bytes_cannot_satisfy_mp3_artifact(tmp_path):
+    class UI(FakeExportUI):
+        def save_panel(self, action, **kw):
+            result = super().save_panel(action, **kw)
+            if action == 'save':
+                path = tmp_path/'renders'/'mix.wav'
+                path.with_suffix('.mp3').write_bytes(path.read_bytes())
+            return result
+    result = _export(tmp_path, UI(tmp_path), mp3=True)
+    assert result['ok'] is False
+    assert [f['ok'] for f in result['files']].count(False) == 1

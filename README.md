@@ -859,7 +859,10 @@ by humans/other helpers is outside this server's queue; do not edit during a job
 Exports now require an exact non-null Save filename and destination readback,
 then fresh, stable requested PCM/MP3 artifacts, a complete error-free decoder
 pass, decoded duration within max(one sample, 0.01 seconds), requested rate and
-known PCM depth. Lossy depth is explicitly not applicable. Header duration or
+known PCM depth. Each requested artifact must independently match its probed
+container and codec (including PCM subtype precision); an MP3 suffix is not
+MP3 evidence. Lossy depth is not applicable only for the requested, verified
+MP3 artifact. Unknown or mismatched encoding fails without re-export. Header duration or
 file existence alone cannot pass. Verification retains the job/UI owner lease.
 UI subprocesses and decoder passes share bounded remaining operation budgets;
 expiry after admission requires reconciliation, never an automatic retry.
