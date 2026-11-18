@@ -249,7 +249,7 @@ def transfer_live_lock(ctx: Context, from_owner: str, to_owner: str,
 
     Requires a configured trusted verifier of owner/recipient authorization and
     fresh saved current-set evidence bound to this generation. Default unsupported.
-    Active or uncertain export jobs block handoff. Does not save or touch Live.
+    Active or uncertain operations and export jobs block handoff. Does not save or touch Live.
     """
     result = _deps(ctx).service.transfer_live_lock(from_owner, to_owner,
                                                 save_proof, expected_generation)
@@ -270,10 +270,11 @@ def release_live_lock(ctx: Context, holder: str, set_path: Optional[str] = None,
     - save_first: save (as save_set does) and then release, in one call.
     - allow_ui_automation: consent for save_first to use Live's File menu.
 
-    Refused (and the lock stays held) unless the .als on disk is at least as
-    new as your last edit through this server, and readable Live window
-    titles show that set with no unsaved marker and no
-    Save or Export dialog open.
+    Refused unless this server observed a fresh save bound to the current
+    generation, with matching AXDocument paths before/after save and at release,
+    an explicitly clean title, no dialog, and file freshness after acquisition
+    and edits. Caller path/title/mtime alone and API saved=True without observed
+    verification cannot unlock. Active/uncertain operations retain ownership.
     """
     result = _deps(ctx).service.release_live_lock(
         holder, set_path, save_first=save_first,

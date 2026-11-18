@@ -244,7 +244,8 @@ def test_checkpoint_into_an_explicit_folder(als, tmp_path):
 def test_save_needs_the_lock_and_release_can_save_first(als, tmp_path):
     lock = LiveLock(str(tmp_path / "lock" / "live.lock"), require=True,
                     clock=lambda: 1_005.0)
-    ui = FakeUI(set_path=als)
+    from test_lock_quiescence import DocumentUI
+    ui = DocumentUI.make(als)
     service, client = _service(ui, lock=lock)
     with pytest.raises(LockError):
         service.save_set(allow_ui_automation=True)

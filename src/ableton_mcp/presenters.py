@@ -121,6 +121,8 @@ def lock_refusal(e: Any) -> str:
                   "generation_conflict", "save_evidence_unknown"):
         return f"Refused: {reason}. No verified handoff; the lock stays held. " \
                "Owner authorization and fresh current-set save evidence are required."
+    if reason == "operations_unresolved":
+        return "Refused: an admitted or uncertain Live operation requires reconciliation; the lock stays held. Do not retry or force handoff."
     if reason == "disabled":
         return "The Live lock is not configured in this server process."
     return f"Refused by the Live lock: {reason}"

@@ -16,6 +16,8 @@ string, success and error alike, belongs to the View (presenters.py).
 
 from __future__ import annotations
 
+from functools import wraps
+
 import hashlib
 import json
 import os
@@ -152,6 +154,41 @@ class AudioAuthRequired(Exception):
         self.command = command
 
 
+def _cue_not_toggled(command, error):
+    # Existing native cue refusal guarantees no toggle; never generalize a
+    # timeout or an arbitrary error's "retry" wording into replay permission.
+    return (command in ("create_locator", "delete_locator")
+            and "Transport did not settle" in str(error)
+            and "no cue was toggled" in str(error) and "retry" in str(error))
+
+
+def _uncertain_mutation(value):
+    if isinstance(value, dict):
+        return (value.get("reconciliation_required") is True
+                or value.get("outcome_unknown") is True
+                or any(_uncertain_mutation(v) for v in value.values()))
+    if isinstance(value, (list, tuple)):
+        return any(_uncertain_mutation(v) for v in value)
+    return False
+
+
+def _live_operation(edit=False, save=False):
+    def decorate(method):
+        @wraps(method)
+        def guarded(self, *args, **kwargs):
+            lock = self._lock
+            with lock.operation(method.__name__, edit=edit, exclusive=save) if lock else nullcontext() as admission:
+                generation = (lock.read() or {}).get("generation") if lock else None
+                result = method(self, *args, **kwargs)
+                if admission is not None and _uncertain_mutation(result):
+                    admission["uncertain"] = True
+                if save and lock and not admission["uncertain"]:
+                    lock.observe_save(result, generation)
+                return result
+        return guarded
+    return decorate
+
+
 class AbletonService:
     """The Model: constructed once, in the composition root (app.build_deps).
 
@@ -216,17 +253,23 @@ class AbletonService:
         if spec.gated:
             self._handshake.require(name, spec.min_script_version,
                                     send_command=self._client.send_command)
-        if on_dispatch is not None:
-            on_dispatch()
-        try:
-            return self._client.send_command(name, params or {})
-        finally:
-            # Stamped even when the send raised: a timed-out main-thread task
-            # may still have changed the set, and an over-eager stamp only
-            # asks for one more save, while a missed one could let release
-            # accept a file older than the last edit.
-            if guarded and spec.lock == "write":
-                self._lock.touch()
+        with self._lock.operation(name, edit=spec.lock == "write") if guarded else nullcontext() as admission:
+            if on_dispatch is not None:
+                try:
+                    on_dispatch()
+                except Exception:
+                    if admission is not None:
+                        admission["proven_refusal"] = True
+                    raise
+            try:
+                result = self._client.send_command(name, params or {})
+            except Exception as exc:
+                if admission is not None and _cue_not_toggled(name, exc):
+                    admission["proven_refusal"] = True
+                raise
+            if admission is not None and _uncertain_mutation(result):
+                admission["uncertain"] = True
+            return result
 
     def _require_lock(self) -> LiveLock:
         if self._lock is None:
@@ -322,12 +365,15 @@ class AbletonService:
                 raise LockError("save_failed", save=save)
             set_path = set_path or (save.get("verified") or {}).get("set_path")
         titles = None
+        current_path = None
         if self._ui is not None and self._ui.available:
             titles = self._ui.window_titles()
+            windows = summarize_windows(self._ui.live_windows())
+            current_path = windows.get("set_path")
             if not set_path:
-                windows = summarize_windows(self._ui.live_windows())
                 set_path = self._resolve_set_path(windows, None)["set_path"]
-        result = lock.release(holder, set_path or "", live_windows=titles)
+        result = lock.release(holder, set_path or "", live_windows=titles,
+                              current_set_path=current_path)
         if save is not None:
             result["save"] = save
         return result
@@ -563,6 +609,7 @@ class AbletonService:
         with self._render_jobs.idle_guard() if self._render_jobs else nullcontext():
             return self._save_set(allow_ui_automation, set_path, timeout_s)
 
+    @_live_operation(save=True)
     def _save_set(self, allow_ui_automation: bool = False,
                  set_path: Optional[str] = None,
                  timeout_s: float = 30.0) -> Dict[str, Any]:
@@ -664,6 +711,10 @@ class AbletonService:
         return {
             "set_name": after.get("set_name") or before.get("set_name"),
             "title_before": next(iter(before.get("titles") or []), None),
+            "title_after": next(iter(after.get("titles") or []), None),
+            "document_before": before.get("set_path"),
+            "document_after": after.get("set_path"),
+            "modal_after": after.get("modal_dialog"),
             "unsaved_before": before.get("unsaved"),
             "unsaved_after": after.get("unsaved"),
             "set_path": path,
@@ -751,6 +802,7 @@ class AbletonService:
     def cancel_export_job(self, job_id: str) -> dict:
         return self._require_jobs().cancel(job_id)
 
+    @_live_operation(edit=True)
     def run_export_job(self, request: dict, stage) -> dict:
         options = dict(request["options"])
         ui = self._require_ui(options.pop("allow_ui_automation", False))
@@ -772,6 +824,7 @@ class AbletonService:
             result.update(ok=False, job=final)
         return result
 
+    @_live_operation()
     def export_audio(self, allow_ui_automation: bool = False,
                      evidence_dir: Optional[str] = None,
                      **options: Any) -> Dict[str, Any]:
@@ -784,6 +837,7 @@ class AbletonService:
             self, ui, evidence_dir=evidence_dir or self._evidence_dir,
             ffmpeg=self._ffmpeg, **options)
 
+    @_live_operation(edit=True)
     def bounce_track(self, track_index: int, mode: str,
                      allow_ui_automation: bool = False,
                      expect_track_name: Optional[str] = None,
@@ -1283,7 +1337,7 @@ class AbletonService:
         except LockError:
             raise
         except Exception as e:
-            if "did not settle" not in str(e) or "retry" not in str(e):
+            if not _cue_not_toggled(command, e):
                 raise
             time.sleep(0.25)
             return self._send(command, params)

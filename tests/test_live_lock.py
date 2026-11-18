@@ -153,16 +153,13 @@ def test_release_refuses_a_set_older_than_the_last_edit(lock_path, tmp_path):
     assert os.path.exists(lock_path)  # the lock stays held
 
 
-def test_release_after_a_newer_save_removes_the_lock(lock_path, tmp_path):
+def test_newer_file_and_clean_title_are_not_save_identity(lock_path, tmp_path):
     lock = _lock(lock_path, clock=Clock(2_000.0))
     lock.acquire("session-a")
     path = _saved_set(tmp_path, 2_001.0)
-    result = lock.release("session-a", path,
-                          live_windows=["song [proj] - Ableton Live 12 Suite"])
-    assert result["released"] is True
-    assert not os.path.exists(lock_path)
-    assert lock.holder is None
-    assert "release session-a" in open(lock_path + ".log").read()
+    with pytest.raises(LockError, match="save_evidence_unknown"):
+        lock.release("session-a", path, live_windows=["song - Ableton Live"])
+    assert lock.read()["holder"] == "session-a"
 
 
 @pytest.mark.parametrize("windows, problem", [
@@ -286,7 +283,9 @@ def test_transport_moves_do_not_make_a_clean_save_look_stale(lock_path, tmp_path
     clock.t = 2_000.0
     service.switch_to_arrangement_view()           # view/transport afterwards
     service.set_current_song_time(16.0)
-    assert lock.release("session-a", path, live_windows=["song - Ableton Live"])["released"] is True
+    assert lock.read()["last_edit_ts"] == 1000.0
+    with pytest.raises(LockError, match="save_evidence_unknown"):
+        lock.release("session-a", path, live_windows=["song - Ableton Live"])
 
 
 def test_a_failed_send_still_stamps_the_edit(lock_path):
@@ -334,9 +333,10 @@ def test_tool_round_trip_acquire_then_write_then_release(lock_path, tmp_path):
     assert "older than your last edit" in tools.release_live_lock(
         ctx, holder="session-a", set_path=early)
     saved = _saved_set(tmp_path, 1_001.0)
-    service._ui = SimpleNamespace(available=True, window_titles=lambda:["song - Ableton Live"])
+    service._ui = SimpleNamespace(available=True, window_titles=lambda:["song - Ableton Live"],
+                                  live_windows=lambda:{"windows":[{"title":"song - Ableton Live"}]})
     assert tools.release_live_lock(ctx, holder="session-a", set_path=saved).startswith(
-        "Released the Live lock")
+        "Refused: save_evidence_unknown")
 
 
 def test_every_lock_reason_has_wording():

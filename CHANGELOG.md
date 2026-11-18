@@ -1,3 +1,15 @@
+## Unreleased — A7 review safety repair
+
+- Persist mutation/UI admission before dispatch; refuse transfer/resume/release
+  until quiescent, retaining timeout/crash uncertainty across process instances.
+- Make save evidence capture exclusive; invalidate it on edit admission.
+- Refuse old same-name files and unknown save baselines. Release requires internal
+  generation-bound observed save with matching AXDocument before/after save and
+  at release, an explicit clean title, and acquisition/edit freshness.
+- Default authenticated transfer/resume and unresolved-operation recovery remain
+  unsupported; bare-title/unknown dirty-state saves cannot authorize release.
+- Server-local changes only; native bundle/version pair remain unchanged.
+
 ## Unreleased — bounded main-thread dispatch (1.34.0)
 
 - Serialize all command handlers, including reads and handshake, on Live's

@@ -225,3 +225,12 @@ adoption is intentionally removed. Older writers are not trusted to preserve
 these fields; missing identity/generation fails closed. Resume/transfer require
 an injected trusted verifier, default unsupported, and must never expire/steal a
 lock or use mtime alone as native save proof. No wire command/version changes.
+
+A7 review repair adds persisted operations and internal save_observation. All
+cooperating guarded dispatch/UI workflows reserve before mutation; ownership
+changes refuse active/uncertain reservations. Save admission is exclusive.
+Old writers that discard these fields are incompatible. Never auto-clear a crash
+reservation. Release requires generation-bound workflow evidence plus observed
+AXDocument equality before/after save and at release, explicit clean state,
+mtime advancement and acquisition/edit freshness. Unknown/ambiguous evidence
+retains ownership. No native save attestation or recovery provider is invented.

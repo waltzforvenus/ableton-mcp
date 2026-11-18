@@ -407,21 +407,21 @@ before anything is sent:
   `acquire_live_lock(holder, task)` — unless the server runs with
   `ABLETON_MCP_REQUIRE_LOCK=0`, the opt-out for single-user setups (a lock
   someone else holds is still honoured then).
-- The lock **never expires**. `release_live_lock(holder, set_path)` succeeds
-  only once the saved `.als` is at least as new as the holder's last edit and,
-  on macOS, Live's window shows that set with no unsaved `*` and no Save or
-  Export dialog.
+- The lock **never expires**. Release requires generation-bound observed save
+  evidence, equal AXDocument paths before/after save and at release, a readable
+  clean title, and file freshness after acquisition and edits. A newer same-name
+  file alone cannot release an unknown baseline.
 - `stop_playback` is never refused; reads never need the lock.
 
 The file is plain JSON at `ABLETON_MCP_LOCK_FILE` (default
 `~/.ableton-mcp/live.lock`) with an flock'd `<file>.mutex`, so command-line
-helpers can share it: take the lock there under a name, then call
-`acquire_live_lock` with the same name to adopt it. `get_live_status` shows
-who holds it.
+helpers can inspect it. Name-only adoption is not supported. Older writers
+must preserve identity/generation/reservations or are incompatible writers.
+get_live_status shows who holds it.
 
 ### Tool reference
 
-All 86 tools the server exposes. Tools marked **†** are added by this fork and
+All 94 tools the server exposes. Tools marked **†** are added by this fork and
 are not present upstream.
 
 #### Session & info
@@ -434,8 +434,10 @@ are not present upstream.
 | `get_remote_script_info` | — | Report Ableton Remote Script version and capabilities (handshake) |
 | `get_mix_state` † | — | The mixer at a glance: per track/return/main — volume and pan as displayed, mute, solo, arm, sends, output routing, devices (with off state) — a few KB |
 | `get_live_status` † | — | One-call preflight: reachable, versions, transport/record, soloed/muted/armed tracks, last event time, the Live lock, and (macOS) set name, unsaved marker, modal dialog and user idle time |
-| `acquire_live_lock` † | `holder`, `task`? | Take the shared Live lock (required before state-changing tools unless `ABLETON_MCP_REQUIRE_LOCK=0`); adopts a lock already held under the same name |
-| `release_live_lock` † | `holder`, `set_path`?, `save_first`?, `allow_ui_automation`? | Release the lock only after a verified save (.als newer than the last edit; no unsaved marker or dialog) |
+| `acquire_live_lock` † | `holder`, `task`? | Take the shared Live lock (required before state-changing tools unless `ABLETON_MCP_REQUIRE_LOCK=0`); never adopts another instance by holder name |
+| `resume_live_lock` † | owner, owner_proof, expected_generation | Authenticated resume; default unsupported; active/uncertain operations refuse |
+| `transfer_live_lock` † | from_owner, to_owner, save_proof, expected_generation | Atomic authenticated saved handoff; default unsupported; active/uncertain operations refuse |
+| `release_live_lock` † | `holder`, `set_path`?, `save_first`?, `allow_ui_automation`? | Release only with generation-bound observed save and matching AXDocument/clean title; no active or uncertain operations |
 | `set_tempo` | `tempo` | Set the tempo of the Ableton session |
 | `get_song_scale` † | — | Read the Set's key and scale (Live 12+): root note, scale name, Scale Mode and intervals |
 | `set_song_scale` † | `root_note`?, `scale_name`?, `scale_mode`? | Set the Set's root (0-11 or a note name like `"F#"` / `"Bb"`), scale name and Scale Mode (Live 12+); reports what Live reads back and whether it matched |
@@ -899,8 +901,25 @@ Acquisition no longer stamps last_edit_ts. It starts with save_state=unknown;
 actual modifying commands stamp dirty and advance generation. Old/helper records
 remain held and cannot be adopted by matching a name; trusted migration/recovery
 is not available by default. Never delete a stale lock to bypass this boundary.
-Release retains saved-file plus readable clean matching-window checks and now
-refuses unknown UI evidence. These legacy checks are NOT cryptographic/native
-save proof and cannot establish a full path from duplicate set basenames; A7
-transfer requires the separately trusted fresh evidence provider. Native handoff
-acceptance remains held pending save-verified production handoff.
+All admitted guarded wire commands and service UI save/render/bounce workflows
+reserve the lock record before dispatch. Musical-write admission invalidates save
+provenance and advances generation. Transfer, resume (including another process)
+and release refuse active or uncertain reservations, even with trusted proof.
+Save observation is exclusive against other admitted operations. Timeout, crash
+or structured native uncertainty retains a reservation; no automatic clearing,
+retry, rollback, expiry or restart-based recovery is provided. A separate trusted
+reconciliation mechanism remains deferred. Proven pre-dispatch cancellation and
+the existing native no-cue-toggle refusal do not manufacture uncertainty.
+
+Release requires internal save-workflow provenance: advanced file mtime,
+explicitly clean after-title, no modal, and equal AXDocument paths before/after
+save and again at release. Evidence is bound to generation; a new edit invalidates
+it. Acquisition time is a separate freshness floor, never an edit stamp.
+Caller paths, Spotlight/title matches, native saved=True/verified=None,
+greyed-save/no advancement, and unknown dirty state (including bare-title builds)
+are insufficient to release. This is bounded UI/file evidence, not an invented
+native save-attestation API. Human/external edits outside this cooperating protocol
+cannot be serialized; actual Live acceptance remains held.
+
+Default resume/transfer identity authorization is still absent. A7 is a useful
+safety subset, NOT full native authenticated handoff/recovery completion.
