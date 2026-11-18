@@ -36,6 +36,12 @@ jobs:
       - name: Install dependencies
         run: uv sync --extra dev
 
+      # export_audio / bounce_track verify the rendered file with ffmpeg and
+      # ffprobe (Homebrew on the Mac this runs against); without them the
+      # render tests report ok=false and CI has been red since PR #26.
+      - name: Install ffmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+
       - name: Run tests (no Ableton, no network)
         run: uv run pytest
 
