@@ -39,6 +39,7 @@ class AbletonConnection:
     # transport tests can use a sub-second budget instead of stalling the
     # suite for 15 s per timeout case. Production always uses the default.
     receive_timeout: float = 15.0
+    clock: Callable[[], float] = time.monotonic
 
     # One socket, several threads: tool calls run on the MCP worker while the
     # passive poller drains events on its own thread. Serialise so their
@@ -93,55 +94,32 @@ class AbletonConnection:
             except Exception:
                 pass
 
-    def receive_full_response(self, sock, buffer_size=8192):
-        """Receive the complete response, potentially in multiple chunks"""
+    def receive_full_response(self, sock, buffer_size=8192, deadline=None):
+        """One monotonic receive budget, never renewed by partial chunks."""
+        if deadline is None:
+            deadline = self.clock() + self.receive_timeout
         chunks = []
-        # The caller has already set this exchange's timeout from the
-        # commands.py registry. Resetting it here to receive_timeout is what
-        # silently capped every command at 15 s, create_audio_clip's 65 s
-        # budget included (upstream #139).
-
-        try:
-            while True:
-                try:
-                    chunk = sock.recv(buffer_size)
-                    if not chunk:
-                        if not chunks:
-                            raise Exception("Connection closed before receiving any data")
-                        break
-
-                    chunks.append(chunk)
-
-                    # Check if we've received a complete JSON object
-                    try:
-                        data = b''.join(chunks)
-                        json.loads(data.decode('utf-8'))
-                        logger.info(f"Received complete response ({len(data)} bytes)")
-                        return data
-                    except json.JSONDecodeError:
-                        # Incomplete JSON, continue receiving
-                        continue
-                except socket.timeout:
-                    logger.warning("Socket timeout during chunked receive")
-                    break
-                except (ConnectionError, BrokenPipeError, ConnectionResetError) as e:
-                    logger.error(f"Socket connection error during receive: {str(e)}")
-                    raise
-        except Exception as e:
-            logger.error(f"Error during receive: {str(e)}")
-            raise
-
-        # If we get here, we either timed out or broke out of the loop
-        if chunks:
+        while True:
+            remaining = deadline - self.clock()
+            if remaining <= 0:
+                raise socket.timeout("Receive deadline expired")
+            sock.settimeout(remaining)
+            chunk = sock.recv(buffer_size)
+            if self.clock() >= deadline:
+                raise socket.timeout("Receive deadline expired")
+            if not chunk:
+                raise ConnectionError("Connection closed before complete response")
+            chunks.append(chunk)
             data = b''.join(chunks)
-            logger.info(f"Returning data after receive completion ({len(data)} bytes)")
             try:
                 json.loads(data.decode('utf-8'))
                 return data
             except json.JSONDecodeError:
-                raise Exception("Incomplete JSON response received")
-        else:
-            raise Exception("No data received")
+                continue
+            except UnicodeDecodeError as error:
+                if error.reason == "unexpected end of data":
+                    continue
+                raise
 
     def send_command(self, command_type: str, params: Dict[str, Any] = None) -> Dict[str, Any]:
         """Send a command to Ableton and return the response.
@@ -188,7 +166,8 @@ class AbletonConnection:
             self.sock.settimeout(timeout)
 
             # Receive the response
-            response_data = self.receive_full_response(self.sock)
+            response_data = self.receive_full_response(
+                self.sock, deadline=self.clock() + timeout)
             logger.info(f"Received {len(response_data)} bytes of data")
 
             # Parse the response
