@@ -4,9 +4,9 @@ docs/REFACTOR_PLAN.md section 5 Level 3: install the ``_Framework`` stub,
 import ``remote_script/__init__.py`` itself (never a copy), build
 ``AbletonMCP`` without running ``__init__`` — so no socket is bound and no
 thread is started — then wire a :class:`~fake_ableton.lom.FakeSong`, captured
-``log_message``/``show_message``, an inline ``schedule_message``, and a
+``log_message``/``show_message``, a trap ``schedule_message``, and a
 ``FakeApplication`` onto the instance. Tests drive the real
-``_process_command`` dispatch through :meth:`RemoteScriptHarness.process`.
+main-thread ``_execute_command`` dispatch through :meth:`RemoteScriptHarness.process`.
 """
 
 import importlib.util
@@ -82,23 +82,15 @@ class RemoteScriptHarness(object):
         mcp.show_message = self.messages.append
         mcp.application = lambda: self.app
 
-        if schedule_raises:
-            # Live's schedule_message asserts when called from the main
-            # thread; raising here exercises the script's direct-execution
-            # fallback (except AssertionError: main_thread_task()).
-            def schedule_message(delay, task):
-                self.scheduled.append((delay, task))
-                raise AssertionError("scheduling not allowed on the main thread")
-        else:
-            # Default: run main-thread tasks immediately and synchronously.
-            def schedule_message(delay, task):
-                self.scheduled.append((delay, task))
-                task()
+        def schedule_message(delay, task):
+            self.scheduled.append((delay, task))
+            raise AssertionError("dispatch must not call schedule_message")
 
         mcp.schedule_message = schedule_message
+        mcp._initialize_command_dispatch()
         self.mcp = mcp
 
     def process(self, command):
-        """Run one command dict through the real ``_process_command`` and
+        """Run one command dict through the real main-thread ``_execute_command`` and
         return the response envelope ({"status": ..., ...})."""
-        return self.mcp._process_command(command)
+        return self.mcp._execute_command(command)

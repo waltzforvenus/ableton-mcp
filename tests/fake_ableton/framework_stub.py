@@ -42,6 +42,9 @@ def install_framework_stub():
         def __init__(self, c_instance):
             self._c_instance = c_instance
 
+        def update_display(self):
+            pass
+
         def disconnect(self):
             pass
 
@@ -58,10 +61,7 @@ def install_framework_stub():
             pass
 
         def schedule_message(self, delay, task):
-            # Live schedules onto the main thread; outside Live the nearest
-            # honest behavior is to run the task immediately. The harness
-            # normally shadows this with its own recording version.
-            task()
+            raise AssertionError("foreign scheduling is not a main-thread guarantee")
 
     submodule.ControlSurface = ControlSurface
     package.ControlSurface = submodule

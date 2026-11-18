@@ -289,7 +289,7 @@ def test_midi_clip_is_refused():
     assert "audio clips only" in message
 
 
-def test_edit_runs_on_the_main_thread_and_is_advertised():
+def test_edit_mutation_metadata_and_capabilities_are_preserved():
     harness, _ = _warp_harness()
     module = harness.module
     assert module.COMMANDS["edit_clip_warp_markers"][1] is True
@@ -297,4 +297,6 @@ def test_edit_runs_on_the_main_thread_and_is_advertised():
     assert "edit_clip_warp_markers" in module.SCRIPT_CAPABILITIES
     assert "get_clip_warp_markers" in module.SCRIPT_CAPABILITIES
     _ok(_edit(harness, [{"op": "remove", "beat_time": 4.0}]))
-    assert harness.scheduled, "warp edits must be scheduled onto Live's main thread"
+    # Direct main-thread behavior seam; worker affinity is tested for every
+    # registered handler in test_command_dispatch. No foreign scheduling.
+    assert harness.scheduled == []

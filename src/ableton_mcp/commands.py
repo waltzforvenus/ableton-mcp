@@ -11,7 +11,7 @@ embedded in ``AbletonConnection._send_command_locked`` and the
 
 The Remote Script cannot import this module inside Live, so the two halves
 are reconciled by test, not by import: tests/test_cross_half_contract.py
-asserts this table's modifying set matches the Remote Script's main-thread
+asserts this table's modifying set matches the Remote Script's mutation
 dispatch set, that every command literal the server sends has a row here,
 and that the timeout overrides keep headroom over the script's own queue
 timeouts.
@@ -26,7 +26,7 @@ from dataclasses import dataclass
 class CommandSpec:
     """Metadata for one wire command.
 
-    - ``modifying``: the Remote Script runs it on Live's main thread (the
+    - ``modifying``: the command changes Live state (the
       cross-half contract checks both halves agree).
     - ``timeout``: explicit socket-timeout override in seconds. Without one
       the transport uses its 15 s default, read-only or not: the old 10 s

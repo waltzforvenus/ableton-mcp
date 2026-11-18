@@ -67,7 +67,7 @@ def _registry_modifying_commands():
 
 def _remote_script_commands_table():
     """The Remote Script's module-level COMMANDS literal:
-    name -> (method, main_thread, queue_timeout, advertise)."""
+    name -> (method, modifying, queue_timeout, advertise)."""
     for node in _parse(REMOTE_SCRIPT).body:
         if isinstance(node, ast.Assign):
             for target in node.targets:
@@ -76,9 +76,9 @@ def _remote_script_commands_table():
     raise AssertionError("COMMANDS table not found in the Remote Script")
 
 
-def _remote_script_main_thread_commands():
-    """(b) the commands the Remote Script schedules onto Live's main thread —
-    the COMMANDS rows whose main_thread flag is set."""
+def _remote_script_modifying_commands():
+    """(b) the commands that mutate Live state —
+    the COMMANDS rows whose modifying flag is set."""
     return {
         name
         for name, row in _remote_script_commands_table().items()
@@ -161,11 +161,11 @@ def _remote_script_queue_timeouts():
 
 def test_modifying_command_sets_agree_across_the_halves():
     server_side = _registry_modifying_commands()
-    script_side = _remote_script_main_thread_commands()
+    script_side = _remote_script_modifying_commands()
     # The orphans must still be dispatchable RS-side — vanishing here means
     # they were dropped (or exposed) without updating KNOWN_ORPHANS.
     assert KNOWN_ORPHANS <= script_side, (
-        f"known orphan commands missing from the Remote Script main-thread "
+        f"known orphan commands missing from the Remote Script mutation "
         f"set: {sorted(KNOWN_ORPHANS - script_side)}"
     )
     assert server_side == script_side - KNOWN_ORPHANS, (

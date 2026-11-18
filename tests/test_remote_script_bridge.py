@@ -128,7 +128,18 @@ def test_a_real_command_round_trips_through_the_real_dispatch():
     harness.mcp.running = True
     payload = json.dumps({"type": "get_session_info", "params": {}}).encode("utf-8")
     client = FakeClient([payload[:7], payload[7:]])
-    harness.mcp._handle_client(client)
+    admitted = threading.Event()
+    put = harness.mcp._command_queue.put_nowait
+    def enqueue(req):
+        put(req)
+        admitted.set()
+    harness.mcp._command_queue.put_nowait = enqueue
+    worker = threading.Thread(target=harness.mcp._handle_client, args=(client,))
+    worker.start()
+    assert admitted.wait(1)
+    harness.mcp.update_display()
+    worker.join(1)
+    assert not worker.is_alive()
     assert len(client.sent) == 1
     reply = json.loads(client.sent[0].decode("utf-8"))
     assert reply["status"] == "success"
@@ -192,58 +203,8 @@ def test_browser_tree_standard_fixture_lists_first_level_items():
 
 # ------------------------------------------------- main-thread dispatch safety
 
-def _deferred_harness(monkeypatch, command="delete_track", queue_timeout=0.05):
-    """A harness whose schedule_message queues tasks instead of running them,
-    standing in for a Live tick that has not come round yet, with the
-    command's queue timeout shrunk so the wait expires at once."""
-    harness = make_harness()
-    pending = []
-    harness.mcp.schedule_message = lambda delay, task: pending.append(task)
-    method, main_thread, _timeout, advertise = harness.module.COMMANDS[command]
-    monkeypatch.setitem(harness.module.COMMANDS, command,
-                        (method, main_thread, queue_timeout, advertise))
-    return harness, pending
-
-
-def test_a_timed_out_write_never_lands_later(monkeypatch):
-    """Upstream #140: a task still queued when the client is told 'timeout'
-    used to run on the next tick anyway, editing the set behind the
-    client's back."""
-    harness, pending = _deferred_harness(monkeypatch)
-    track_count = len(harness.song.tracks)
-
-    response = harness.process({"type": "delete_track",
-                                "params": {"track_index": 0}})
-    assert response["status"] == "error"
-    assert "not executed" in response["message"]
-
-    assert len(pending) == 1
-    pending[0]()  # Live's tick finally comes round
-    assert len(harness.song.tracks) == track_count
-    assert any("already timed out" in line for line in harness.logs)
-
-
-def test_a_write_that_started_before_the_timeout_reports_unknown(monkeypatch):
-    """A task already inside its handler when the wait expires cannot be
-    called back; the reply must say the outcome is unknown, not that the
-    command did not run."""
-    harness, _pending = _deferred_harness(monkeypatch)
-    real_delete = harness.mcp._delete_track
-    release = threading.Event()
-
-    def held_delete(**params):
-        release.wait(timeout=2.0)  # still working when the wait expires
-        return real_delete(**params)
-
-    harness.mcp._delete_track = held_delete
-    harness.mcp.schedule_message = (
-        lambda delay, task: threading.Thread(target=task, daemon=True).start())
-
-    response = harness.process({"type": "delete_track",
-                                "params": {"track_index": 0}})
-    release.set()
-    assert response["status"] == "error"
-    assert "outcome is unknown" in response["message"]
+# Pending/running timeout races are covered by test_command_dispatch using
+# a real worker and explicit main tick, never foreign inline scheduling.
 
 
 def test_a_write_inside_its_budget_is_unaffected():

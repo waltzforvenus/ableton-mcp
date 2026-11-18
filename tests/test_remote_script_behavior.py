@@ -204,8 +204,8 @@ def test_set_plugin_preset_by_index():
     assert result["selected_name"] == "Bass Growl"
     assert result["verified"] is True
     assert _selection(harness, device_index) == 3
-    # A state change: scheduled onto Live's main thread.
-    assert len(harness.scheduled) == 1
+    # Main-thread behavior seam: no worker scheduling involved.
+    assert harness.scheduled == []
 
 
 def test_set_plugin_preset_by_exact_name_ignores_case_and_beats_a_fragment():
@@ -362,7 +362,7 @@ def test_set_plugin_preset_reports_unverified_when_the_write_does_not_read_back(
     assert result["selected_index"] == 0
     assert result["selected_name"] == "Init"
     assert result["verified"] is False
-    assert len(harness.scheduled) == 1
+    assert harness.scheduled == []
 
 
 # --------------------------------------------------------------------------
@@ -1872,13 +1872,9 @@ def test_handler_exception_returns_a_status_error_envelope():
     assert message == "Track index out of range"
 
 
-def test_schedule_message_assertion_falls_back_to_direct_execution():
-    # In Live, schedule_message asserts when the caller is already on the
-    # main thread; _process_command then runs the task directly. Prove the
-    # fallback by making schedule_message raise and observing the command
-    # still succeed.
+def test_direct_main_thread_seam_does_not_schedule_or_use_assertion_fallback():
     harness = make_harness(schedule_raises=True)
     result = _ok(harness.process(_cmd("set_tempo", tempo=140.0)))
     assert result == {"tempo": 140.0}
     assert harness.song.tempo == 140.0
-    assert len(harness.scheduled) == 1  # schedule_message was attempted
+    assert harness.scheduled == []

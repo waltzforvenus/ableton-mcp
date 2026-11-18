@@ -107,15 +107,16 @@ enforcement, not a substitute for reading this.
    `test_every_tool_has_error_wording_and_a_presenter` enforces the
    coverage.
 4. **Registry row — `src/ableton_mcp/commands.py`.** `modifying=True` if the
-   Remote Script runs it on Live's main thread; an explicit `timeout` if the
+   command changes Live state; an explicit `timeout` if the
    script's queue timeout needs headroom (server ≥ script + 5 s);
    `gated=True` unless the command is in `handshake.LEGACY_CAPABILITIES`
    (the floor) — `test_every_registry_row_is_gated_unless_floor_or_probe`
    rejects ungated non-floor rows. Consider `min_script_version` (§4 below).
 5. **Remote Script — `remote_script/__init__.py`.** The `_your_command`
    handler (every parameter defaulted — dispatch calls `**params`) and its
-   row in the `COMMANDS` table: `(method, main_thread, queue_timeout,
-   advertise)`. State changes must set `main_thread=True`. **Set the
+   row in the `COMMANDS` table: `(method, modifying, queue_timeout,
+   advertise)`. State changes must set modifying=True. All handlers, including reads,
+   run through the bounded update_display main-thread queue. **Set the
    advertise flag deliberately**: `True` puts it in `SCRIPT_CAPABILITIES`
    (part of the frozen `get_script_info` wire response); the dispatchable
    set is deliberately wider than the advertised one, and
