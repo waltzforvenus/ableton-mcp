@@ -300,6 +300,21 @@ def _bounded_export(fn):
     return bounded
 
 
+def validate_export_options(*, timeout_s=900.0, file_stem, **options):
+    """Pure local checks shared by service admission and direct renderer calls."""
+    if not math.isfinite(timeout_s) or timeout_s <= 0:
+        raise ValueError("timeout_s must be positive and finite")
+    if not file_stem or "/" in file_stem:
+        raise ValueError("file_stem must be a plain file name without folders")
+
+
+def validate_bounce_options(mode, confirm_destructive):
+    if mode not in BOUNCE_MENU:
+        raise ValueError(f"mode must be one of {sorted(BOUNCE_MENU)}")
+    if mode == "bounce_in_place" and not confirm_destructive:
+        raise RenderRefused("destructive", mode=mode)
+
+
 @_bounded_export
 def export_audio(service: Any, ui: Any, *, scope: str = "main",
                  track: Optional[int] = None, start_beat: float = 0.0,
@@ -315,6 +330,7 @@ def export_audio(service: Any, ui: Any, *, scope: str = "main",
                  sleep: Callable[[float], None] = time.sleep,
                  clock: Callable[[], float] = time.monotonic,
                  job_stage: Optional[Callable[[str], None]] = None) -> Dict[str, Any]:
+    validate_export_options(timeout_s=timeout_s, file_stem=file_stem)
     started = clock()
     if not math.isfinite(timeout_s) or timeout_s <= 0:
         raise ValueError("timeout_s must be positive and finite")
@@ -326,8 +342,6 @@ def export_audio(service: Any, ui: Any, *, scope: str = "main",
         return left
     warnings: List[str] = []
     output_dir = os.path.abspath(os.path.expanduser(output_dir or ""))
-    if not file_stem or "/" in file_stem:
-        raise ValueError("file_stem must be a plain file name without folders")
     if os.path.realpath(output_dir).startswith(("/tmp", "/private/tmp")) and evidence_dir is None:
         warnings.append("output_dir is under /tmp: some image/file viewers refuse it")
 
@@ -547,10 +561,7 @@ def bounce_track(service: Any, ui: Any, *, track_index: int, mode: str,
                  checkpoint_label: Optional[str] = None,
                  ffmpeg: Optional[str] = None, ffprobe: Optional[str] = None,
                  job_stage: Optional[Callable[[str], None]] = None) -> Dict[str, Any]:
-    if mode not in BOUNCE_MENU:
-        raise ValueError(f"mode must be one of {sorted(BOUNCE_MENU)}")
-    if mode == "bounce_in_place" and not confirm_destructive:
-        raise RenderRefused("destructive", mode=mode)
+    validate_bounce_options(mode, confirm_destructive)
     service.check_ui_write("bounce_track")
     windows = summarize_windows(ui.live_windows())
     if not windows["readable"]:

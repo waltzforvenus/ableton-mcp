@@ -1,5 +1,10 @@
 ## Unreleased — A7 review safety repair
 
+- Recheck current readable/explicitly-clean/modal-free structured window state
+  at release; historical clean evidence cannot authorize unknown current state.
+- Run pure render authorization/options preflight before creating reservations,
+  including job entry; preserve unrelated genuine uncertainty on refusal.
+
 - Persist mutation/UI admission before dispatch; refuse transfer/resume/release
   until quiescent, retaining timeout/crash uncertainty across process instances.
 - Make save evidence capture exclusive; invalidate it on edit admission.

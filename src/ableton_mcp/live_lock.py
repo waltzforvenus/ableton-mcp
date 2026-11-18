@@ -341,7 +341,8 @@ class LiveLock:
 
     def release(self, holder: str, set_path: str,
                 live_windows: Optional[List[str]] = None,
-                current_set_path: Optional[str] = None) -> Dict[str, Any]:
+                current_set_path: Optional[str] = None,
+                current_state: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Release after a verified save. ``live_windows`` is Live's window
         titles when they could be read (None = unknown, release refused)."""
         with self._mutex():
@@ -369,6 +370,11 @@ class LiveLock:
                     raise LockError("live_unsaved", problem=problem,
                                     live_windows=live_windows, set_path=path,
                                     lock=data)
+            if (not current_state or current_state.get("readable") is not True
+                    or current_state.get("unsaved") is not False
+                    or current_state.get("modal_dialog")
+                    or current_state.get("set_path") != path):
+                raise LockError("save_evidence_unknown", lock=data)
             observation = data.get("save_observation") or {}
             evidence = observation.get("evidence") or {}
             if (observation.get("generation") != data.get("generation")

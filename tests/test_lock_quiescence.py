@@ -179,3 +179,54 @@ def test_write_cannot_admit_during_save(tmp_path):
         worker=threading.Thread(target=write); worker.start(); worker.join(1)
         assert not worker.is_alive()
     assert outcomes==['operations_unresolved']
+
+@pytest.mark.parametrize('current', ['bare', 'modal', 'unreadable'])
+def test_saved_observation_does_not_replace_current_clean_state(tmp_path,current):
+    from test_save_checkpoint import _service
+    path=tmp_path/'song.als'; path.write_bytes(b'saved'); os.utime(path,(1000,1000))
+    lock=LiveLock(str(tmp_path/'lock'),clock=lambda:1005); lock.acquire('owner')
+    ui=DocumentUI.make(str(path)); service,_=_service(ui,lock=lock)
+    assert service.save_set(allow_ui_automation=True)['saved']
+    original=ui.live_windows
+    def changed():
+        result=original()
+        if current=='bare': result['windows'][0]['title']='song'
+        if current=='modal': result['windows'].append({'title':'Preferences','subrole':'AXDialog'})
+        if current=='unreadable': return None
+        return result
+    ui.live_windows=changed
+    with pytest.raises(LockError): service.release_live_lock('owner',str(path))
+    assert lock.read()['holder']=='owner'
+
+@pytest.mark.parametrize('operation', ['bounce','export'])
+@pytest.mark.parametrize('refusal', ['no_ui','no_consent','invalid'])
+def test_local_render_refusal_does_not_poison_reservations(tmp_path,operation,refusal):
+    from test_save_checkpoint import _service, FakeUI
+    lock=LiveLock(str(tmp_path/'lock')); lock.acquire('owner'); before=lock.read()
+    ui=None if refusal=='no_ui' else FakeUI()
+    service,client=_service(ui,lock=lock)
+    with pytest.raises(Exception):
+        if operation=='bounce':
+            service.bounce_track(0,'invalid' if refusal=='invalid' else 'freeze',allow_ui_automation=refusal=='invalid')
+        else:
+            service.export_audio(output_dir=str(tmp_path),file_stem='bad/name' if refusal=='invalid' else 'song',allow_ui_automation=refusal=='invalid')
+    assert client.sent==[]
+    assert lock.read()==before
+    service.set_tempo(90)
+    assert client.sent==['set_tempo']
+
+
+def test_job_local_preflight_does_not_erase_prior_uncertainty(tmp_path):
+    from test_save_checkpoint import _service, FakeUI
+    lock=LiveLock(str(tmp_path/'lock')); lock.acquire('owner')
+    service,client=_service(FakeUI(),lock=lock)
+    before=lock.read()
+    request={'operation':'bounce','options':{'track_index':0,'mode':'invalid','allow_ui_automation':True}}
+    with pytest.raises(ValueError): service.run_export_job(request,lambda stage:None)
+    assert lock.read()==before and client.sent==[]
+    with pytest.raises(TimeoutError):
+        with lock.operation('real_admitted_write',edit=True): raise TimeoutError('unknown')
+    uncertain=lock.read()
+    with pytest.raises(ValueError): service.run_export_job(request,lambda stage:None)
+    assert lock.read()==uncertain
+    with pytest.raises(LockError,match='operations_unresolved'): service.set_tempo(90)

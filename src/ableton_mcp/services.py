@@ -366,14 +366,15 @@ class AbletonService:
             set_path = set_path or (save.get("verified") or {}).get("set_path")
         titles = None
         current_path = None
+        windows = None
         if self._ui is not None and self._ui.available:
-            titles = self._ui.window_titles()
             windows = summarize_windows(self._ui.live_windows())
+            titles = windows.get("titles")
             current_path = windows.get("set_path")
             if not set_path:
                 set_path = self._resolve_set_path(windows, None)["set_path"]
         result = lock.release(holder, set_path or "", live_windows=titles,
-                              current_set_path=current_path)
+                              current_set_path=current_path, current_state=windows)
         if save is not None:
             result["save"] = save
         return result
@@ -790,6 +791,7 @@ class AbletonService:
                        for kind in allowed):
                 raise ValueError("invalid type for export option: " + name)
         normalized["allow_ui_automation"] = consent
+        render.validate_export_options(**normalized)
         return {"operation": "export", "options": normalized}
 
     def start_export_audio(self, idempotency_key: str, request: dict) -> dict:
@@ -802,8 +804,17 @@ class AbletonService:
     def cancel_export_job(self, job_id: str) -> dict:
         return self._require_jobs().cancel(job_id)
 
-    @_live_operation(edit=True)
     def run_export_job(self, request: dict, stage) -> dict:
+        options = dict(request["options"])
+        self._require_ui(options.get("allow_ui_automation", False))
+        if request["operation"] == "bounce":
+            render.validate_bounce_options(options.get("mode"), options.get("confirm_destructive", False))
+        else:
+            self._export_request(options)
+        return self._run_export_job_admitted(request, stage)
+
+    @_live_operation(edit=True)
+    def _run_export_job_admitted(self, request: dict, stage) -> dict:
         options = dict(request["options"])
         ui = self._require_ui(options.pop("allow_ui_automation", False))
         if request["operation"] == "bounce":
@@ -824,10 +835,17 @@ class AbletonService:
             result.update(ok=False, job=final)
         return result
 
-    @_live_operation()
     def export_audio(self, allow_ui_automation: bool = False,
                      evidence_dir: Optional[str] = None,
                      **options: Any) -> Dict[str, Any]:
+        self._require_ui(allow_ui_automation)
+        # Pure signature/type/value checks run before any admission or UI write.
+        self._export_request(dict(options, allow_ui_automation=allow_ui_automation,
+                                  evidence_dir=evidence_dir))
+        return self._export_audio_admitted(allow_ui_automation, evidence_dir, **options)
+
+    @_live_operation()
+    def _export_audio_admitted(self, allow_ui_automation=False, evidence_dir=None, **options):
         if self._render_jobs is not None:
             job = self.start_export_audio(str(uuid.uuid4()), dict(
                 options, allow_ui_automation=allow_ui_automation, evidence_dir=evidence_dir))
@@ -837,11 +855,18 @@ class AbletonService:
             self, ui, evidence_dir=evidence_dir or self._evidence_dir,
             ffmpeg=self._ffmpeg, **options)
 
-    @_live_operation(edit=True)
     def bounce_track(self, track_index: int, mode: str,
                      allow_ui_automation: bool = False,
                      expect_track_name: Optional[str] = None,
                      confirm_destructive: bool = False) -> Dict[str, Any]:
+        self._require_ui(allow_ui_automation)
+        render.validate_bounce_options(mode, confirm_destructive)
+        return self._bounce_track_admitted(track_index, mode, allow_ui_automation,
+                                          expect_track_name, confirm_destructive)
+
+    @_live_operation(edit=True)
+    def _bounce_track_admitted(self, track_index, mode, allow_ui_automation,
+                               expect_track_name, confirm_destructive):
         ui = self._require_ui(allow_ui_automation)
         if self._render_jobs is not None:
             job = self._render_jobs.start(str(uuid.uuid4()), {"operation": "bounce", "options": {

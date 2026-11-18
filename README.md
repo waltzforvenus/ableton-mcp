@@ -913,7 +913,8 @@ the existing native no-cue-toggle refusal do not manufacture uncertainty.
 
 Release requires internal save-workflow provenance: advanced file mtime,
 explicitly clean after-title, no modal, and equal AXDocument paths before/after
-save and again at release. Evidence is bound to generation; a new edit invalidates
+save and again at release. One current structured window observation must also
+be readable, explicitly clean (not unknown), and modal-free. Evidence is bound to generation; a new edit invalidates
 it. Acquisition time is a separate freshness floor, never an edit stamp.
 Caller paths, Spotlight/title matches, native saved=True/verified=None,
 greyed-save/no advancement, and unknown dirty state (including bare-title builds)
@@ -923,3 +924,5 @@ cannot be serialized; actual Live acceptance remains held.
 
 Default resume/transfer identity authorization is still absent. A7 is a useful
 safety subset, NOT full native authenticated handoff/recovery completion.
+
+Pure UI consent/platform, render signature/type and shared local filename/timeout/bounce-mode checks precede mutation reservations. Refusal before admission does not create or clear any reservation; admitted errors retain the existing uncertainty rules.
