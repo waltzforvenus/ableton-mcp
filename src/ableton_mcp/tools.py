@@ -256,6 +256,50 @@ def release_live_lock(ctx: Context, holder: str, set_path: Optional[str] = None,
 
 
 @tool
+def plan_note_edits(ctx: Context, snapshot: dict, edits: list[dict]) -> str:
+    """Plan per-note-ID patches from a complete get_clip_notes snapshot.
+
+    Times are clip-source beats, never arrangement positions. Keep read_token
+    and fingerprint intact. Only named fields change; hidden notes, expression
+    and groove remain native. Full replacement is unsupported, never clear/re-add.
+    """
+    result = _deps(ctx).service.plan_note_edits(snapshot, edits)
+    return presenters.plan_note_edits(result)
+
+
+@tool
+def apply_note_edits(ctx: Context, plan: dict) -> str:
+    """Apply a server-held note plan once, refusing changed clips/fingerprints.
+
+    Uses native ID modifications, not clear/re-add or global undo. Inspect
+    verified and readback; an API failure may require reconciliation, not retry.
+    """
+    result = _deps(ctx).service.apply_note_edits(plan)
+    return presenters.apply_note_edits(result)
+
+
+@tool
+def set_notes_probability(ctx: Context, track_index: int, clip_index: int,
+                          probability: float | None = None,
+                          velocity_deviation: float | None = None,
+                          note_ids: list[int] | None = None, pitch: int | None = None,
+                          from_time: float = 0.0, time_span: float | None = None,
+                          arrangement: bool = False,
+                          expect_track_name: str | None = None) -> str:
+    """Edit existing note expression without replacing notes.
+
+    Select exact IDs intersected with pitch and half-open clip-source beats;
+    omitted span reaches end_marker. Empty/stale IDs refuse. Probability clamps
+    0..1, deviation -127..127; nonfinite values refuse. Requires native extended
+    APIs and complete read authority. Check verified readback, not input count.
+    """
+    result = _deps(ctx).service.set_notes_probability(
+        track_index, clip_index, probability, velocity_deviation, note_ids, pitch,
+        from_time, time_span, arrangement, expect_track_name)
+    return presenters.set_notes_probability(result)
+
+
+@tool
 def get_clip_notes(
     ctx: Context,
     track_index: int,
@@ -1384,7 +1428,7 @@ def add_notes_to_clip(
 ) -> str:
     """
     Add MIDI notes to a clip, in either view. Writes are ADDITIVE — to
-    replace a clip's contents, clear_notes_from_clip first.
+    edit existing notes use plan_note_edits/apply_note_edits, never clear/re-add.
 
     STATE YOUR TOTAL with expect_count whenever the pattern matters, and
     especially when sending it in chunks: a note list that arrives short
@@ -1399,8 +1443,9 @@ def add_notes_to_clip(
     rather than editing the Session clip and re-stamping every copy of it.
     It changes only that one clip: copies stamped elsewhere are independent.
 
-    In both views a note's start_time is measured from the clip's own start,
-    not the song's — an arrangement clip at bar 60 still takes notes at 0.0.
+    Times are clip-source beats, not arrangement positions or rebased markers.
+    Optional probability and velocity_deviation require supported extended APIs;
+    even explicit default advanced values refuse on legacy scripts.
 
     Parameters:
     - track_index: The index of the track containing the clip
@@ -1433,12 +1478,10 @@ def clear_notes_from_clip(
     """
     Remove all MIDI notes from a clip, in either view.
 
-    Writes are additive (add_notes_to_clip only appends), so to truly *modify*
-    a clip you clear it first, then add the new notes. Use this with
-    get_clip_notes and add_notes_to_clip for a real read -> modify -> write
-    loop: read the notes, edit the list, clear_notes_from_clip, then
-    add_notes_to_clip the edited notes — and keep `arrangement` the same
-    across all three, or you will read one clip and rewrite another.
+    Explicit destructive deletion only, NOT a lossless replacement workflow.
+    Use plan_note_edits/apply_note_edits to modify existing notes while keeping
+    hidden source ranges, expression and groove. This legacy eraser uses a
+    bounded range and does not establish complete source coverage.
 
     Parameters:
     - track_index: The index of the track containing the clip

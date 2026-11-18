@@ -121,6 +121,9 @@ def lock_refusal(e: Any) -> str:
         return "The Live lock is not configured in this server process."
     return f"Refused by the Live lock: {reason}"
 get_clip_notes = as_json
+plan_note_edits = as_json
+apply_note_edits = as_json
+set_notes_probability = as_json
 get_session_snapshot = as_json
 
 
@@ -709,6 +712,8 @@ def _clip_phrase(result: Dict[str, Any], track_index: int,
 
 def add_notes_to_clip(result: Dict[str, Any], track_index: int,
                       clip_index: int) -> str:
+    if result.get("expression_verified") is False:
+        return as_json(result)
     where = _clip_phrase(result, track_index, clip_index)
     requested = result.get("requested")
     added = result.get("added")
@@ -1195,6 +1200,9 @@ ERROR_PHRASES: Dict[str, str] = {
     "set_chain_mixer": "setting the chain mixer",
     "get_plugin_state": "reading plugin state",
     "get_clip_notes": "getting clip notes",
+    "plan_note_edits": "planning note edits",
+    "apply_note_edits": "applying note edits",
+    "set_notes_probability": "editing note expression",
     "get_session_snapshot": "getting session snapshot",
     "create_midi_track": "creating MIDI track",
     "create_audio_track": "creating audio track",

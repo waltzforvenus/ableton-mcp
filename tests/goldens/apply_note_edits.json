@@ -1,0 +1,52 @@
+{
+  "cases": [
+    {
+      "args": {
+        "plan": {
+          "fingerprint": "hash",
+          "plan_id": "plan"
+        }
+      },
+      "expect": "{\n  \"matched\": 1,\n  \"verified\": true,\n  \"verified_changed\": 1\n}",
+      "name": "verified_patch",
+      "wire": [
+        {
+          "command": "apply_note_edits",
+          "params": {
+            "plan": {
+              "fingerprint": "hash",
+              "plan_id": "plan"
+            }
+          },
+          "response": {
+            "matched": 1,
+            "verified": true,
+            "verified_changed": 1
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "plan": {
+          "fingerprint": "hash",
+          "plan_id": "plan"
+        }
+      },
+      "expect": "Error applying note edits: boom",
+      "name": "error",
+      "wire": [
+        {
+          "command": "apply_note_edits",
+          "params": {
+            "plan": {
+              "fingerprint": "hash",
+              "plan_id": "plan"
+            }
+          },
+          "raise": "boom"
+        }
+      ]
+    }
+  ]
+}

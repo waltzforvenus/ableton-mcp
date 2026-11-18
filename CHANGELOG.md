@@ -1,3 +1,12 @@
+## Unreleased — lossless MIDI edits
+
+- Native note-ID patch plans bound to server-held complete reads and fingerprints;
+  strict identity validation, stale-plan refusal, expression/groove preservation.
+- Probability/deviation creation and edits with explicit API gates and readback.
+- Full lossless replacement refuses rather than clearing/reconstructing notes.
+- Script protocol 1.29.0: users must re-run ableton-mcp-install-script and restart
+  Live when deploying this version (not performed here). Unit/mock verified only.
+
 # Changelog
 
 Notable changes to this fork. The format follows

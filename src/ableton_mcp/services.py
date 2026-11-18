@@ -25,7 +25,7 @@ import threading
 import time
 from typing import Any, Dict, List, Optional, Union
 
-from . import audio_metrics, plugin_state, preset_integrity, render, warp_vision
+from . import note_edits, audio_metrics, plugin_state, preset_integrity, render, warp_vision
 from .commands import COMMANDS
 from .handshake import CapabilityError, ScriptHandshake
 from .live_lock import LiveLock, LockError
@@ -304,6 +304,25 @@ class AbletonService:
         if save is not None:
             result["save"] = save
         return result
+
+    def plan_note_edits(self, snapshot: dict, edits: list[dict]) -> dict:
+        return self._send("plan_note_edits", note_edits.plan_note_edits(snapshot, edits))
+
+    def apply_note_edits(self, plan: dict) -> dict:
+        return self._send("apply_note_edits", note_edits.apply_note_edits(plan))
+
+    def set_notes_probability(self, track_index: int, clip_index: int,
+                              probability: float | None = None,
+                              velocity_deviation: float | None = None,
+                              note_ids: list[int] | None = None, pitch: int | None = None,
+                              from_time: float = 0.0, time_span: float | None = None,
+                              arrangement: bool = False,
+                              expect_track_name: str | None = None) -> dict:
+        return self._send("set_notes_probability", _guarded({
+            "track_index": track_index, "clip_index": clip_index,
+            "probability": probability, "velocity_deviation": velocity_deviation,
+            "note_ids": note_ids, "pitch": pitch, "from_time": from_time,
+            "time_span": time_span, "arrangement": arrangement}, expect_track_name))
 
     def get_clip_notes(self, track_index: int, clip_index: int,
                        arrangement: bool = False, source_start: float | None = None,

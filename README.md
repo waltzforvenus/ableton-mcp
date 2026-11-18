@@ -519,6 +519,9 @@ are not present upstream.
 | `set_clip_name` | `track_index`, `clip_index`, `name` | Set the name of a clip |
 | `set_clip_gain` † | `track_index`, `clip_index`, `gain`, `arrangement`? | Set one audio clip's gain, leaving every other clip on the track untouched |
 | `set_clip_warp` † | `track_index`, `clip_index`, `warping`, `warp_mode`?, `arrangement`? | Turn a clip's warping on or off — the fix for stems Live auto-warped to different tempos |
+| `plan_note_edits` † | snapshot, edits | Trusted complete-read token + full fingerprint; per-note-ID patches |
+| `apply_note_edits` † | plan | Single-use native modifications, stale identity refusal and measured verification |
+| `set_notes_probability` † | track_index, clip_index, probability?, velocity_deviation?, note_ids?, pitch?, from_time?, time_span?, arrangement?, expect_track_name? | Same guarded primitives; exact ID/range intersection |
 | `get_clip_notes` | `track_index`, `clip_index`, `arrangement`?, `source_start`?, `source_end`?, `cursor`?, `limit`? | Source-beat MIDI pages with explicit completeness, offsets and audible-window projection |
 | `add_notes_to_clip` | `track_index`, `clip_index`, `notes`, `expect_count`?, `arrangement`? | Add MIDI notes to a clip in either view; reports what Live actually took, and `expect_count` refuses a truncated list |
 | `clear_notes_from_clip` | `track_index`, `clip_index`, `arrangement`? | Remove all MIDI notes from a clip, in either view |
@@ -755,3 +758,21 @@ This is a third-party integration and is not made by or affiliated with Ableton.
 **Your music stays on your machine.**
 
 </div>
+
+### Lossless MIDI patches (script 1.29.0)
+
+| Tool | Parameters | Purpose |
+|---|---|---|
+| `plan_note_edits` † | snapshot, edits | Trusted complete-read token + full fingerprint; per-note-ID patches |
+| `apply_note_edits` † | plan | Single-use native modifications, stale identity refusal and measured verification |
+| `set_notes_probability` † | track_index, clip_index, probability?, velocity_deviation?, note_ids?, pitch?, from_time?, time_span?, arrangement?, expect_track_name? | Same guarded primitives; exact ID/range intersection |
+
+Times are source beats, never arrangement positions or rebased loop markers.
+Read with limit sufficient for a complete snapshot (maximum 10000); partial
+pages never authorize edits. Existing expression and groove stay on native notes.
+Lossless full replacement is explicitly unsupported: no clear/re-add fallback.
+Legacy clear is destructive deletion, not a replacement protocol.
+Advanced add_notes_to_clip accepts probability/deviation only with supported
+MidiNoteSpecification/add_new_notes and reliable extended readback; explicit
+default values also refuse on unsupported versions. Check expression_verified.
+Live acceptance remains pending; these paths are verified with unit fakes only.
