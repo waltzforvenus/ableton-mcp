@@ -1,0 +1,20 @@
+{
+  "cases": [
+    {
+      "args": {
+        "job_id": "fixture-job"
+      },
+      "expect": "Error reading export job: export job service not configured",
+      "name": "not_configured",
+      "wire": []
+    },
+    {
+      "args": {
+        "job_id": "fixture-job"
+      },
+      "expect": "Error reading export job: export job service not configured",
+      "name": "error",
+      "wire": []
+    }
+  ]
+}

@@ -463,6 +463,9 @@ def create_arrangement_midi_clip(result: Dict[str, Any]) -> str:
     return text
 analyze_audio = as_json
 verify_audio = as_json
+start_export_audio = as_json
+get_export_job = as_json
+cancel_export_job = as_json
 export_audio = as_json
 bounce_track = as_json
 
@@ -1205,6 +1208,9 @@ ERROR_PHRASES: Dict[str, str] = {
     "create_arrangement_midi_clip": "creating the arrangement MIDI clip",
     "analyze_audio": "analysing audio",
     "verify_audio": "verifying audio",
+    "start_export_audio": "starting export job",
+    "get_export_job": "reading export job",
+    "cancel_export_job": "cancelling export job",
     "export_audio": "exporting audio",
     "bounce_track": "bouncing the track",
     "insert_rack_chain": "adding a rack chain",

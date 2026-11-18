@@ -1,0 +1,28 @@
+{
+  "cases": [
+    {
+      "args": {
+        "idempotency_key": "fixture-export",
+        "request": {
+          "file_stem": "mix",
+          "output_dir": "/fixture"
+        }
+      },
+      "expect": "Refused, nothing rendered: UI-driven rendering needs macOS.",
+      "name": "no_ui",
+      "wire": []
+    },
+    {
+      "args": {
+        "idempotency_key": "fixture-export",
+        "request": {
+          "file_stem": "mix",
+          "output_dir": "/fixture"
+        }
+      },
+      "expect": "Refused, nothing rendered: UI-driven rendering needs macOS.",
+      "name": "error",
+      "wire": []
+    }
+  ]
+}

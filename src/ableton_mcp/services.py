@@ -21,9 +21,12 @@ import json
 import os
 import re
 import shutil
+import inspect
+from contextlib import nullcontext
+import uuid
 import threading
 import time
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, get_args, get_type_hints
 
 from . import note_edits, audio_metrics, plugin_state, preset_integrity, render, warp_vision
 from .commands import COMMANDS
@@ -165,7 +168,8 @@ class AbletonService:
                  evidence_dir: Optional[str] = None,
                  ffmpeg: Optional[str] = None,
                  require_audio_auth: bool = False,
-                 source_span_probe: Any = None) -> None:
+                 source_span_probe: Any = None, render_jobs: Any = None) -> None:
+        self._render_jobs = render_jobs
         self._client = client
         self._handshake = handshake
         # Both optional so test doubles that predate them keep working: no
@@ -197,6 +201,8 @@ class AbletonService:
         them, plan §4).
         """
         spec = COMMANDS[name]
+        if spec.modifying and spec.lock != "exempt" and self._render_jobs is not None:
+            self._render_jobs.check_access()
         if spec.audible and self._require_audio_auth and not authorized:
             # First of all: making sound without the user's OK is the one
             # thing no lock or gate downstream can undo.
@@ -284,6 +290,12 @@ class AbletonService:
         return self._require_lock().acquire(holder, task)
 
     def release_live_lock(self, holder: str, set_path: Optional[str] = None,
+                          save_first: bool = False,
+                          allow_ui_automation: bool = False) -> Dict[str, Any]:
+        with self._render_jobs.idle_guard() if self._render_jobs else nullcontext():
+            return self._release_live_lock(holder, set_path, save_first, allow_ui_automation)
+
+    def _release_live_lock(self, holder: str, set_path: Optional[str] = None,
                           save_first: bool = False,
                           allow_ui_automation: bool = False) -> Dict[str, Any]:
         """Release after a verified save; with ``save_first`` the save is
@@ -536,7 +548,11 @@ class AbletonService:
         return {"set_path": pick[0] if pick else None, "candidates": candidates,
                 "source": "spotlight" if pick else None}
 
-    def save_set(self, allow_ui_automation: bool = False,
+    def save_set(self, allow_ui_automation: bool = False, set_path: Optional[str] = None, timeout_s: float = 30.0) -> Dict[str, Any]:
+        with self._render_jobs.idle_guard() if self._render_jobs else nullcontext():
+            return self._save_set(allow_ui_automation, set_path, timeout_s)
+
+    def _save_set(self, allow_ui_automation: bool = False,
                  set_path: Optional[str] = None,
                  timeout_s: float = 30.0) -> Dict[str, Any]:
         """Save the open set: Live's API first, then File › Save Live Set.
@@ -653,6 +669,8 @@ class AbletonService:
     def check_ui_write(self, action: str) -> None:
         """The Live lock for a UI-driven action that is not a wire command:
         refused exactly as a state-changing command would be."""
+        if self._render_jobs is not None:
+            self._render_jobs.check_access()
         if self._lock is not None:
             self._lock.check_write(action)
 
@@ -677,9 +695,79 @@ class AbletonService:
                 else "not_allowed")
         return self._ui
 
+    def _export_owner(self):
+        if self._lock is None:
+            return None
+        self._lock.check_write("export_audio")
+        record = self._lock.read() or {}
+        return {"holder": record.get("holder"), "acquired_ts": record.get("acquired_ts")}
+
+    def _require_jobs(self):
+        if self._render_jobs is None:
+            raise RuntimeError("export job service not configured")
+        return self._render_jobs
+
+    def _export_request(self, request):
+        # Derive defaults from the renderer signature, but never let JSON
+        # callers inject adapters, clocks, service objects or stage callbacks.
+        options = dict(request)
+        consent = options.pop("allow_ui_automation", False)
+        if type(consent) is not bool:
+            raise ValueError("allow_ui_automation has invalid type; explicit boolean required")
+        self._require_ui(consent)
+        blocked = {"service", "ui", "clock", "sleep", "job_stage", "ffmpeg", "ffprobe"}
+        if blocked.intersection(options):
+            raise ValueError("request contains internal renderer dependencies")
+        bound = inspect.signature(render.export_audio).bind(self, self._ui, **options)
+        bound.apply_defaults()
+        normalized = {k: v for k, v in bound.arguments.items() if k not in blocked}
+        hints = get_type_hints(render.export_audio)
+        for name, value in normalized.items():
+            allowed = get_args(hints[name]) or (hints[name],)
+            if not any(type(value) is kind or (kind is float and type(value) is int)
+                       for kind in allowed):
+                raise ValueError("invalid type for export option: " + name)
+        normalized["allow_ui_automation"] = consent
+        return {"operation": "export", "options": normalized}
+
+    def start_export_audio(self, idempotency_key: str, request: dict) -> dict:
+        normalized = self._export_request(request)
+        return self._require_jobs().start(idempotency_key, normalized)
+
+    def get_export_job(self, job_id: str) -> dict:
+        return self._require_jobs().status(job_id)
+
+    def cancel_export_job(self, job_id: str) -> dict:
+        return self._require_jobs().cancel(job_id)
+
+    def run_export_job(self, request: dict, stage) -> dict:
+        options = dict(request["options"])
+        ui = self._require_ui(options.pop("allow_ui_automation", False))
+        if request["operation"] == "bounce":
+            try:
+                return render.bounce_track(self, ui, job_stage=stage,
+                                           ffmpeg=self._ffmpeg, **options)
+            finally:
+                if self._lock is not None:
+                    self._lock.touch()
+        options["evidence_dir"] = options.get("evidence_dir") or self._evidence_dir
+        return render.export_audio(self, ui, job_stage=stage, ffmpeg=self._ffmpeg, **options)
+
+    def _wait_export_job(self, job):
+        final = self._require_jobs().wait(job["job_id"])
+        result = dict(final.get("result") or {})
+        result.update(job_id=final["job_id"], job_state=final["state"])
+        if final["state"] != "succeeded":
+            result.update(ok=False, job=final)
+        return result
+
     def export_audio(self, allow_ui_automation: bool = False,
                      evidence_dir: Optional[str] = None,
                      **options: Any) -> Dict[str, Any]:
+        if self._render_jobs is not None:
+            job = self.start_export_audio(str(uuid.uuid4()), dict(
+                options, allow_ui_automation=allow_ui_automation, evidence_dir=evidence_dir))
+            return self._wait_export_job(job)
         ui = self._require_ui(allow_ui_automation)
         return render.export_audio(
             self, ui, evidence_dir=evidence_dir or self._evidence_dir,
@@ -690,6 +778,12 @@ class AbletonService:
                      expect_track_name: Optional[str] = None,
                      confirm_destructive: bool = False) -> Dict[str, Any]:
         ui = self._require_ui(allow_ui_automation)
+        if self._render_jobs is not None:
+            job = self._render_jobs.start(str(uuid.uuid4()), {"operation": "bounce", "options": {
+                "track_index": track_index, "mode": mode,
+                "allow_ui_automation": allow_ui_automation,
+                "expect_track_name": expect_track_name, "confirm_destructive": confirm_destructive}})
+            return self._wait_export_job(job)
         try:
             return render.bounce_track(
                 self, ui, track_index=track_index, mode=mode,
@@ -709,7 +803,11 @@ class AbletonService:
     def verify_audio(self, path: str, **checks: Any) -> Dict[str, Any]:
         return audio_metrics.verify(path, ffmpeg=self._ffmpeg, **checks)
 
-    def checkpoint_set(self, label: str, set_path: Optional[str] = None,
+    def checkpoint_set(self, label: str, set_path: Optional[str] = None, allow_ui_automation: bool = False, checkpoint_dir: Optional[str] = None) -> Dict[str, Any]:
+        with self._render_jobs.idle_guard() if self._render_jobs else nullcontext():
+            return self._checkpoint_set(label, set_path, allow_ui_automation, checkpoint_dir)
+
+    def _checkpoint_set(self, label: str, set_path: Optional[str] = None,
                        allow_ui_automation: bool = False,
                        checkpoint_dir: Optional[str] = None) -> Dict[str, Any]:
         """Save, then copy the .als to ``<set folder>/Checkpoints/`` as

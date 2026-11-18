@@ -5,6 +5,7 @@ analyze_clip_audio
 apply_note_edits
 back_to_arrangement
 bounce_track
+cancel_export_job
 checkpoint_set
 clear_notes_from_clip
 create_arrangement_audio_clip
@@ -33,6 +34,7 @@ get_clip_notes
 get_clip_warp_markers
 get_device_parameters
 get_device_sidechain
+get_export_job
 get_live_status
 get_mix_state
 get_plugin_presets
@@ -80,6 +82,7 @@ set_track_routing
 set_track_send
 set_track_solo
 set_track_volume
+start_export_audio
 start_playback
 stop_clip
 stop_playback

@@ -950,3 +950,11 @@ GPL-3.0-or-later / AGPL-3.0-or-later, and merged upstream's Remote Script
 installer, version/capability handshake, `create_locator`, and
 `clear_notes_from_clip`. Not published to PyPI — the `ableton-mcp` name
 there is upstream's build, which has telemetry; install this fork from git.
+
+## Unreleased — export lifecycle
+- Added durable start/status/cancel export jobs with idempotency, serial ownership,
+  restart reconciliation and no replay of uncertain native work.
+- Synchronous export/bounce use the same queue in the production composition;
+  active/uncertain jobs block save-verified handoff. No Remote Script reinstall
+  required for this server-only change. Stronger export verification and Live
+  acceptance remain pending; cancellation never promises native render abort.

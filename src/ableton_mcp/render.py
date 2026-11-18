@@ -84,7 +84,7 @@ BOUNCE_MENU = {
 
 class RenderRefused(Exception):
     """A gate or a readback said no. ``reason`` is a stable code; ``details``
-    the data the presenter shows. Nothing was rendered."""
+    the data the presenter shows. The job stage determines mutation uncertainty."""
 
     def __init__(self, reason: str, **details: Any) -> None:
         super().__init__(reason)
@@ -286,7 +286,8 @@ def export_audio(service: Any, ui: Any, *, scope: str = "main",
                  timeout_s: float = 900.0, strict_solo: bool = False,
                  ffmpeg: Optional[str] = None, ffprobe: Optional[str] = None,
                  sleep: Callable[[float], None] = time.sleep,
-                 clock: Callable[[], float] = time.monotonic) -> Dict[str, Any]:
+                 clock: Callable[[], float] = time.monotonic,
+                 job_stage: Optional[Callable[[str], None]] = None) -> Dict[str, Any]:
     started = clock()
     warnings: List[str] = []
     output_dir = os.path.abspath(os.path.expanduser(output_dir or ""))
@@ -318,6 +319,8 @@ def export_audio(service: Any, ui: Any, *, scope: str = "main",
         if strict_solo:
             raise RenderRefused("soloed", soloed=names)
         warnings.append(f"tracks are soloed and will shape the render: {names}")
+    if job_stage:
+        job_stage("configuring")
     if scope == "track":
         if track is None:
             raise ValueError("scope='track' needs track")
@@ -391,6 +394,8 @@ def export_audio(service: Any, ui: Any, *, scope: str = "main",
         button = export_button(ui.read_window(EXPORT_WINDOW).get("elements") or [])
         if button is None:
             raise RenderRefused("export_button", detail={"error": "not_found"})
+        if job_stage:
+            job_stage("rendering")  # admission, not proof the native render started
         pressed = ui.act(EXPORT_WINDOW, button, "press")
         if not pressed.get("ok"):
             raise RenderRefused("export_button", detail=pressed)
@@ -432,6 +437,8 @@ def export_audio(service: Any, ui: Any, *, scope: str = "main",
             return result
 
         # 8. measure every file
+        if job_stage:
+            job_stage("verifying")
         track_names = {t.get("name") for t in (status.get("all_tracks") or [])}
         out_files = []
         all_ok = True
@@ -465,7 +472,8 @@ def bounce_track(service: Any, ui: Any, *, track_index: int, mode: str,
                  expect_track_name: Optional[str] = None,
                  confirm_destructive: bool = False, timeout_s: float = 300.0,
                  checkpoint_label: Optional[str] = None,
-                 ffmpeg: Optional[str] = None, ffprobe: Optional[str] = None) -> Dict[str, Any]:
+                 ffmpeg: Optional[str] = None, ffprobe: Optional[str] = None,
+                 job_stage: Optional[Callable[[str], None]] = None) -> Dict[str, Any]:
     if mode not in BOUNCE_MENU:
         raise ValueError(f"mode must be one of {sorted(BOUNCE_MENU)}")
     if mode == "bounce_in_place" and not confirm_destructive:
@@ -480,6 +488,8 @@ def bounce_track(service: Any, ui: Any, *, track_index: int, mode: str,
     if status.get("is_playing") or status.get("record_mode") or status.get("session_record"):
         raise RenderRefused("transport_busy", is_playing=status.get("is_playing"),
                             record_mode=status.get("record_mode"))
+    if job_stage:
+        job_stage("configuring")
     result: Dict[str, Any] = {"ok": False, "mode": mode}
     if mode == "bounce_in_place":
         # Destructive: keep a way back first (R1's checkpoint).
@@ -500,6 +510,8 @@ def bounce_track(service: Any, ui: Any, *, track_index: int, mode: str,
     menu, prefix, exclude = BOUNCE_MENU[mode]
     previous_app = ui.frontmost_app()
     try:
+        if job_stage:
+            job_stage("rendering")
         click = ui.click_menu_item(menu, prefix, exclude=exclude)
         if not click.get("ok"):
             raise RenderRefused("menu", menu=click)
@@ -527,6 +539,8 @@ def bounce_track(service: Any, ui: Any, *, track_index: int, mode: str,
         if not after:
             result["error"] = "not_confirmed"
             return result
+        if job_stage:
+            job_stage("verifying")
         result["after"] = after
         if mode == "bounce_to_new_track":
             new_track = service.track_render_state(track_index + 1)
