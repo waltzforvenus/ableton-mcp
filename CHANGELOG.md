@@ -1,3 +1,32 @@
+## Unreleased — bounded arrangement audio subset (1.31.0)
+
+- Unsupported plans now remain visibly unsupported, not a false placement success.
+- Whole-file import on an empty, nonfrozen/nonrecording audio track is supported
+  using the documented returned native Clip. Track/source identity, emptiness,
+  warp, measured extent, topology and preserved gain are checked. No inferred
+  constant-tempo footprint or arbitrary trim support is claimed.
+- Occupied/trimmed/requested-beat placement remains capability-blocked. Cheap
+  preflight precedes bounded decode (230400000 channel-samples, 15-second deadline
+  checked between capped reads; a blocking native decoder read is not interruptible).
+- Uncertain native or transport writes require manual reconciliation; no automatic
+  retry/rollback. Native uncertainty blocks further audio imports for that script
+  instance. Inspect/save/reconcile manually before a deliberate script restart;
+  restarting itself is NOT reconciliation and does not prove the outcome.
+- Re-run ableton-mcp-install-script and restart Live when deploying protocol 1.31.0
+  (not performed here). Native acceptance remains pending; unit/mock evidence only.
+
+## Unreleased — arrangement audio safety
+
+- Decoded source-span probe, explicit seconds-based source offset/duration and
+  warp policy. Requested beat duration is not accepted as proof of footprint.
+- Native arrangement audio creation now returns an unsupported plan, without
+  importing: Live's path/time API cannot guarantee warp/trim/footprint before
+  cropping existing clips. Unknown constant-tempo coverage is not guessed.
+  allow_overlap cannot bypass unresolved footprint. The existing half-open
+  interval helper now refuses invalid extents; exact adjacency remains allowed.
+- Protocol 1.30.0: re-run ableton-mcp-install-script and restart Live when
+  deploying (not performed here). Unit/mock evidence only; Live acceptance pending.
+
 ## Unreleased — lossless MIDI edits
 
 - Retain native MidiNoteVector on apply; structured post-write reconciliation

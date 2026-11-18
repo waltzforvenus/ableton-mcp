@@ -22,6 +22,7 @@ from .connection import AbletonClient
 from .handshake import ScriptHandshake
 from .live_lock import DEFAULT_LOCK_FILE, LiveLock
 from .services import AbletonService
+from .audio_metrics import probe_source_span
 from .ui_macos import MacUI
 
 logger = logging.getLogger("AbletonMCPServer")
@@ -103,7 +104,8 @@ def build_deps(settings: Settings) -> Deps:
                              allow_ui=settings.allow_ui,
                              evidence_dir=settings.evidence_dir,
                              ffmpeg=settings.ffmpeg,
-                             require_audio_auth=settings.require_audio_auth)
+                             require_audio_auth=settings.require_audio_auth,
+                             source_span_probe=probe_source_span)
     return Deps(client=client, handshake=handshake, service=service)
 
 

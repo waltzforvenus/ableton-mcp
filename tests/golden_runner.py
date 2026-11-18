@@ -159,5 +159,6 @@ def call_tool(name, args, fake, script_info=None):
         handshake = ScriptHandshake()
         handshake.perform(lambda command_type, params=None: dict(script_info))
     deps = Deps(client=fake, handshake=handshake,
-                service=AbletonService(fake, handshake))
+                service=AbletonService(fake, handshake, source_span_probe=lambda path: {
+                    "duration_seconds": 8.0, "decoded": True}))
     return tool(make_ctx(deps), **args)

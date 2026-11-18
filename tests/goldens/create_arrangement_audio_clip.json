@@ -6,27 +6,165 @@
         "start_time": 64.0,
         "track_index": 3
       },
-      "expect": "Placed 'take' on 'VOCALS' at beats 64.0-80.0 (arrangement clip 2, file /Users/x/Audio/take.wav, warping off)",
-      "name": "success",
+      "expect": "{\n  \"allow_overlap\": false,\n  \"destination_length_beats\": null,\n  \"duration_seconds\": null,\n  \"gain_policy\": \"unchanged\",\n  \"mutated\": false,\n  \"overlap_check\": \"unresolved_footprint\",\n  \"reason\": \"Unsupported pre-import warp/trim/footprint guarantee and constant-tempo proof\",\n  \"requested_destination_length_beats\": null,\n  \"source_offset_seconds\": 0.0,\n  \"start_time\": 64.0,\n  \"supported\": false,\n  \"track_index\": 3,\n  \"track_name\": \"VOCALS\",\n  \"warping\": false\n}",
+      "name": "unsupported_footprint",
       "wire": [
         {
           "command": "create_arrangement_audio_clip",
           "params": {
             "allow_overlap": false,
+            "destination_length_beats": null,
+            "duration_seconds": null,
             "path": "/Users/x/Audio/take.wav",
+            "preflight": true,
+            "source_offset_seconds": 0,
             "start_time": 64.0,
-            "track_index": 3
+            "track_index": 3,
+            "warping": false
           },
           "response": {
-            "clip_index": 2,
-            "clip_name": "take",
-            "cropped_or_replaced": [],
-            "end_time": 80.0,
-            "file_path": "/Users/x/Audio/take.wav",
+            "allow_overlap": false,
+            "destination_length_beats": null,
+            "duration_seconds": null,
+            "gain_policy": "unchanged",
+            "mutated": false,
+            "overlap_check": "unresolved_footprint",
+            "reason": "Unsupported pre-import warp/trim/footprint guarantee and constant-tempo proof",
+            "requested_destination_length_beats": null,
+            "source_offset_seconds": 0.0,
             "start_time": 64.0,
+            "supported": false,
             "track_index": 3,
             "track_name": "VOCALS",
             "warping": false
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "path": "/Users/x/Audio/take.wav",
+        "start_time": 64.0,
+        "track_index": 3
+      },
+      "expect": "Placed 'take' on 'VOCALS' at beats 64.0-80.0 (arrangement clip 0, file /Users/x/Audio/take.wav, warping off)",
+      "name": "empty_track_success",
+      "wire": [
+        {
+          "command": "create_arrangement_audio_clip",
+          "params": {
+            "allow_overlap": false,
+            "destination_length_beats": null,
+            "duration_seconds": null,
+            "path": "/Users/x/Audio/take.wav",
+            "preflight": true,
+            "source_offset_seconds": 0,
+            "start_time": 64.0,
+            "track_index": 3,
+            "warping": false
+          },
+          "response": {
+            "eligible": true,
+            "mutated": false,
+            "placement_mode": "empty_track_whole_file",
+            "preflight_token": "fixture",
+            "supported": false
+          }
+        },
+        {
+          "command": "create_arrangement_audio_clip",
+          "params": {
+            "allow_overlap": false,
+            "destination_length_beats": null,
+            "duration_seconds": null,
+            "path": "/Users/x/Audio/take.wav",
+            "preflight_token": "fixture",
+            "source_offset_seconds": 0,
+            "source_span": {
+              "decoded": true,
+              "duration_seconds": 8.0
+            },
+            "start_time": 64.0,
+            "track_index": 3,
+            "warping": false
+          },
+          "response": {
+            "clip_index": 0,
+            "clip_name": "take",
+            "cropped_or_replaced": [],
+            "end_time": 80.0,
+            "extent_source": "native_readback",
+            "file_path": "/Users/x/Audio/take.wav",
+            "gain": 0.85,
+            "gain_policy": "native_import_preserved",
+            "mutated": true,
+            "placement_mode": "empty_track_whole_file",
+            "start_time": 64.0,
+            "supported": true,
+            "tempo_conversion": "not_claimed",
+            "track_index": 3,
+            "track_name": "VOCALS",
+            "warping": false
+          }
+        }
+      ]
+    },
+    {
+      "args": {
+        "path": "/Users/x/Audio/take.wav",
+        "start_time": 64.0,
+        "track_index": 3
+      },
+      "expect": "{\n  \"mutated\": null,\n  \"mutation_state\": \"unknown\",\n  \"placement_mode\": \"empty_track_whole_file\",\n  \"reason\": \"Warp readback mismatch\",\n  \"reconciliation_required\": true,\n  \"retry_safe\": false,\n  \"supported\": false,\n  \"track_index\": 3\n}",
+      "name": "native_uncertainty",
+      "wire": [
+        {
+          "command": "create_arrangement_audio_clip",
+          "params": {
+            "allow_overlap": false,
+            "destination_length_beats": null,
+            "duration_seconds": null,
+            "path": "/Users/x/Audio/take.wav",
+            "preflight": true,
+            "source_offset_seconds": 0,
+            "start_time": 64.0,
+            "track_index": 3,
+            "warping": false
+          },
+          "response": {
+            "eligible": true,
+            "mutated": false,
+            "placement_mode": "empty_track_whole_file",
+            "preflight_token": "fixture",
+            "supported": false
+          }
+        },
+        {
+          "command": "create_arrangement_audio_clip",
+          "params": {
+            "allow_overlap": false,
+            "destination_length_beats": null,
+            "duration_seconds": null,
+            "path": "/Users/x/Audio/take.wav",
+            "preflight_token": "fixture",
+            "source_offset_seconds": 0,
+            "source_span": {
+              "decoded": true,
+              "duration_seconds": 8.0
+            },
+            "start_time": 64.0,
+            "track_index": 3,
+            "warping": false
+          },
+          "response": {
+            "mutated": null,
+            "mutation_state": "unknown",
+            "placement_mode": "empty_track_whole_file",
+            "reason": "Warp readback mismatch",
+            "reconciliation_required": true,
+            "retry_safe": false,
+            "supported": false,
+            "track_index": 3
           }
         }
       ]
@@ -44,9 +182,14 @@
           "command": "create_arrangement_audio_clip",
           "params": {
             "allow_overlap": false,
+            "destination_length_beats": null,
+            "duration_seconds": null,
             "path": "/Users/x/Audio/take.wav",
+            "preflight": true,
+            "source_offset_seconds": 0,
             "start_time": 64.0,
-            "track_index": 3
+            "track_index": 3,
+            "warping": false
           },
           "raise": "boom"
         }

@@ -1872,23 +1872,26 @@ def set_device_sidechain(ctx: Context, track_index: int, device_index: int,
 def create_arrangement_audio_clip(ctx: Context, track_index: int, path: str,
                                   start_time: float, allow_overlap: bool = False,
                                   name: Optional[str] = None,
-                                  expect_track_name: Optional[str] = None) -> str:
-    """
-    Put an audio file straight onto an audio track's ARRANGEMENT at a beat
-    (Live 12's Track.create_audio_clip) — no Session slot, no stamping.
+                                  expect_track_name: Optional[str] = None,
+                                  warping: bool = False,
+                                  source_offset_seconds: float = 0,
+                                  duration_seconds: Optional[float] = None,
+                                  destination_length_beats: Optional[float] = None) -> str:
+    """Preflight decoded audio placement in arrangement beats.
 
-    Use this instead of create_audio_clip + duplicate_to_arrangement whenever
-    the goal is the timeline. Parameters:
-    - track_index: an audio track
-    - path: absolute path of the audio file
-    - start_time: song position in beats
-    - allow_overlap: by default a start inside an existing clip is refused;
-      true lets Live crop or replace what the new clip covers (reported)
-    - name / expect_track_name: optional
-    Returns the new clip's index, start/end and file path.
+    Source offset/duration are seconds (None means the remaining source).
+    Warping defaults false; requested beat length is NOT footprint proof.
+    Supports whole-file import ONLY onto an empty arrangement audio track.
+    Occupied/trimmed/requested-beat placement returns supported=false with no
+    import. Cheap native preflight precedes bounded decoding; identity and
+    emptiness are rechecked before import. Returned native Clip provides actual
+    measured start/end; no constant-tempo conversion is claimed. Imported gain
+    is preserved. Uncertain writes return reconciliation_required; never retry
+    or undo automatically. allow_overlap cannot bypass these restrictions.
     """
     result = _deps(ctx).service.create_arrangement_audio_clip(
-        track_index, path, start_time, allow_overlap, name, expect_track_name)
+        track_index, path, start_time, allow_overlap, name, expect_track_name,
+        warping, source_offset_seconds, duration_seconds, destination_length_beats)
     return presenters.create_arrangement_audio_clip(result)
 
 

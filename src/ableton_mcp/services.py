@@ -164,7 +164,8 @@ class AbletonService:
                  allow_ui: bool = False,
                  evidence_dir: Optional[str] = None,
                  ffmpeg: Optional[str] = None,
-                 require_audio_auth: bool = False) -> None:
+                 require_audio_auth: bool = False,
+                 source_span_probe: Any = None) -> None:
         self._client = client
         self._handshake = handshake
         # Both optional so test doubles that predate them keep working: no
@@ -177,6 +178,7 @@ class AbletonService:
         self._allow_ui = allow_ui
         self._evidence_dir = evidence_dir
         self._ffmpeg = ffmpeg
+        self._source_span_probe = source_span_probe
         # Off unless the composition root turns it on, so test doubles and
         # goldens see the historical behaviour.
         self._require_audio_auth = require_audio_auth
@@ -1036,16 +1038,39 @@ class AbletonService:
     def create_arrangement_audio_clip(self, track_index: int, path: str,
                                       start_time: float, allow_overlap: bool = False,
                                       name: Optional[str] = None,
-                                      expect_track_name: Optional[str] = None
+                                      expect_track_name: Optional[str] = None,
+                                      warping: bool = False,
+                                      source_offset_seconds: float = 0,
+                                      duration_seconds: Optional[float] = None,
+                                      destination_length_beats: Optional[float] = None
                                       ) -> Dict[str, Any]:
-        params: Dict[str, Any] = {"track_index": track_index,
-                                  "path": os.path.expanduser(path),
+        path = os.path.expanduser(path)
+        params: Dict[str, Any] = {"track_index": track_index, "path": path,
                                   "start_time": start_time,
-                                  "allow_overlap": allow_overlap}
+                                  "allow_overlap": allow_overlap,
+                                  "warping": warping,
+                                  "source_offset_seconds": source_offset_seconds,
+                                  "duration_seconds": duration_seconds,
+                                  "destination_length_beats": destination_length_beats}
         if name is not None:
             params["name"] = name
-        return self._send("create_arrangement_audio_clip",
-                          _guarded(params, expect_track_name))
+        _guarded(params, expect_track_name)
+        preflight = self._send("create_arrangement_audio_clip", dict(params, preflight=True))
+        if not preflight.get("eligible"):
+            return preflight
+        if self._source_span_probe is None:
+            raise ValueError("Decoded source-span probe unavailable")
+        params["source_span"] = self._source_span_probe(path)
+        params["preflight_token"] = preflight["preflight_token"]
+        try:
+            return self._send("create_arrangement_audio_clip", params)
+        except Exception as exc:
+            # The transport cannot tell us whether the native import ran.
+            # Never replay an accepted candidate or claim zero mutation.
+            return {"supported": False, "reconciliation_required": True,
+                    "mutated": None, "mutation_state": "unknown",
+                    "retry_safe": False, "reason": str(exc),
+                    "track_index": track_index}
 
     def create_arrangement_midi_clip(self, track_index: int, start_time: float,
                                      length: float,

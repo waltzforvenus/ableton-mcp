@@ -87,30 +87,30 @@ def _wav(path):
     return str(path)
 
 
-def test_audio_clip_lands_on_the_arrangement(tmp_path):
+def test_audio_clip_unresolved_footprint_returns_plan(tmp_path):
     harness = make_harness()
-    track = harness.song.tracks[1]
-    track.arrangement_clips = []
+    track = harness.song.tracks[2]
+    before = list(track.arrangement_clips)
     path = _wav(tmp_path / "take.wav")
-    result = _ok(_run(harness, "create_arrangement_audio_clip", track_index=1,
-                      path=path, start_time=32.0, name="Take A"))
-    assert result["start_time"] == 32.0 and result["clip_name"] == "Take A"
-    assert result["file_path"] == path and result["cropped_or_replaced"] == []
+    result = _ok(_run(harness, "create_arrangement_audio_clip", track_index=2,
+                      path=path, start_time=32.0, name="Take A",
+                      source_span={"duration_seconds": .1, "decoded": True}))
+    assert result["supported"] is False and result["mutated"] is False
+    assert track.arrangement_clips == before
 
 
-def test_audio_clip_overlap_is_refused_unless_allowed(tmp_path):
+def test_audio_clip_overlap_override_cannot_bypass_unknown_span(tmp_path):
     harness = make_harness()
-    track = harness.song.tracks[1]
+    track = harness.song.tracks[2]
     track.arrangement_clips = [FakeClip("Old", 16.0, midi=False, start_time=24.0)]
     path = _wav(tmp_path / "take.wav")
-    refused = _run(harness, "create_arrangement_audio_clip", track_index=1,
-                   path=path, start_time=32.0)
-    assert refused["status"] == "error" and "allow_overlap" in refused["message"]
-    assert [c.name for c in track.arrangement_clips] == ["Old"]
-    allowed = _ok(_run(harness, "create_arrangement_audio_clip", track_index=1,
-                       path=path, start_time=32.0, allow_overlap=True))
-    assert allowed["cropped_or_replaced"][0]["name"] == "Old"
-    bad = _run(harness, "create_arrangement_audio_clip", track_index=1,
+    for allow in (False, True):
+        result = _ok(_run(harness, "create_arrangement_audio_clip", track_index=2,
+                          path=path, start_time=32.0, allow_overlap=allow,
+                          source_span={"duration_seconds": .1, "decoded": True}))
+        assert result["supported"] is False
+        assert [c.name for c in track.arrangement_clips] == ["Old"]
+    bad = _run(harness, "create_arrangement_audio_clip", track_index=2,
                path="relative.wav", start_time=0.0)
     assert "absolute" in bad["message"]
 

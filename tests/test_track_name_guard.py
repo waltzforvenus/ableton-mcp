@@ -69,7 +69,7 @@ def _ctx_and_client():
     handshake = PermissiveHandshake()
     ctx = SimpleNamespace(request_context=SimpleNamespace(
         lifespan_context=Deps(client=client, handshake=handshake,
-                              service=AbletonService(client, handshake))))
+                              service=AbletonService(client, handshake, source_span_probe=lambda path: {"decoded": True, "duration_seconds": 8}))))
     return ctx, client
 
 

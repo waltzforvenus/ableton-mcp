@@ -355,6 +355,7 @@ def test_the_matrix_is_not_vacuous():
     assert GATED_WITH_FLOOR == [
         "add_notes_to_clip",
         "clear_notes_from_clip",
+        "create_arrangement_audio_clip",
         "create_audio_clip",
         "delete_arrangement_clip",
         "delete_device",
@@ -373,7 +374,6 @@ def test_the_matrix_is_not_vacuous():
     # by the more specific version message instead of the capability one.)
     assert GATED_POST_1_7_0 == [
         "apply_note_edits",
-        "create_arrangement_audio_clip",
         "create_arrangement_midi_clip",
         "delete_locator",
         "duplicate_track",

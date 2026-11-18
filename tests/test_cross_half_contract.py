@@ -262,6 +262,7 @@ def test_min_version_floors_are_exactly_the_broken_but_advertised():
         # Same call, materially different (and previously wrong) behaviour.
         "add_notes_to_clip": "1.29.0",         # measured delta, not an echo
         "create_audio_clip": "1.15.0",         # imports with warping OFF
+        "create_arrangement_audio_clip": "1.31.0",  # unknown footprint refuses
         "delete_device": "1.15.0",             # verifies instead of asserting
         # The loop-phase guard: an older script performs the stamp that
         # silently re-phases a looping survivor rather than refusing it.
