@@ -992,3 +992,9 @@ there is upstream's build, which has telemetry; install this fork from git.
 - Remove network-worker ControlSurface callbacks and bound total response reception.
 - Script/package version pair and generated bundle synchronized. No installation or
   Live verification performed; the existing production handoff hold remains.
+
+## A7 — fail-closed owner resume and handoff seam
+- Separate process instance from owner label; conservative legacy records.
+- Atomic generation-checked transfer/resume with injected authority; unsupported
+  by default without trusted fresh identity/current-set/save evidence.
+- Acquisition is not an edit. Unknown UI save evidence now prevents release.

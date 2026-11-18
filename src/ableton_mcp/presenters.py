@@ -117,9 +117,15 @@ def lock_refusal(e: Any) -> str:
     if reason == "save_failed":
         return ("Not released — the save failed, so the lock stays held. "
                 + save_set(d.get("save") or {}))
+    if reason in ("owner_proof_required", "transfer_unsupported", "proof_rejected",
+                  "generation_conflict", "save_evidence_unknown"):
+        return f"Refused: {reason}. No verified handoff; the lock stays held. " \
+               "Owner authorization and fresh current-set save evidence are required."
     if reason == "disabled":
         return "The Live lock is not configured in this server process."
     return f"Refused by the Live lock: {reason}"
+resume_live_lock = as_json
+transfer_live_lock = as_json
 get_clip_notes = as_json
 plan_note_edits = as_json
 apply_note_edits = as_json
@@ -1200,6 +1206,8 @@ ERROR_PHRASES: Dict[str, str] = {
     "get_live_status": "getting Live status",
     "get_mix_state": "getting the mix state",
     "acquire_live_lock": "acquiring the Live lock",
+    "resume_live_lock": "resuming the Live lock",
+    "transfer_live_lock": "transferring the Live lock",
     "release_live_lock": "releasing the Live lock",
     "checkpoint_set": "checkpointing the set",
     "load_devices": "loading devices",

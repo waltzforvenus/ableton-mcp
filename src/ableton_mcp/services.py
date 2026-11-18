@@ -289,6 +289,17 @@ class AbletonService:
     def acquire_live_lock(self, holder: str, task: str) -> Dict[str, Any]:
         return self._require_lock().acquire(holder, task)
 
+    def resume_live_lock(self, owner: str, owner_proof: dict,
+                         expected_generation: str) -> dict:
+        with self._render_jobs.idle_guard() if self._render_jobs else nullcontext():
+            return self._require_lock().resume(owner, owner_proof, expected_generation)
+
+    def transfer_live_lock(self, from_owner: str, to_owner: str,
+                           save_proof: dict, expected_generation: str) -> dict:
+        with self._render_jobs.idle_guard() if self._render_jobs else nullcontext():
+            return self._require_lock().transfer(from_owner, to_owner,
+                                                 save_proof, expected_generation)
+
     def release_live_lock(self, holder: str, set_path: Optional[str] = None,
                           save_first: bool = False,
                           allow_ui_automation: bool = False) -> Dict[str, Any]:

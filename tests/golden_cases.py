@@ -177,6 +177,10 @@ BASE_CASES = [
     ]),
     _case("acquire_live_lock", "lock_not_configured",
           {"holder": "session-a", "task": "mix pass"}, []),
+    _case("resume_live_lock", "lock_not_configured",
+          {"owner":"owner", "owner_proof":{}, "expected_generation":"g"}, []),
+    _case("transfer_live_lock", "lock_not_configured",
+          {"from_owner":"owner", "to_owner":"next", "save_proof":{}, "expected_generation":"g"}, []),
     _case("release_live_lock", "lock_not_configured",
           {"holder": "session-a", "set_path": "/nonexistent/song.als"}, []),
 

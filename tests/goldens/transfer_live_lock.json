@@ -1,0 +1,26 @@
+{
+  "cases": [
+    {
+      "args": {
+        "expected_generation": "g",
+        "from_owner": "owner",
+        "save_proof": {},
+        "to_owner": "next"
+      },
+      "expect": "The Live lock is not configured in this server process.",
+      "name": "lock_not_configured",
+      "wire": []
+    },
+    {
+      "args": {
+        "expected_generation": "g",
+        "from_owner": "owner",
+        "save_proof": {},
+        "to_owner": "next"
+      },
+      "expect": "The Live lock is not configured in this server process.",
+      "name": "error",
+      "wire": []
+    }
+  ]
+}

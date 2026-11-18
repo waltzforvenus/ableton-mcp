@@ -218,3 +218,10 @@ per chunk. Failed exchanges discard the socket; replacement invalidates cached
 handshake state. No sent command is retried. This bounds reception, not native
 execution or connection establishment. Native callback/OS socket acceptance is
 still held pending save-verified production handoff; fake tests are not Live proof.
+
+A7 changes the shared lock schema additively: instance_id, generation and
+save_state; acquisition last_edit_ts=null (not a musical edit). Name-only helper
+adoption is intentionally removed. Older writers are not trusted to preserve
+these fields; missing identity/generation fails closed. Resume/transfer require
+an injected trusted verifier, default unsupported, and must never expire/steal a
+lock or use mtime alone as native save proof. No wire command/version changes.

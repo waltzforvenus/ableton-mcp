@@ -878,3 +878,29 @@ renamed per-track stem overwrite prompts refuse safely. Multi-stem enumeration
 still uses existing output discovery, not a proven complete track manifest.
 Real UI/short/long export acceptance remains pending; mock tests are not proof
 of native readiness, AX layout, or timing. No Remote Script/version change.
+
+### Verified lock handoff (A7)
+| Tool | Purpose |
+|---|---|
+| resume_live_lock † | Resume an existing owner only with trusted proof and generation comparison. |
+| transfer_live_lock † | Atomically transfer a save-verified lock, with no unlocked gap. |
+
+The default deployment has no trusted authorization/save-proof provider: these
+operations explicitly refuse as unsupported. An embedding may inject
+lock_authorization_verifier into app.build_deps; that trusted callback must verify
+owner and recipient authorization plus fresh actual current-set save evidence,
+bound to the exact record generation. Returning true on caller assertions is NOT
+a valid verifier. The verifier must be bounded, must not mutate Live, and must
+fail closed on unknown, dirty, mismatched-set or stale proof. No secret is embedded
+or accepted as a holder label. Recipient must separately authenticate resume.
+Active/reconciliation export jobs block both operations via the existing idle guard.
+
+Acquisition no longer stamps last_edit_ts. It starts with save_state=unknown;
+actual modifying commands stamp dirty and advance generation. Old/helper records
+remain held and cannot be adopted by matching a name; trusted migration/recovery
+is not available by default. Never delete a stale lock to bypass this boundary.
+Release retains saved-file plus readable clean matching-window checks and now
+refuses unknown UI evidence. These legacy checks are NOT cryptographic/native
+save proof and cannot establish a full path from duplicate set basenames; A7
+transfer requires the separately trusted fresh evidence provider. Native handoff
+acceptance remains held pending save-verified production handoff.

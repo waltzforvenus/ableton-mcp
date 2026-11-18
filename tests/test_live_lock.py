@@ -52,9 +52,11 @@ def test_acquire_writes_the_helper_compatible_record(lock_path):
     lock = _lock(lock_path, clock=clock)
     result = lock.acquire("session-a", "mix pass")
     data = _read(lock_path)
-    assert set(data) == {"holder", "task", "acquired", "acquired_ts", "last_edit_ts"}
+    assert set(data) == {"holder", "task", "acquired", "acquired_ts", "last_edit_ts",
+                         "instance_id", "generation", "save_state"}
     assert data["holder"] == "session-a" and data["task"] == "mix pass"
-    assert data["acquired_ts"] == data["last_edit_ts"] == 1_700_000_000.0
+    assert data["acquired_ts"] == 1_700_000_000.0
+    assert data["last_edit_ts"] is None and data["save_state"] == "unknown"
     assert data["acquired"].startswith("2023-11-14T22:13:20")
     assert result["adopted"] is False and lock.holder == "session-a"
     # The mutex file and the one-line history sit beside the lock.
@@ -70,10 +72,10 @@ def test_acquire_adopts_a_lock_taken_elsewhere_under_the_same_name(lock_path):
     with open(lock_path, "w") as f:
         json.dump(record, f)
     lock = _lock(lock_path)
-    result = lock.acquire("session-a")
-    assert result["adopted"] is True
-    assert _read(lock_path) == record  # untouched: same holder, same edit stamp
-    lock.check_write("set_tempo")  # and now this process may write
+    with pytest.raises(LockError, match="owner_proof_required"):
+        lock.acquire("session-a")
+    assert _read(lock_path) == record
+    with pytest.raises(LockError): lock.check_write("set_tempo")
 
 
 def test_acquire_refuses_another_holder_and_never_takes_over(lock_path):
@@ -249,7 +251,7 @@ def test_save_set_is_checked_but_does_not_stamp_itself(lock_path):
     clock.t = 300.0
     service.save_set()
     assert client.sent == ["save_set"]
-    assert _read(lock_path)["last_edit_ts"] == 100.0
+    assert _read(lock_path)["last_edit_ts"] is None
     # ...and a stranger still cannot save someone else's set
     stranger, _ = _service(_lock(lock_path))
     with pytest.raises(LockError):
@@ -284,7 +286,7 @@ def test_transport_moves_do_not_make_a_clean_save_look_stale(lock_path, tmp_path
     clock.t = 2_000.0
     service.switch_to_arrangement_view()           # view/transport afterwards
     service.set_current_song_time(16.0)
-    assert lock.release("session-a", path)["released"] is True
+    assert lock.release("session-a", path, live_windows=["song - Ableton Live"])["released"] is True
 
 
 def test_a_failed_send_still_stamps_the_edit(lock_path):
@@ -332,6 +334,7 @@ def test_tool_round_trip_acquire_then_write_then_release(lock_path, tmp_path):
     assert "older than your last edit" in tools.release_live_lock(
         ctx, holder="session-a", set_path=early)
     saved = _saved_set(tmp_path, 1_001.0)
+    service._ui = SimpleNamespace(available=True, window_titles=lambda:["song - Ableton Live"])
     assert tools.release_live_lock(ctx, holder="session-a", set_path=saved).startswith(
         "Released the Live lock")
 

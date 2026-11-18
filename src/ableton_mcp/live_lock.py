@@ -27,12 +27,11 @@ Semantics, chosen so a lock can never be lost silently:
   window titles can be read — Live must show that set, without an unsaved
   marker and without a Save/Export dialog open.
 
-A server process holds the lock *as* the holder it acquired with. Another
-process that acquired under the same holder name (the command-line helper,
-typically) is adopted by calling ``acquire`` with that name. Every
-state-changing wire command is checked against the file before it is sent:
-held by someone else means refused, naming the holder; not held at all
-means refused too unless the lock is optional (``require=False``).
+A process instance owns only records it acquired or resumed through an injected
+trusted verifier. Holder names are labels, not credentials. Legacy records and
+unknown save state fail closed; there is no timeout-based takeover. Transfer is
+an atomic generation-checked replace, never a release/reacquire gap. The default
+composition has no trusted identity/save verifier and cannot resume or transfer.
 
 No string formatting for the model here — refusals are :class:`LockError`
 carrying a reason code and data; presenters.py words them.
@@ -43,6 +42,8 @@ from __future__ import annotations
 import json
 import os
 import time
+import uuid
+import copy
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Iterator, List, Optional
@@ -85,11 +86,14 @@ class LiveLock:
     """
 
     def __init__(self, path: str = DEFAULT_LOCK_FILE, require: bool = True,
-                 clock: Callable[[], float] = time.time) -> None:
+                 clock: Callable[[], float] = time.time,
+                 authorization_verifier: Optional[Callable[..., bool]] = None) -> None:
         self.path = os.path.expanduser(path)
         self.require = require
         self.holder: Optional[str] = None
         self._clock = clock
+        self._instance_id = uuid.uuid4().hex
+        self._authorization_verifier = authorization_verifier
 
     # ── file primitives (the shared contract) ────────────────────────────
 
@@ -105,7 +109,7 @@ class LiveLock:
             return {"holder": "<unreadable lock file>", "task": "",
                     "acquired": None, "acquired_ts": None,
                     "last_edit_ts": None}
-        return data if isinstance(data, dict) else None
+        return data if isinstance(data, dict) and data else {"holder": "<unreadable lock file>"}
 
     def _write(self, data: Dict[str, Any]) -> None:
         os.makedirs(os.path.dirname(self.path), exist_ok=True)
@@ -145,7 +149,7 @@ class LiveLock:
             "lock": data,
             "held_by_this_server": bool(
                 data and self.holder is not None
-                and data.get("holder") == self.holder),
+                and self._owns(data)),
             "this_server_holder": self.holder,
             "require_lock": self.require,
             "lock_file": self.path,
@@ -159,16 +163,66 @@ class LiveLock:
             data = self.read()
             if data and data.get("holder") != holder:
                 raise LockError("held_by_other", lock=data)
+            if data and not self._owns(data):
+                raise LockError("owner_proof_required", lock=data)
             adopted = data is not None
             t = self._clock()
             data = data or {"holder": holder, "task": task,
-                            "acquired": _now_iso(self._clock), "acquired_ts": t}
-            data["last_edit_ts"] = data.get("last_edit_ts", t)
+                            "acquired": _now_iso(self._clock), "acquired_ts": t,
+                            "instance_id": self._instance_id,
+                            "generation": uuid.uuid4().hex, "save_state": "unknown"}
+            data["last_edit_ts"] = data.get("last_edit_ts")
             self._write(data)
             self._log(f"acquire {holder} {task!r}"
                       + (" (adopted by ableton-mcp)" if adopted else " (ableton-mcp)"))
         self.holder = holder
         return {"acquired": True, "adopted": adopted, "lock": data}
+
+    def _owns(self, data):
+        return (self.holder is not None and data.get("holder") == self.holder
+                and data.get("instance_id") == self._instance_id)
+
+    def _authorize(self, action, data, proof, **context):
+        if self._authorization_verifier is None:
+            raise LockError("transfer_unsupported", action=action)
+        # Trusted injected boundary verifies identity and fresh current-set/save
+        # evidence. Caller-supplied assertions are not themselves evidence.
+        context["lock"] = copy.deepcopy(data)
+        if self._authorization_verifier(action, context, proof) is not True:
+            raise LockError("proof_rejected", action=action)
+
+    def _generation(self, data, expected):
+        if not data or not expected or data.get("generation") != expected:
+            raise LockError("generation_conflict", lock=data)
+
+    def resume(self, owner, owner_proof, expected_generation):
+        with self._mutex():
+            data = self.read()
+            self._generation(data, expected_generation)
+            if data.get("holder") != owner:
+                raise LockError("not_holder", lock=data)
+            self._authorize("resume", data, owner_proof, owner=owner)
+            data = dict(data, instance_id=self._instance_id,
+                        generation=uuid.uuid4().hex)
+            self._write(data)
+        self.holder = owner
+        return {"resumed": True, "lock": data}
+
+    def transfer(self, from_owner, to_owner, save_proof, expected_generation):
+        if not isinstance(to_owner, str) or not to_owner.strip():
+            raise ValueError("to_owner must be nonempty")
+        with self._mutex():
+            data = self.read()
+            self._generation(data, expected_generation)
+            if from_owner != self.holder or not self._owns(data):
+                raise LockError("not_holder", lock=data)
+            self._authorize("transfer", data, save_proof,
+                            from_owner=from_owner, to_owner=to_owner)
+            data = dict(data, holder=to_owner, instance_id=None,
+                        generation=uuid.uuid4().hex, save_state="verified")
+            self._write(data)
+        self.holder = None
+        return {"transferred": True, "lock": data}
 
     def check_write(self, command: str) -> None:
         """Raise unless this process may change Live's state right now."""
@@ -177,7 +231,7 @@ class LiveLock:
             if self.require:
                 raise LockError("not_held", command=command)
             return
-        if self.holder is None or data.get("holder") != self.holder:
+        if not self._owns(data):
             raise LockError("held_by_other", lock=data, command=command)
 
     def touch(self) -> None:
@@ -187,23 +241,24 @@ class LiveLock:
             return
         with self._mutex():
             data = self.read()
-            if not data or data.get("holder") != self.holder:
+            if not data or not self._owns(data):
                 return  # released or taken over meanwhile; nothing of ours to stamp
             data["last_edit_ts"] = self._clock()
+            data["save_state"] = "dirty"
+            data["generation"] = uuid.uuid4().hex
             self._write(data)
 
     def release(self, holder: str, set_path: str,
                 live_windows: Optional[List[str]] = None) -> Dict[str, Any]:
         """Release after a verified save. ``live_windows`` is Live's window
-        titles when they could be read (None = unknown, check skipped —
-        the same rule the helper applies off macOS or without AX)."""
+        titles when they could be read (None = unknown, release refused)."""
         with self._mutex():
             data = self.read()
             if not data:
                 if holder == self.holder:
                     self.holder = None
                 return {"released": False, "note": "no lock held"}
-            if data.get("holder") != holder:
+            if data.get("holder") != holder or not self._owns(data):
                 raise LockError("not_holder", lock=data)
             path = os.path.expanduser(set_path or "")
             if not path or not os.path.isfile(path):
@@ -213,6 +268,8 @@ class LiveLock:
             if mtime < last_edit:
                 raise LockError("set_older_than_edit", set_path=path,
                                 set_mtime=mtime, last_edit_ts=last_edit, lock=data)
+            if live_windows is None:
+                raise LockError("save_evidence_unknown", lock=data)
             if live_windows is not None:
                 problem = unsaved_problem(live_windows, path)
                 if problem:
@@ -235,7 +292,8 @@ def unsaved_problem(windows: List[str], set_path: str) -> Optional[str]:
     and no Export or Save dialog may be open."""
     name = os.path.splitext(os.path.basename(set_path))[0]
     titles = [w.strip() for w in windows if w and w.strip()]
-    mains = [w for w in titles if name in w]
+    mains = [w for w in titles
+             if w.split(" - Ableton")[0].split(" [")[0].rstrip("* ") == name]
     if not mains:
         return "different_set"
     if any("*" in w for w in mains):
