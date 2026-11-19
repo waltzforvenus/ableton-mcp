@@ -184,3 +184,44 @@ def test_override_annotation_rejects_nonboolean_json(name,invalid):
     from ableton_mcp import tools
     annotation=inspect.signature(getattr(tools,name)).parameters['allow_automation_override'].annotation
     with pytest.raises(ValidationError): TypeAdapter(annotation).validate_python(invalid)
+
+
+@pytest.mark.parametrize('kind',['regular','return','master'])
+@pytest.mark.parametrize('field',['volume','panning'])
+@pytest.mark.parametrize('state',[0,1,2,None])
+def test_public_mixer_automation_state_read(kind,field,state):
+    h=make_harness()
+    track=h.song.tracks[0] if kind=='regular' else (h.song.return_tracks[0] if kind=='return' else h.song.master_track)
+    param=getattr(track.mixer_device,field); param.automation_state=state; old=param.value
+    result=h.mcp._get_parameter_automation(target={'kind':'mixer','track_type':kind,'parameter':field})
+    assert result['automation_state']==state and result['supported'] is (state is not None)
+    assert result['coverage']=='state_only' and result['points'] is None and param.value==old
+
+
+@pytest.mark.parametrize('state',[0,1,2,None])
+def test_public_send_and_chain_state_read(state):
+    from fake_ableton import FakeRackDevice,FakeChain
+    h=make_harness(); chain=FakeChain('A'); h.song.tracks[0].devices=[FakeRackDevice(chains=[chain])]
+    h.song.tracks[0].mixer_device.sends[0].automation_state=state
+    chain.mixer_device.panning.automation_state=state
+    for target in ({'kind':'send','send_index':0}, {'kind':'chain','chain_index':0,'parameter':'panning'}):
+        result=h.mcp._get_parameter_automation(target=target)
+        assert result['automation_state']==state and result['overridden'] is (None if state is None else state==2)
+
+
+@pytest.mark.parametrize('target',[
+    {'kind':'unknown'}, {'kind':'mixer','parameter':'mute'},
+    {'kind':'mixer','parameter':'volume','device_index':0},
+    {'kind':'send','send_index':True}, {'kind':'send','send_index':-1},
+    {'kind':'send','send_index':999}, {'kind':'send','send_index':0,'parameter':0},
+    {'kind':'chain','chain_index':-1,'parameter':'volume'},
+    {'kind':'device','parameter':0,'track_index':True},
+])
+def test_typed_automation_target_rejects_ambiguity(target):
+    h=make_harness()
+    with pytest.raises((ValueError,IndexError)): h.mcp._get_parameter_automation(target=target)
+
+
+def test_explicit_device_target_retains_existing_read():
+    h,p=parameter_fixture(2)
+    assert h.mcp._get_parameter_automation(target={'kind':'device','parameter':0})==h.mcp._get_parameter_automation(target={'parameter':0})

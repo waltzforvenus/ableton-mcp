@@ -985,3 +985,14 @@ A5 repair: override intent is strict JSON boolean at MCP ingress and checked
 without truthy coercion at controller/service/native boundaries. Saved FloatEvent
 nodes must be leaves; unknown nested data refuses rather than disappearing from
 preview. Mixer/send/chain guards are implemented, not a native capability deferral.
+
+### Expanded automation state targets (1.38.0)
+get_parameter_automation accepts explicit target.kind: device (legacy default),
+mixer, send, or chain. Common selectors are track_index, track_type and optional
+expect_track_name. Mixer/chain parameter is volume or panning; send requires
+send_index; chain also uses device_index/chain_index. Device parameter names/indices
+retain existing resolution. Mixed/unknown selectors and negative/boolean indices
+refuse. Regular/return/master state reads use the existing track resolvers.
+These are read-only automation-state observations, not envelope points, evaluated
+values or override reconciliation proof. Unknown state stays unknown. Existing
+commands are version-gated at1.38.0 for expanded target semantics; no new tools.

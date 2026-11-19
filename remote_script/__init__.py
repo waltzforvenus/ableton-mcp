@@ -39,7 +39,7 @@ EXPECTED_COMMAND_ERRORS = (ValueError, IndexError, KeyError)
 
 # Bumped whenever the TCP command surface changes; the MCP server compares
 # this to EXPECTED_REMOTE_SCRIPT_VERSION.
-SCRIPT_VERSION = "1.37.0"
+SCRIPT_VERSION = "1.38.0"
 PROTOCOL_VERSION = 1
 
 # The trim eraser (see _trim_arrangement_clip): a temporary Session clip
@@ -1314,13 +1314,43 @@ class AbletonMCP(ControlSurface):
         return state
 
     def _get_parameter_automation(self, target=None, range=None):
-        target = dict(target or {})
-        if set(target) - {'track_index', 'device_index', 'track_type', 'parameter', 'expect_track_name'}:
-            raise ValueError('unsupported automation target')
-        track, device = self._resolve_device(target.get('track_index', 0),
-            target.get('device_index', 0), target.get('track_type', 'regular'),
-            expect_track_name=target.get('expect_track_name'))
-        parameter = self._resolve_device_parameter(device, target.get('parameter'))
+        if not isinstance(target, dict):
+            raise ValueError('automation target must be an object')
+        kind = target.get('kind', 'device')
+        common = {'kind', 'track_index', 'track_type', 'expect_track_name'}
+        selectors = {'device': {'device_index', 'parameter'},
+                     'mixer': {'parameter'}, 'send': {'send_index'},
+                     'chain': {'device_index', 'chain_index', 'parameter'}}
+        if kind not in selectors or set(target) - (common | selectors[kind]):
+            raise ValueError('unsupported or ambiguous automation target')
+        for key in ('track_index', 'device_index', 'chain_index', 'send_index'):
+            if key in target and (type(target[key]) is not int or target[key] < 0):
+                raise ValueError(key + ' must be a nonnegative integer')
+        ti, tt = target.get('track_index', 0), target.get('track_type', 'regular')
+        guard = target.get('expect_track_name')
+        if kind == 'device':
+            track, device = self._resolve_device(ti, target.get('device_index', 0), tt,
+                                                 expect_track_name=guard)
+            parameter = self._resolve_device_parameter(device, target.get('parameter'))
+        elif kind == 'chain':
+            track, rack = self._resolve_rack(ti, target.get('device_index', 0), tt, guard)
+            chain = self._resolve_chain(rack, target.get('chain_index', 0))
+            field = target.get('parameter')
+            if field not in ('volume', 'panning'):
+                raise ValueError('chain parameter must be volume or panning')
+            parameter = getattr(chain.mixer_device, field)
+        else:
+            track = self._resolve_track(ti, tt, expect_track_name=guard)
+            if kind == 'mixer':
+                field = target.get('parameter')
+                if field not in ('volume', 'panning'):
+                    raise ValueError('mixer parameter must be volume or panning')
+                parameter = getattr(track.mixer_device, field)
+            else:
+                index = target.get('send_index')
+                if type(index) is not int or index < 0 or index >= len(track.mixer_device.sends):
+                    raise ValueError('send_index out of range')
+                parameter = track.mixer_device.sends[index]
         result = self._parameter_automation_state(parameter)
         result.update(parameter_name=parameter.name, range=range,
                       envelope_read_supported=False, edit_supported=False)

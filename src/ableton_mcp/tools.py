@@ -285,8 +285,10 @@ def release_live_lock(ctx: Context, holder: str, set_path: Optional[str] = None,
 
 @tool
 def get_parameter_automation(ctx: Context, target: dict, range: Optional[dict] = None) -> str:
-    """Read device automation state (track_index/device_index/parameter), not live
-    curve points. Or inspect saved_path/pointee_id: saved events cannot establish
+    """Read automation state, never live curve points. target.kind defaults to
+    device (device_index/parameter); mixer uses parameter=volume|panning, send
+    uses send_index, chain uses device_index/chain_index/parameter=volume|panning.
+    All accept track_index, track_type and expect_track_name. Or inspect saved_path/pointee_id: saved events cannot establish
     current Live overrides. Optional range={start,end} filters saved events only.
     """
     return presenters.get_parameter_automation(_deps(ctx).service.get_parameter_automation(target, range))

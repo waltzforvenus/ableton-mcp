@@ -1,3 +1,10 @@
+## Unreleased — expanded automation state reads (1.38.0)
+
+- Typed device/mixer/send/chain state-only targets, including return/master mixer
+  parameters; reject ambiguous selectors and preserve unknown state.
+- Existing device defaults unchanged; read command floor and paired bundle updated.
+- Saved writer/evaluated curves/reload reconciliation and full A5 remain pending.
+
 ## Unreleased — automation visibility (1.37.0 limited increment)
 
 - Device automation-state probe and explicit override guards on singular/plural
