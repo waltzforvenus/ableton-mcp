@@ -252,6 +252,7 @@ def test_min_version_floors_are_exactly_the_broken_but_advertised():
                if spec.min_script_version is not None}
     assert floored == {
         "get_device_parameters": "1.8.0",
+        "get_parameter_automation": "1.38.0",
         "set_device_parameter": "1.37.0",
         "set_device_parameters": "1.37.0",
         "set_chain_mixer": "1.37.0",
