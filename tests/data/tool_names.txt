@@ -2,6 +2,7 @@ acquire_live_lock
 add_notes_to_clip
 analyze_audio
 analyze_clip_audio
+apply_arrangement_region
 apply_note_edits
 back_to_arrangement
 bounce_track
@@ -56,6 +57,7 @@ load_drum_kit
 load_instrument_or_effect
 move_arrangement_clip
 move_device
+plan_arrangement_region
 plan_note_edits
 release_live_lock
 resume_live_lock

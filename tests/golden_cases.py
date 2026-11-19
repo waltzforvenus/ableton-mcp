@@ -1784,6 +1784,11 @@ def _generated_error_cases(base_cases):
     return out
 
 
+BASE_CASES += [
+    _case("plan_arrangement_region", "unconfigured", {"request": {}}, []),
+    _case("apply_arrangement_region", "unconfigured", {"manifest_id": "missing", "fingerprint": "missing"}, []),
+]
+
 CASES = BASE_CASES + _generated_error_cases(BASE_CASES)
 
 # All tools, in server-definition order of first appearance.

@@ -87,6 +87,8 @@ COMMANDS: dict[str, CommandSpec] = {
     # capability gate already turns it into the installer message. A floor
     # exists only for names an old script advertises but serves wrongly.
     "get_plugin_presets": CommandSpec(gated=True),
+    "plan_arrangement_region": CommandSpec(gated=True),
+    "apply_arrangement_region": CommandSpec(modifying=True, gated=True),
     "get_arrangement_clips": CommandSpec(gated=True),
     # 1.15.0 taught it to read arrangement clips (arrangement=True). An
     # older script advertises the name but its handler has no such keyword,

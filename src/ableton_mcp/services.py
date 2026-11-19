@@ -205,7 +205,8 @@ class AbletonService:
                  evidence_dir: Optional[str] = None,
                  ffmpeg: Optional[str] = None,
                  require_audio_auth: bool = False,
-                 source_span_probe: Any = None, render_jobs: Any = None) -> None:
+                 source_span_probe: Any = None, render_jobs: Any = None, arrangement_edits: Any = None) -> None:
+        self._arrangement_edits = arrangement_edits
         self._render_jobs = render_jobs
         self._client = client
         self._handshake = handshake
@@ -378,6 +379,21 @@ class AbletonService:
         if save is not None:
             result["save"] = save
         return result
+
+    def plan_arrangement_region(self, request: dict) -> dict:
+        if self._arrangement_edits is None:
+            return {"supported": False, "applied": False, "reason": "region manifest service not configured"}
+        native = self._send("plan_arrangement_region", {"request": request})
+        return self._arrangement_edits.register(native, request)
+
+    def apply_arrangement_region(self, manifest_id: str, fingerprint: str) -> dict:
+        if self._arrangement_edits is None:
+            return {"supported": False, "applied": False, "reason": "region manifest service not configured"}
+        return self._arrangement_edits.apply(manifest_id, fingerprint,
+            lambda request: self.checkpoint_set("region-copy", set_path=request.get("set_path"),
+                allow_ui_automation=request.get("allow_ui_automation", False)),
+            lambda native: self._send("apply_arrangement_region", {
+                "plan_id": native["plan_id"], "fingerprint": native["fingerprint"]}))
 
     def plan_note_edits(self, snapshot: dict, edits: list[dict]) -> dict:
         return self._send("plan_note_edits", note_edits.plan_note_edits(snapshot, edits))

@@ -426,6 +426,7 @@ class FakeClip(object):
         self.color = int(color)
         self.start_time = float(start_time)
         self.end_time = self.start_time + self.length
+        self.muted = False
         self.looping = False
         self.loop_start = 0.0
         self.loop_end = self.length

@@ -421,7 +421,7 @@ get_live_status shows who holds it.
 
 ### Tool reference
 
-All 94 tools the server exposes. Tools marked **†** are added by this fork and
+All 96 tools the server exposes. Tools marked **†** are added by this fork and
 are not present upstream.
 
 #### Session & info
@@ -443,6 +443,9 @@ are not present upstream.
 | `set_song_scale` † | `root_note`?, `scale_name`?, `scale_mode`? | Set the Set's root (0-11 or a note name like `"F#"` / `"Bb"`), scale name and Scale Mode (Live 12+); reports what Live reads back and whether it matched |
 | `save_set` † | `allow_ui_automation`?, `set_path`? | Save the open set — Live's API if it has one, else File › Save Live Set over Accessibility (macOS, with consent); verified by the title's unsaved marker and the .als mtime |
 | `checkpoint_set` † | `label`, `set_path`?, `allow_ui_automation`?, `checkpoint_dir`? | Save, then keep a sha256-verified copy at `<set folder>/Checkpoints/<timestamp>-<label>.als` |
+
+| `plan_arrangement_region` † | request | Preview a server-held whole MIDI clip copy manifest; crop/audio fades/replacement/atomic batches unsupported |
+| `apply_arrangement_region` † | manifest_id, fingerprint | Checkpoint, revalidate and apply a single native clone into empty space; uncertain outcomes require reconciliation |
 
 #### Tracks
 
@@ -926,3 +929,26 @@ Default resume/transfer identity authorization is still absent. A7 is a useful
 safety subset, NOT full native authenticated handoff/recovery completion.
 
 Pure UI consent/platform, render signature/type and shared local filename/timeout/bounce-mode checks precede mutation reservations. Refusal before admission does not create or clear any reservation; admitted errors retain the existing uncertainty rules.
+
+### Region manifests (1.36.0)
+A bounded supported operation is one whole existing MIDI Arrangement clip copied
+on its own track into an empty half-open span. Exact adjacency is allowed. Native
+Track.duplicate_clip_to_arrangement clones the clip; notes are never cleared or
+reconstructed. Manifest records source metadata/offsets, destination, policy,
+predicted victims and checkpoint requirement. Copy readback compares serialized
+notes (excluding new native note IDs), markers, loops, colour and footprint;
+opaque groove/expression are carried by native cloning, not independently proven.
+
+Partial crops, replacement, cross-track/multi-clip atomic edits and requested fade
+changes are unsupported. Audio previews refuse because complete fade/warp-envelope
+preservation cannot be verified; there is no destructive emulation. Supported
+source media hashes are bounded to256MiB per file; unsupported previews do not
+claim hashes were verified. Server-held manifests expire on restart/eviction
+(max64). Apply requires an observed saved-set checkpoint and fresh source identity,
+metadata and destination topology before clone. Checkpoint files are retained;
+there is no global undo, rollback claim or replay of a consumed plan. Uncertain
+native outcomes latch further region writes pending explicit reconciliation.
+Default checkpoints need actual AXDocument and explicitly clean saved-state
+observations; unknown state refuses. Real clone/fidelity/rollback acceptance remains
+pending. Native version pair and generated bundle are1.36.0; no installation or
+Live restart is performed by planning or these unit checks.
