@@ -54,7 +54,7 @@ class Automation:
             raise ValueError('saved target must identify exactly one envelope')
         selected = matches[0]
         events = selected.find('Automation/Events')
-        if events is None or any(e.tag != 'FloatEvent' or set(e.attrib) - {'Time', 'Value', 'Id'} for e in events):
+        if events is None or any(len(e) or e.tag != 'FloatEvent' or set(e.attrib) - {'Time', 'Value', 'Id'} for e in events):
             raise ValueError('unsupported event/curve schema; no reconstruction')
         points = points_checked([{'time': e.get('Time'), 'value': e.get('Value')} for e in events])
         # Exact raw envelope hashes bind every unrelated envelope, even unknown types.

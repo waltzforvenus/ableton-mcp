@@ -14,6 +14,7 @@ effects, and nothing here ever touches the wire directly (that is the
 service layer's job; a guardrail test asserts it).
 """
 from mcp.server.fastmcp import Context
+from pydantic import StrictBool
 import functools
 import logging
 from typing import TYPE_CHECKING, Dict, Any, List, Optional, Union
@@ -946,7 +947,8 @@ def set_count_in(ctx: Context, bars: int = 1, metronome: bool = True) -> str:
 
 @tool
 def set_track_send(ctx: Context, track_index: int, send_index: int, value: float,
-                   expect_track_name: Optional[str] = None) -> str:
+                   expect_track_name: Optional[str] = None,
+                    allow_automation_override: StrictBool = False) -> str:
     """
     Set how much of a track is sent to a return track.
 
@@ -964,8 +966,10 @@ def set_track_send(ctx: Context, track_index: int, send_index: int, value: float
       renumber whenever a track is added or deleted, and an index that is
       still in range but now points elsewhere fails silently otherwise
     """
+    if type(allow_automation_override) is not bool:
+        raise ValueError('automation override intent must be boolean')
     result = _deps(ctx).service.set_track_send(track_index, send_index, value,
-                                               expect_track_name)
+                                               expect_track_name, **({"allow_automation_override": True} if allow_automation_override else {}))
     return presenters.set_track_send(result, send_index)
 
 
@@ -1109,7 +1113,7 @@ def set_device_parameter(ctx: Context, track_index: int, device_index: int,
                          track_type: str = "regular",
                          parameter_name: Optional[str] = None,
                          expect_track_name: Optional[str] = None,
-                         allow_automation_override: bool = False) -> str:
+                         allow_automation_override: StrictBool = False) -> str:
     """
     Automated parameters require allow_automation_override=True; unknown state refuses.
     This authorizes only a value override, never envelope deletion or reenable.
@@ -1145,6 +1149,8 @@ def set_device_parameter(ctx: Context, track_index: int, device_index: int,
       renumber whenever a track is added or deleted, and an index that is
       still in range but now points elsewhere fails silently otherwise
     """
+    if type(allow_automation_override) is not bool:
+        raise ValueError('automation override intent must be boolean')
     param: Any = _one_value("parameter", parameter,
                             parameter_name=parameter_name)
     if param is None:
@@ -1169,7 +1175,7 @@ def set_device_parameters(ctx: Context, track_index: int, device_index: int,
                           parameters: Dict[str, Union[float, str]],
                           track_type: str = "regular",
                           expect_track_name: Optional[str] = None,
-                         allow_automation_override: bool = False) -> str:
+                         allow_automation_override: StrictBool = False) -> str:
     """
     Automated parameters require allow_automation_override=True; unknown state refuses.
     This authorizes only a value override, never envelope deletion or reenable.
@@ -1211,6 +1217,8 @@ def set_device_parameters(ctx: Context, track_index: int, device_index: int,
       renumber whenever a track is added or deleted, and an index that is
       still in range but now points elsewhere fails silently otherwise
     """
+    if type(allow_automation_override) is not bool:
+        raise ValueError('automation override intent must be boolean')
     result = _deps(ctx).service.set_device_parameters(
         track_index, device_index, parameters, track_type, expect_track_name,
         **({"allow_automation_override": True} if allow_automation_override else {}))
@@ -1332,7 +1340,8 @@ def delete_device(ctx: Context, track_index: int, device_index: int,
 @tool
 def set_track_volume(ctx: Context, track_index: int, value: float,
                      track_type: str = "regular",
-                     expect_track_name: Optional[str] = None) -> str:
+                     expect_track_name: Optional[str] = None,
+                    allow_automation_override: StrictBool = False) -> str:
     """
     Set a track's mixer volume.
 
@@ -1350,15 +1359,18 @@ def set_track_volume(ctx: Context, track_index: int, value: float,
       renumber whenever a track is added or deleted, and an index that is
       still in range but now points elsewhere fails silently otherwise
     """
+    if type(allow_automation_override) is not bool:
+        raise ValueError('automation override intent must be boolean')
     result = _deps(ctx).service.set_track_volume(track_index, value, track_type,
-                                                 expect_track_name)
+                                                 expect_track_name, **({"allow_automation_override": True} if allow_automation_override else {}))
     return presenters.set_track_volume(result)
 
 
 @tool
 def set_track_pan(ctx: Context, track_index: int, value: float,
                   track_type: str = "regular",
-                  expect_track_name: Optional[str] = None) -> str:
+                  expect_track_name: Optional[str] = None,
+                    allow_automation_override: StrictBool = False) -> str:
     """
     Set a track's stereo panning.
 
@@ -1372,8 +1384,10 @@ def set_track_pan(ctx: Context, track_index: int, value: float,
       renumber whenever a track is added or deleted, and an index that is
       still in range but now points elsewhere fails silently otherwise
     """
+    if type(allow_automation_override) is not bool:
+        raise ValueError('automation override intent must be boolean')
     result = _deps(ctx).service.set_track_pan(track_index, value, track_type,
-                                              expect_track_name)
+                                              expect_track_name, **({"allow_automation_override": True} if allow_automation_override else {}))
     return presenters.set_track_pan(result)
 
 
@@ -2106,7 +2120,8 @@ def set_chain_mixer(ctx: Context, track_index: int, device_index: int,
                     mute: Optional[bool] = None, solo: Optional[bool] = None,
                     name: Optional[str] = None, in_note: Optional[int] = None,
                     track_type: str = "regular",
-                    expect_track_name: Optional[str] = None) -> str:
+                    expect_track_name: Optional[str] = None,
+                    allow_automation_override: StrictBool = False) -> str:
     """
     Set one rack chain's mixer and identity: volume, pan, mute, solo, name,
     and — on a Drum Rack chain — the MIDI note it receives (in_note; a pad
@@ -2121,11 +2136,13 @@ def set_chain_mixer(ctx: Context, track_index: int, device_index: int,
     - in_note: 0-127 (or -1 for "all notes") — Drum Rack chains only
     Only the fields given change. Reports each change as Live reads it back.
     """
+    if type(allow_automation_override) is not bool:
+        raise ValueError('automation override intent must be boolean')
     settings = {"volume": volume, "panning": panning, "mute": mute,
                 "solo": solo, "name": name, "in_note": in_note}
     result = _deps(ctx).service.set_chain_mixer(
         track_index, device_index, chain_index, settings, track_type,
-        expect_track_name)
+        expect_track_name, **({"allow_automation_override": True} if allow_automation_override else {}))
     return presenters.set_chain_mixer(result)
 
 

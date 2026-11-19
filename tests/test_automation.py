@@ -131,3 +131,56 @@ def test_live_state_read_failure_is_unknown():
     assert h.mcp._get_parameter_automation(target={'parameter':0})['supported'] is False
     with pytest.raises(ValueError,match='automation'):
         h.mcp._set_device_parameter(parameter=0,value=.4)
+
+
+def test_nested_event_schema_refused_without_changes(saved_copy):
+    from ableton_mcp.automation import Automation
+    saved_copy.write_text(saved_copy.read_text().replace('<FloatEvent Time="0" Value="0.2"/>','<FloatEvent Time="0" Value="0.2"><UnknownCurve/></FloatEvent>'))
+    before=saved_copy.read_bytes()
+    with pytest.raises(ValueError):
+        Automation().plan({'saved_path':str(saved_copy),'pointee_id':'10'},[{'time':8,'value':.5}],'insert')
+    assert saved_copy.read_bytes()==before
+
+
+@pytest.mark.parametrize('kind',['regular','return','master','send'])
+@pytest.mark.parametrize('state',[0,1,2,None])
+@pytest.mark.parametrize('intent',[False,True])
+def test_mixer_guard(kind,state,intent):
+    h=make_harness()
+    track=h.song.tracks[0] if kind in ('regular','send') else (h.song.return_tracks[0] if kind=='return' else h.song.master_track)
+    param=track.mixer_device.sends[0] if kind=='send' else track.mixer_device.volume
+    param.automation_state=state; old=param.value
+    def call():
+        if kind=='send': return h.mcp._set_track_send(value=.4,allow_automation_override=intent)
+        return h.mcp._set_track_volume(value=.4,track_type=kind,allow_automation_override=intent)
+    if state is None or (state in (1,2) and not intent):
+        with pytest.raises(ValueError,match='automation'): call()
+        assert param.value==old
+    else:
+        call(); assert param.value==.4
+
+
+@pytest.mark.parametrize('state',[0,1,2,None])
+@pytest.mark.parametrize('intent',[False,True])
+def test_chain_all_parameter_guards_precede_any_field_write(state,intent):
+    from fake_ableton import FakeRackDevice,FakeChain
+    h=make_harness(); chain=FakeChain('original'); rack=FakeRackDevice(chains=[chain])
+    h.song.tracks[0].devices=[rack]
+    chain.mixer_device.panning.automation_state=state
+    old=chain.mixer_device.volume.value
+    def call(): return h.mcp._set_chain_mixer(volume=.4,panning=.3,name='changed',mute=True,allow_automation_override=intent)
+    if state is None or (state in (1,2) and not intent):
+        with pytest.raises(ValueError,match='automation'): call()
+        assert chain.mixer_device.volume.value==old and chain.name=='original' and not chain.mute
+    else:
+        call(); assert chain.mixer_device.volume.value==.4 and chain.name=='changed'
+
+
+@pytest.mark.parametrize('name',['set_device_parameter','set_device_parameters','set_track_volume','set_track_pan','set_track_send','set_chain_mixer'])
+@pytest.mark.parametrize('invalid',['false','true',1,None])
+def test_override_annotation_rejects_nonboolean_json(name,invalid):
+    import inspect
+    from pydantic import TypeAdapter,ValidationError
+    from ableton_mcp import tools
+    annotation=inspect.signature(getattr(tools,name)).parameters['allow_automation_override'].annotation
+    with pytest.raises(ValidationError): TypeAdapter(annotation).validate_python(invalid)

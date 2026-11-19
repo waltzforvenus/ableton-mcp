@@ -4,7 +4,9 @@
   device parameter setters; unknown state refuses and old scripts are gated.
 - Read-only saved-envelope events and fingerprinted plan/diff, with unrelated
   hashes and reload override warning; bounded decompression. No native/file CRUD.
-- Full A5/mixer guards/evaluated curves/reload/native acceptance remain pending.
+- Mixer/send/chain guards implemented with whole-call automation preflight for chain
+  parameters. Strict override intent and nested-event refusal enforced. Full A5
+  evaluated curves/reload/native acceptance remain pending.
 
 ## Unreleased — region manifests (1.36.0)
 

@@ -2051,7 +2051,7 @@ class AbletonMCP(ControlSurface):
     def _set_chain_mixer(self, track_index=0, device_index=0, chain_index=0,
                          volume=None, panning=None, mute=None, solo=None,
                          name=None, in_note=None, track_type="regular",
-                         expect_track_name=None):
+                         expect_track_name=None, allow_automation_override=False):
         """Set a chain's volume/pan (raw or display strings like "-6 dB"),
         mute, solo, name, and a drum chain's receiving note."""
         track, rack = self._resolve_rack(track_index, device_index, track_type,
@@ -2059,6 +2059,11 @@ class AbletonMCP(ControlSurface):
         chain = self._resolve_chain(rack, chain_index)
         changes = {}
         mixer = getattr(chain, "mixer_device", None)
+        if type(allow_automation_override) is not bool:
+            raise ValueError('automation override intent must be boolean')
+        for key, value in (("volume", volume), ("panning", panning)):
+            if value is not None:
+                self._guard_parameter_automation(getattr(mixer, key, None), allow_automation_override)
         for key, value in (("volume", volume), ("panning", panning)):
             if value is None:
                 continue
@@ -2356,7 +2361,7 @@ class AbletonMCP(ControlSurface):
             raise
 
     def _set_track_mixer(self, track_index, field, value, track_type="regular",
-                         expect_track_name=None):
+                         expect_track_name=None, allow_automation_override=False):
         """Set mixer volume (0.0-1.0, 0.85 = 0 dB) or panning (-1.0 to 1.0).
 
         Works on regular tracks, return tracks and the master.
@@ -2366,6 +2371,7 @@ class AbletonMCP(ControlSurface):
                                         expect_track_name=expect_track_name)
             param = getattr(track.mixer_device, field)
 
+            self._guard_parameter_automation(param, allow_automation_override)
             value = float(value)
             clamped = max(param.min, min(param.max, value))
             param.value = clamped
@@ -2394,16 +2400,18 @@ class AbletonMCP(ControlSurface):
     # literal, so the field is injected here rather than by an adapter row.
 
     def _set_track_volume(self, track_index=0, value=0.85, track_type="regular",
-                          expect_track_name=None):
+                          expect_track_name=None, allow_automation_override=False):
         """Set a track's volume fader (0.0-1.0, 0.85 = 0 dB)."""
         return self._set_track_mixer(track_index, "volume", value, track_type,
-                                     expect_track_name=expect_track_name)
+                                     expect_track_name=expect_track_name,
+                                     allow_automation_override=allow_automation_override)
 
     def _set_track_pan(self, track_index=0, value=0.0, track_type="regular",
-                       expect_track_name=None):
+                       expect_track_name=None, allow_automation_override=False):
         """Set a track's pan (-1.0 hard left to 1.0 hard right)."""
         return self._set_track_mixer(track_index, "panning", value, track_type,
-                                     expect_track_name=expect_track_name)
+                                     expect_track_name=expect_track_name,
+                                     allow_automation_override=allow_automation_override)
 
     def _set_clip_gain(self, track_index=0, clip_index=0, gain=0.5, arrangement=True,
                        expect_track_name=None):
@@ -2948,7 +2956,7 @@ class AbletonMCP(ControlSurface):
             raise
 
     def _set_track_send(self, track_index=0, send_index=0, value=0.0,
-                        expect_track_name=None):
+                        expect_track_name=None, allow_automation_override=False):
         """Set how much of a track is sent to a return track (0.0-1.0).
 
         A newly created return track receives nothing until this is raised —
@@ -2963,6 +2971,7 @@ class AbletonMCP(ControlSurface):
                 raise IndexError("Send index out of range (track has %d sends)" % len(sends))
 
             param = sends[send_index]
+            self._guard_parameter_automation(param, allow_automation_override)
             value = float(value)
             clamped = max(param.min, min(param.max, value))
             param.value = clamped

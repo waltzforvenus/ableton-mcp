@@ -976,5 +976,12 @@ unrelated envelope hashes. No saved file is edited. Apply always refuses: native
 lossless CRUD/backup/apply and approved reload remain unimplemented, not simulated.
 Reload may reenable overrides, whose current Live state a saved file cannot know.
 XML parsing is capped at8MiB decompressed; file hashing256MiB. Manifests max64,
-process-local. Mixer/chain/other direct setters are not covered by these new guards;
+process-local. Track/return/master volume/pan, track sends and chain volume/pan now share these
+guards; chain parameters are preflighted before any field write. Other direct
+setters/non-DeviceParameter controls are not newly classified by this increment;
 full A5 scope, evaluated interpolation and Live acceptance remain open.
+
+A5 repair: override intent is strict JSON boolean at MCP ingress and checked
+without truthy coercion at controller/service/native boundaries. Saved FloatEvent
+nodes must be leaves; unknown nested data refuses rather than disappearing from
+preview. Mixer/send/chain guards are implemented, not a native capability deferral.

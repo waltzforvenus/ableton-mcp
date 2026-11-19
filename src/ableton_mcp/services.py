@@ -606,12 +606,16 @@ class AbletonService:
         })
 
     def set_track_send(self, track_index: int, send_index: int, value: float,
-                       expect_track_name: Optional[str] = None
+                       expect_track_name: Optional[str] = None,
+                        allow_automation_override: bool = False
                        ) -> Dict[str, Any]:
+        if type(allow_automation_override) is not bool:
+            raise ValueError('automation override intent must be boolean')
         return self._send("set_track_send", _guarded({
             "track_index": track_index,
             "send_index": send_index,
-            "value": value
+            "value": value,
+            **({"allow_automation_override": True} if allow_automation_override else {})
         }, expect_track_name))
 
     def _ui_allowed(self, allow_ui_automation: bool) -> bool:
@@ -1080,21 +1084,29 @@ class AbletonService:
 
     def set_track_volume(self, track_index: int, value: float,
                          track_type: str,
-                         expect_track_name: Optional[str] = None
+                         expect_track_name: Optional[str] = None,
+                        allow_automation_override: bool = False
                          ) -> Dict[str, Any]:
+        if type(allow_automation_override) is not bool:
+            raise ValueError('automation override intent must be boolean')
         return self._send("set_track_volume", _guarded({
             "track_index": track_index,
             "value": value,
-            "track_type": track_type
+            "track_type": track_type,
+            **({"allow_automation_override": True} if allow_automation_override else {})
         }, expect_track_name))
 
     def set_track_pan(self, track_index: int, value: float, track_type: str,
-                      expect_track_name: Optional[str] = None
+                      expect_track_name: Optional[str] = None,
+                        allow_automation_override: bool = False
                       ) -> Dict[str, Any]:
+        if type(allow_automation_override) is not bool:
+            raise ValueError('automation override intent must be boolean')
         return self._send("set_track_pan", _guarded({
             "track_index": track_index,
             "value": value,
-            "track_type": track_type
+            "track_type": track_type,
+            **({"allow_automation_override": True} if allow_automation_override else {})
         }, expect_track_name))
 
     def set_track_mute(self, track_index: int, mute: bool,
@@ -1381,14 +1393,19 @@ class AbletonService:
     def set_chain_mixer(self, track_index: int, device_index: int,
                         chain_index: int, settings: Dict[str, Any],
                         track_type: str = "regular",
-                        expect_track_name: Optional[str] = None) -> Dict[str, Any]:
+                        expect_track_name: Optional[str] = None,
+                        allow_automation_override: bool = False) -> Dict[str, Any]:
         # Only the fields the caller set go on the wire: the handler treats
         # an absent key as "leave it", and None would mean the same anyway.
+        if type(allow_automation_override) is not bool:
+            raise ValueError('automation override intent must be boolean')
         params: Dict[str, Any] = {"track_index": track_index,
                                   "device_index": device_index,
                                   "chain_index": chain_index,
                                   "track_type": track_type}
         params.update({k: v for k, v in settings.items() if v is not None})
+        if allow_automation_override:
+            params["allow_automation_override"] = True
         return self._send("set_chain_mixer", _guarded(params, expect_track_name))
 
     def _send_cue(self, command: str, params: Dict[str, Any]) -> Dict[str, Any]:

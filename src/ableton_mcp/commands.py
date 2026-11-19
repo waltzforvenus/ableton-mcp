@@ -170,8 +170,8 @@ COMMANDS: dict[str, CommandSpec] = {
     "set_device_parameters": CommandSpec(modifying=True, gated=True, min_script_version="1.37.0"),
     # 1.16.0; no floor, same reasoning as get_plugin_presets above.
     "set_plugin_preset": CommandSpec(modifying=True, gated=True),
-    "set_track_volume": CommandSpec(modifying=True, gated=True),
-    "set_track_pan": CommandSpec(modifying=True, gated=True),
+    "set_track_volume": CommandSpec(modifying=True, gated=True, min_script_version="1.37.0"),
+    "set_track_pan": CommandSpec(modifying=True, gated=True, min_script_version="1.37.0"),
     "set_track_mute": CommandSpec(modifying=True, gated=True),
     # Brand new, so no floor — same reasoning as get_plugin_presets above.
     "set_track_solo": CommandSpec(modifying=True, gated=True),
@@ -180,7 +180,7 @@ COMMANDS: dict[str, CommandSpec] = {
     "set_track_arm": CommandSpec(modifying=True, gated=True, audible=True),
     "set_track_monitoring": CommandSpec(modifying=True, gated=True),
     "save_set": CommandSpec(modifying=True, gated=True, lock="check"),
-    "set_track_send": CommandSpec(modifying=True, gated=True),
+    "set_track_send": CommandSpec(modifying=True, gated=True, min_script_version="1.37.0"),
     "set_count_in": CommandSpec(modifying=True, gated=True),
     "back_to_arrangement": CommandSpec(modifying=True, gated=True, lock="check"),
     "set_track_routing": CommandSpec(modifying=True, gated=True),
@@ -213,7 +213,7 @@ COMMANDS: dict[str, CommandSpec] = {
                                                  gated=True, min_script_version="1.31.0"),
     "create_arrangement_midi_clip": CommandSpec(modifying=True, gated=True),
     "insert_chain_device": CommandSpec(modifying=True, gated=True),
-    "set_chain_mixer": CommandSpec(modifying=True, gated=True),
+    "set_chain_mixer": CommandSpec(modifying=True, gated=True, min_script_version="1.37.0"),
     # Dispatchable on the Remote Script but never sent by any current tool
     # (the tool of that name sends load_browser_item); kept for third-party
     # clients (plan §9) and for the cross-half modifying-set equality.
