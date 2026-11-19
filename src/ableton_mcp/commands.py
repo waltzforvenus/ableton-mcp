@@ -87,6 +87,7 @@ COMMANDS: dict[str, CommandSpec] = {
     # capability gate already turns it into the installer message. A floor
     # exists only for names an old script advertises but serves wrongly.
     "get_plugin_presets": CommandSpec(gated=True),
+    "get_parameter_automation": CommandSpec(gated=True),
     "plan_arrangement_region": CommandSpec(gated=True),
     "apply_arrangement_region": CommandSpec(modifying=True, gated=True),
     "get_arrangement_clips": CommandSpec(gated=True),
@@ -164,9 +165,9 @@ COMMANDS: dict[str, CommandSpec] = {
         modifying=True, gated=True, min_script_version="1.15.0"
     ),
     "set_device_parameter": CommandSpec(
-        modifying=True, gated=True, min_script_version="1.8.0"
+        modifying=True, gated=True, min_script_version="1.37.0"
     ),
-    "set_device_parameters": CommandSpec(modifying=True, gated=True),
+    "set_device_parameters": CommandSpec(modifying=True, gated=True, min_script_version="1.37.0"),
     # 1.16.0; no floor, same reasoning as get_plugin_presets above.
     "set_plugin_preset": CommandSpec(modifying=True, gated=True),
     "set_track_volume": CommandSpec(modifying=True, gated=True),

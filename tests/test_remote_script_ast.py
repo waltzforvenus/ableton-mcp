@@ -352,6 +352,7 @@ def test_script_version_matches_expected_version():
 # Changing the advertised surface is a deliberate act: edit BOTH the COMMANDS
 # advertise flag and this snapshot, and bump SCRIPT_VERSION.
 PR5_SCRIPT_CAPABILITIES = [
+    "get_parameter_automation",
     "plan_arrangement_region", "apply_arrangement_region",
     "plan_note_edits", "apply_note_edits", "set_notes_probability",
     "get_session_info",
@@ -430,7 +431,7 @@ PR5_SCRIPT_CAPABILITIES = [
 def test_derived_capabilities_equal_the_pr5_snapshot():
     table = _commands_table()
     derived = sorted(name for name, row in table.items() if row[3])
-    assert len(PR5_SCRIPT_CAPABILITIES) == 75  # pinned (PR5 + locator jump + arrangement editing + clip warp
+    assert len(PR5_SCRIPT_CAPABILITIES) == 76  # pinned (PR5 + locator jump + arrangement editing + clip warp
     # + 1.15.0's duplicate_track, set_device_parameters, delete_locator
     # + 1.16.0's get_plugin_presets, set_plugin_preset
     # + 1.17.0's get_clip_warp_markers, edit_clip_warp_markers

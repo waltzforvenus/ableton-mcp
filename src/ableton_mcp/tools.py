@@ -283,6 +283,32 @@ def release_live_lock(ctx: Context, holder: str, set_path: Optional[str] = None,
 
 
 @tool
+def get_parameter_automation(ctx: Context, target: dict, range: Optional[dict] = None) -> str:
+    """Read device automation state (track_index/device_index/parameter), not live
+    curve points. Or inspect saved_path/pointee_id: saved events cannot establish
+    current Live overrides. Optional range={start,end} filters saved events only.
+    """
+    return presenters.get_parameter_automation(_deps(ctx).service.get_parameter_automation(target, range))
+
+
+@tool
+def plan_automation_edit(ctx: Context, target: dict, points: list[dict], operation: str) -> str:
+    """Preview saved-copy insert/replace/delete (whole envelope for replace/delete).
+    Target=saved_path/pointee_id; points=time/value. No files are written and curve
+    interpolation is not inferred. Live CRUD and reload are unsupported.
+    """
+    return presenters.plan_automation_edit(_deps(ctx).service.plan_automation_edit(target, points, operation))
+
+
+@tool
+def apply_automation_edit(ctx: Context, manifest_id: str, fingerprint: str) -> str:
+    """Validate a saved-copy diff; apply explicitly refuses without lossless CRUD.
+    Never writes files/envelopes or reloads a set. A backup alone is not authority.
+    """
+    return presenters.apply_automation_edit(_deps(ctx).service.apply_automation_edit(manifest_id, fingerprint))
+
+
+@tool
 def plan_arrangement_region(ctx: Context, request: dict) -> str:
     """Preview a region manifest. Currently supports whole MIDI clip native copy
     to an empty span on the same track; crop/replace/fades/atomic batches refuse.
@@ -1082,8 +1108,11 @@ def set_device_parameter(ctx: Context, track_index: int, device_index: int,
                          parameter: Optional[str] = None,
                          track_type: str = "regular",
                          parameter_name: Optional[str] = None,
-                         expect_track_name: Optional[str] = None) -> str:
+                         expect_track_name: Optional[str] = None,
+                         allow_automation_override: bool = False) -> str:
     """
+    Automated parameters require allow_automation_override=True; unknown state refuses.
+    This authorizes only a value override, never envelope deletion or reenable.
     Set one parameter on a device. This is how you actually mix: pull a reverb's
     Dry/Wet down, set a delay's feedback, change a filter cutoff.
 
@@ -1131,7 +1160,7 @@ def set_device_parameter(ctx: Context, track_index: int, device_index: int,
     # different parameters on the same device.
     result = _deps(ctx).service.set_device_parameter(
         track_index, device_index, param, value, track_type,
-        expect_track_name)
+        expect_track_name, **({"allow_automation_override": True} if allow_automation_override else {}))
     return presenters.set_device_parameter(result)
 
 
@@ -1139,8 +1168,11 @@ def set_device_parameter(ctx: Context, track_index: int, device_index: int,
 def set_device_parameters(ctx: Context, track_index: int, device_index: int,
                           parameters: Dict[str, Union[float, str]],
                           track_type: str = "regular",
-                          expect_track_name: Optional[str] = None) -> str:
+                          expect_track_name: Optional[str] = None,
+                         allow_automation_override: bool = False) -> str:
     """
+    Automated parameters require allow_automation_override=True; unknown state refuses.
+    This authorizes only a value override, never envelope deletion or reenable.
     Set MANY parameters on ONE device in a single call — the batch form of
     set_device_parameter, and the one to reach for when dialling a device in.
 
@@ -1180,7 +1212,8 @@ def set_device_parameters(ctx: Context, track_index: int, device_index: int,
       still in range but now points elsewhere fails silently otherwise
     """
     result = _deps(ctx).service.set_device_parameters(
-        track_index, device_index, parameters, track_type, expect_track_name)
+        track_index, device_index, parameters, track_type, expect_track_name,
+        **({"allow_automation_override": True} if allow_automation_override else {}))
     return presenters.set_device_parameters(result)
 
 

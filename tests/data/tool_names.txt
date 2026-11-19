@@ -3,6 +3,7 @@ add_notes_to_clip
 analyze_audio
 analyze_clip_audio
 apply_arrangement_region
+apply_automation_edit
 apply_note_edits
 back_to_arrangement
 bounce_track
@@ -38,6 +39,7 @@ get_device_sidechain
 get_export_job
 get_live_status
 get_mix_state
+get_parameter_automation
 get_plugin_presets
 get_plugin_state
 get_rack_chains
@@ -58,6 +60,7 @@ load_instrument_or_effect
 move_arrangement_clip
 move_device
 plan_arrangement_region
+plan_automation_edit
 plan_note_edits
 release_live_lock
 resume_live_lock

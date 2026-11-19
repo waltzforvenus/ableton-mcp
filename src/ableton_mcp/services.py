@@ -205,7 +205,8 @@ class AbletonService:
                  evidence_dir: Optional[str] = None,
                  ffmpeg: Optional[str] = None,
                  require_audio_auth: bool = False,
-                 source_span_probe: Any = None, render_jobs: Any = None, arrangement_edits: Any = None) -> None:
+                 source_span_probe: Any = None, render_jobs: Any = None, arrangement_edits: Any = None, automation: Any = None) -> None:
+        self._automation = automation
         self._arrangement_edits = arrangement_edits
         self._render_jobs = render_jobs
         self._client = client
@@ -379,6 +380,25 @@ class AbletonService:
         if save is not None:
             result["save"] = save
         return result
+
+    def get_parameter_automation(self, target: dict, range: dict | None = None) -> dict:
+        if 'saved_path' in target:
+            if self._automation is None:
+                return {'supported': False, 'reason': 'automation service not configured'}
+            return self._automation.read_saved(target, range)
+        return self._send('get_parameter_automation', {'target': target, 'range': range})
+
+    def plan_automation_edit(self, target: dict, points: list, operation: str) -> dict:
+        if self._automation is None:
+            return {'supported': False, 'reason': 'automation service not configured'}
+        if 'saved_path' not in target:
+            return {'supported': False, 'reason': 'lossless live envelope CRUD unavailable; use saved_path/pointee_id for saved-copy diff'}
+        return self._automation.plan(target, points, operation)
+
+    def apply_automation_edit(self, manifest_id: str, fingerprint: str) -> dict:
+        if self._automation is None:
+            return {'supported': False, 'applied': False, 'reason': 'automation service not configured'}
+        return self._automation.apply(manifest_id, fingerprint)
 
     def plan_arrangement_region(self, request: dict) -> dict:
         if self._arrangement_edits is None:
@@ -984,31 +1004,39 @@ class AbletonService:
     def set_device_parameter(self, track_index: int, device_index: int,
                              parameter: Union[str, int], value: float,
                              track_type: str,
-                             expect_track_name: Optional[str] = None
+                             expect_track_name: Optional[str] = None,
+                             allow_automation_override: bool = False
                              ) -> Dict[str, Any]:
         # ``parameter`` arrives already coerced (a name, or an int index) —
         # the string-to-int parse is boundary work and stays in the
         # controller.
+        if type(allow_automation_override) is not bool:
+            raise ValueError('automation override intent must be boolean')
         return self._send("set_device_parameter", _guarded({
             "track_index": track_index,
             "device_index": device_index,
             "parameter": parameter,
             "value": value,
-            "track_type": track_type
+            "track_type": track_type,
+            **({"allow_automation_override": True} if allow_automation_override else {})
         }, expect_track_name))
 
     def set_device_parameters(self, track_index: int, device_index: int,
                               parameters: Dict[str, Any], track_type: str,
-                              expect_track_name: Optional[str] = None
+                              expect_track_name: Optional[str] = None,
+                             allow_automation_override: bool = False
                               ) -> Dict[str, Any]:
         # The plural of the method above, and deliberately not a loop over
         # it: the whole batch is one wire command so the writes land inside
         # a single main-thread task.
+        if type(allow_automation_override) is not bool:
+            raise ValueError('automation override intent must be boolean')
         return self._send("set_device_parameters", _guarded({
             "track_index": track_index,
             "device_index": device_index,
             "parameters": parameters,
-            "track_type": track_type
+            "track_type": track_type,
+            **({"allow_automation_override": True} if allow_automation_override else {})
         }, expect_track_name))
 
     def get_plugin_presets(self, track_index: int, device_index: int,

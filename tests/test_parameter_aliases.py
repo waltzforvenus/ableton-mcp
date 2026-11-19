@@ -297,3 +297,14 @@ def test_set_song_scale_sends_only_what_was_given(fake_conn):
     conn = fake_conn(response={"verified": True})
     tools.set_song_scale(conn.ctx, scale_name="  Minor ")
     assert _params(conn, "set_song_scale") == {"scale_name": "Minor"}
+
+
+@pytest.mark.parametrize('plural', [False, True])
+def test_automation_override_intent_reaches_wire(fake_conn, plural):
+    conn = fake_conn()
+    if plural:
+        tools.set_device_parameters(conn.ctx, 0, 0, {'Gain': .4}, allow_automation_override=True)
+    else:
+        tools.set_device_parameter(conn.ctx, 0, 0, .4, parameter='Gain', allow_automation_override=True)
+    name = 'set_device_parameters' if plural else 'set_device_parameter'
+    assert _params(conn, name)['allow_automation_override'] is True

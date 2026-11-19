@@ -1,0 +1,24 @@
+{
+  "cases": [
+    {
+      "args": {
+        "operation": "delete",
+        "points": [],
+        "target": {}
+      },
+      "expect": "{\n  \"supported\": false,\n  \"reason\": \"automation service not configured\"\n}",
+      "name": "unconfigured",
+      "wire": []
+    },
+    {
+      "args": {
+        "operation": "delete",
+        "points": [],
+        "target": {}
+      },
+      "expect": "{\n  \"supported\": false,\n  \"reason\": \"automation service not configured\"\n}",
+      "name": "error",
+      "wire": []
+    }
+  ]
+}

@@ -1789,6 +1789,12 @@ BASE_CASES += [
     _case("apply_arrangement_region", "unconfigured", {"manifest_id": "missing", "fingerprint": "missing"}, []),
 ]
 
+BASE_CASES += [
+    _case("get_parameter_automation", "unconfigured_saved", {"target": {"saved_path": "unused"}}, []),
+    _case("plan_automation_edit", "unconfigured", {"target": {}, "points": [], "operation": "delete"}, []),
+    _case("apply_automation_edit", "unconfigured", {"manifest_id": "missing", "fingerprint": "missing"}, []),
+]
+
 CASES = BASE_CASES + _generated_error_cases(BASE_CASES)
 
 # All tools, in server-definition order of first appearance.
