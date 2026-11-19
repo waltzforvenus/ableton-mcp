@@ -1701,16 +1701,11 @@ BASE_CASES = [
     _case("set_track_volume", "gated_legacy_script_blocked",
           {"track_index": 0, "value": 0.85}, [],
           script_info={"script_version": "legacy", "capabilities": []}),
-    # 1.7.0 ADVERTISES set_track_volume, so the same newly-gated command
-    # sails through the gate there and performs its normal exchange — the
-    # PR10 flip takes nothing away from a 1.7.0 user.
-    _case("set_track_volume", "gated_1_7_0_passes",
-          {"track_index": 0, "value": 0.85}, [
-        _ok("set_track_volume",
-            {"track_index": 0, "value": 0.85, "track_type": "regular"},
-            {"track_name": "Drums", "value": 0.85, "display_value": "0.0 dB"}),
-    ], script_info={"script_version": "1.7.0",
-                    "capabilities": SCRIPT_CAPABILITIES_1_7_0}),
+    # A5 now requires override-safe mixer handlers even when old scripts advertise the name.
+    _case("set_track_volume", "gated_1_7_0_min_version_blocked",
+          {"track_index": 0, "value": 0.85}, [],
+          script_info={"script_version": "1.7.0",
+                       "capabilities": SCRIPT_CAPABILITIES_1_7_0}),
     # 1.7.0 advertises the device-parameter pair but serves the broken
     # duplicate-definition handlers; the registry's min_script_version="1.8.0"
     # floor is what blocks them, with the message naming both versions.
@@ -1787,6 +1782,12 @@ def _generated_error_cases(base_cases):
 BASE_CASES += [
     _case("plan_arrangement_region", "unconfigured", {"request": {}}, []),
     _case("apply_arrangement_region", "unconfigured", {"manifest_id": "missing", "fingerprint": "missing"}, []),
+]
+
+BASE_CASES += [
+    _case("get_parameter_automation", "unconfigured_saved", {"target": {"saved_path": "unused"}}, []),
+    _case("plan_automation_edit", "unconfigured", {"target": {}, "points": [], "operation": "delete"}, []),
+    _case("apply_automation_edit", "unconfigured", {"manifest_id": "missing", "fingerprint": "missing"}, []),
 ]
 
 CASES = BASE_CASES + _generated_error_cases(BASE_CASES)

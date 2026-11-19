@@ -421,7 +421,7 @@ get_live_status shows who holds it.
 
 ### Tool reference
 
-All 96 tools the server exposes. Tools marked **†** are added by this fork and
+All 99 tools the server exposes. Tools marked **†** are added by this fork and
 are not present upstream.
 
 #### Session & info
@@ -446,6 +446,10 @@ are not present upstream.
 
 | `plan_arrangement_region` † | request | Preview a server-held whole MIDI clip copy manifest; crop/audio fades/replacement/atomic batches unsupported |
 | `apply_arrangement_region` † | manifest_id, fingerprint | Checkpoint, revalidate and apply a single native clone into empty space; uncertain outcomes require reconciliation |
+
+| `get_parameter_automation` | target, range | Device automation state or saved-copy events; overrides unknown in saved copies |
+| `plan_automation_edit` | target, points, operation | Non-mutating saved-copy envelope diff; live CRUD unsupported |
+| `apply_automation_edit` | manifest_id, fingerprint | Validates freshness then refuses unsupported apply; never reloads |
 
 #### Tracks
 
@@ -952,3 +956,32 @@ Default checkpoints need actual AXDocument and explicitly clean saved-state
 observations; unknown state refuses. Real clone/fidelity/rollback acceptance remains
 pending. Native version pair and generated bundle are1.36.0; no installation or
 Live restart is performed by planning or these unit checks.
+
+### Automation visibility (1.37.0 limited increment)
+Device targets use track_index/device_index/parameter and optional track_type /
+expect_track_name. Live automation_state distinguishes none, playing and overridden;
+missing/unknown probes are not evidence of no envelope. Coverage is state_only,
+not curve enumeration and not a requested-range read. Singular/plural device
+parameter setters refuse automated values unless allow_automation_override=true;
+unknown states always refuse. Plural guards run before any writes. Override consent
+never deletes envelopes, reenables automation or authorizes a reload. Older scripts
+are version-gated so they cannot silently bypass these guards.
+
+Saved targets use saved_path plus a unique pointee_id. Only unambiguous FloatEvent
+Time/Value/optional Id schemas are projected; unknown curves/types refuse. Points
+retain beat positions (including sentinel/pre-roll); interpolation is not inferred.
+Optional start/end filters events, not evaluated envelope values. Plans show
+insert or explicit whole-envelope replace/delete diffs with original file and
+unrelated envelope hashes. No saved file is edited. Apply always refuses: native
+lossless CRUD/backup/apply and approved reload remain unimplemented, not simulated.
+Reload may reenable overrides, whose current Live state a saved file cannot know.
+XML parsing is capped at8MiB decompressed; file hashing256MiB. Manifests max64,
+process-local. Track/return/master volume/pan, track sends and chain volume/pan now share these
+guards; chain parameters are preflighted before any field write. Other direct
+setters/non-DeviceParameter controls are not newly classified by this increment;
+full A5 scope, evaluated interpolation and Live acceptance remain open.
+
+A5 repair: override intent is strict JSON boolean at MCP ingress and checked
+without truthy coercion at controller/service/native boundaries. Saved FloatEvent
+nodes must be leaves; unknown nested data refuses rather than disappearing from
+preview. Mixer/send/chain guards are implemented, not a native capability deferral.

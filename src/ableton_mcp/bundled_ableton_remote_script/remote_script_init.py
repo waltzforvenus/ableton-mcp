@@ -39,7 +39,7 @@ EXPECTED_COMMAND_ERRORS = (ValueError, IndexError, KeyError)
 
 # Bumped whenever the TCP command surface changes; the MCP server compares
 # this to EXPECTED_REMOTE_SCRIPT_VERSION.
-SCRIPT_VERSION = "1.36.0"
+SCRIPT_VERSION = "1.37.0"
 PROTOCOL_VERSION = 1
 
 # The trim eraser (see _trim_arrangement_clip): a temporary Session clip
@@ -233,6 +233,7 @@ COMMANDS = {
     "trim_arrangement_clip":      ("_trim_arrangement_clip",      True,  None, True),
     "delete_arrangement_clip":    ("_delete_arrangement_clip",    True,  None, True),
     "move_arrangement_clip":      ("_move_arrangement_clip",      True,  None, True),
+    "get_parameter_automation": ("_get_parameter_automation", False, None, True),
     "plan_arrangement_region": ("_plan_arrangement_region", False, None, True),
     "apply_arrangement_region": ("_apply_arrangement_region", True, None, True),
     "duplicate_arrangement_clip": ("_duplicate_arrangement_clip", True,  None, True),
@@ -1288,9 +1289,46 @@ class AbletonMCP(ControlSurface):
             row["resolved_by"] = resolved_by
         return row
 
+    def _parameter_automation_state(self, parameter):
+        state = None
+        try:
+            raw = parameter.automation_state
+            parsed = int(raw)
+            if not isinstance(raw, bool) and raw == parsed and parsed in (0, 1, 2):
+                state = parsed
+        except Exception:
+            pass
+        return {'supported': state is not None, 'source': 'live',
+                'envelope_present': None if state is None else state != 0,
+                'overridden': None if state is None else state == 2,
+                'automation_state': state, 'coverage': 'state_only', 'points': None}
+
+    def _guard_parameter_automation(self, parameter, allow_automation_override=False):
+        if type(allow_automation_override) is not bool:
+            raise ValueError('automation override intent must be boolean')
+        state = self._parameter_automation_state(parameter)
+        if not state['supported']:
+            raise ValueError('Unknown automation state; refusing parameter write')
+        if state['envelope_present'] and not allow_automation_override:
+            raise ValueError('Parameter has automation; explicit allow_automation_override required')
+        return state
+
+    def _get_parameter_automation(self, target=None, range=None):
+        target = dict(target or {})
+        if set(target) - {'track_index', 'device_index', 'track_type', 'parameter', 'expect_track_name'}:
+            raise ValueError('unsupported automation target')
+        track, device = self._resolve_device(target.get('track_index', 0),
+            target.get('device_index', 0), target.get('track_type', 'regular'),
+            expect_track_name=target.get('expect_track_name'))
+        parameter = self._resolve_device_parameter(device, target.get('parameter'))
+        result = self._parameter_automation_state(parameter)
+        result.update(parameter_name=parameter.name, range=range,
+                      envelope_read_supported=False, edit_supported=False)
+        return result
+
     def _set_device_parameter(self, track_index=0, device_index=0, parameter=None,
                               value=0.0, track_type="regular",
-                              expect_track_name=None):
+                              expect_track_name=None, allow_automation_override=False):
         """Set one device parameter, addressed by integer index or by name"""
         try:
             track, device = self._resolve_device(
@@ -1298,6 +1336,7 @@ class AbletonMCP(ControlSurface):
                 expect_track_name=expect_track_name)
 
             target = self._resolve_device_parameter(device, parameter)
+            self._guard_parameter_automation(target, allow_automation_override)
             written = self._write_device_parameter(target, value)
 
             result = {
@@ -1347,7 +1386,7 @@ class AbletonMCP(ControlSurface):
 
     def _set_device_parameters(self, track_index=0, device_index=0,
                                parameters=None, track_type="regular",
-                               expect_track_name=None):
+                               expect_track_name=None, allow_automation_override=False):
         """Set MANY parameters on ONE device in a single round-trip.
 
         `parameters` is a dict of {name_or_index: value}, each entry
@@ -1414,6 +1453,9 @@ class AbletonMCP(ControlSurface):
                             error = str(index_error)
                 plan.append((key, value, target, error))
 
+            for key, value, target, error in plan:
+                if target is not None:
+                    self._guard_parameter_automation(target, allow_automation_override)
             rows = []
             applied = 0
             for key, value, target, error in plan:
@@ -2009,7 +2051,7 @@ class AbletonMCP(ControlSurface):
     def _set_chain_mixer(self, track_index=0, device_index=0, chain_index=0,
                          volume=None, panning=None, mute=None, solo=None,
                          name=None, in_note=None, track_type="regular",
-                         expect_track_name=None):
+                         expect_track_name=None, allow_automation_override=False):
         """Set a chain's volume/pan (raw or display strings like "-6 dB"),
         mute, solo, name, and a drum chain's receiving note."""
         track, rack = self._resolve_rack(track_index, device_index, track_type,
@@ -2017,6 +2059,11 @@ class AbletonMCP(ControlSurface):
         chain = self._resolve_chain(rack, chain_index)
         changes = {}
         mixer = getattr(chain, "mixer_device", None)
+        if type(allow_automation_override) is not bool:
+            raise ValueError('automation override intent must be boolean')
+        for key, value in (("volume", volume), ("panning", panning)):
+            if value is not None:
+                self._guard_parameter_automation(getattr(mixer, key, None), allow_automation_override)
         for key, value in (("volume", volume), ("panning", panning)):
             if value is None:
                 continue
@@ -2314,7 +2361,7 @@ class AbletonMCP(ControlSurface):
             raise
 
     def _set_track_mixer(self, track_index, field, value, track_type="regular",
-                         expect_track_name=None):
+                         expect_track_name=None, allow_automation_override=False):
         """Set mixer volume (0.0-1.0, 0.85 = 0 dB) or panning (-1.0 to 1.0).
 
         Works on regular tracks, return tracks and the master.
@@ -2324,6 +2371,7 @@ class AbletonMCP(ControlSurface):
                                         expect_track_name=expect_track_name)
             param = getattr(track.mixer_device, field)
 
+            self._guard_parameter_automation(param, allow_automation_override)
             value = float(value)
             clamped = max(param.min, min(param.max, value))
             param.value = clamped
@@ -2352,16 +2400,18 @@ class AbletonMCP(ControlSurface):
     # literal, so the field is injected here rather than by an adapter row.
 
     def _set_track_volume(self, track_index=0, value=0.85, track_type="regular",
-                          expect_track_name=None):
+                          expect_track_name=None, allow_automation_override=False):
         """Set a track's volume fader (0.0-1.0, 0.85 = 0 dB)."""
         return self._set_track_mixer(track_index, "volume", value, track_type,
-                                     expect_track_name=expect_track_name)
+                                     expect_track_name=expect_track_name,
+                                     allow_automation_override=allow_automation_override)
 
     def _set_track_pan(self, track_index=0, value=0.0, track_type="regular",
-                       expect_track_name=None):
+                       expect_track_name=None, allow_automation_override=False):
         """Set a track's pan (-1.0 hard left to 1.0 hard right)."""
         return self._set_track_mixer(track_index, "panning", value, track_type,
-                                     expect_track_name=expect_track_name)
+                                     expect_track_name=expect_track_name,
+                                     allow_automation_override=allow_automation_override)
 
     def _set_clip_gain(self, track_index=0, clip_index=0, gain=0.5, arrangement=True,
                        expect_track_name=None):
@@ -2906,7 +2956,7 @@ class AbletonMCP(ControlSurface):
             raise
 
     def _set_track_send(self, track_index=0, send_index=0, value=0.0,
-                        expect_track_name=None):
+                        expect_track_name=None, allow_automation_override=False):
         """Set how much of a track is sent to a return track (0.0-1.0).
 
         A newly created return track receives nothing until this is raised —
@@ -2921,6 +2971,7 @@ class AbletonMCP(ControlSurface):
                 raise IndexError("Send index out of range (track has %d sends)" % len(sends))
 
             param = sends[send_index]
+            self._guard_parameter_automation(param, allow_automation_override)
             value = float(value)
             clamped = max(param.min, min(param.max, value))
             param.value = clamped

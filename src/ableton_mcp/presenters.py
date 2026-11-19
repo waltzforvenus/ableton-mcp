@@ -1361,3 +1361,12 @@ plan_arrangement_region = as_json
 apply_arrangement_region = as_json
 ERROR_PHRASES["plan_arrangement_region"] = "planning arrangement region"
 ERROR_PHRASES["apply_arrangement_region"] = "applying arrangement region"
+
+get_parameter_automation = as_json
+ERROR_PHRASES["get_parameter_automation"] = "get parameter automation"
+
+plan_automation_edit = as_json
+ERROR_PHRASES["plan_automation_edit"] = "plan automation edit"
+
+apply_automation_edit = as_json
+ERROR_PHRASES["apply_automation_edit"] = "apply automation edit"

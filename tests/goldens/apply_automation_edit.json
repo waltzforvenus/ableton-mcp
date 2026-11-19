@@ -1,0 +1,22 @@
+{
+  "cases": [
+    {
+      "args": {
+        "fingerprint": "missing",
+        "manifest_id": "missing"
+      },
+      "expect": "{\n  \"supported\": false,\n  \"applied\": false,\n  \"reason\": \"automation service not configured\"\n}",
+      "name": "unconfigured",
+      "wire": []
+    },
+    {
+      "args": {
+        "fingerprint": "missing",
+        "manifest_id": "missing"
+      },
+      "expect": "{\n  \"supported\": false,\n  \"applied\": false,\n  \"reason\": \"automation service not configured\"\n}",
+      "name": "error",
+      "wire": []
+    }
+  ]
+}

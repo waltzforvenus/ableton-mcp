@@ -28,7 +28,7 @@
         "track_index": 0,
         "value": 0.85
       },
-      "expect": "Ableton Remote Script missing capability 'set_track_volume' (loaded='legacy', expected=1.36.0). Run `ableton-mcp-install-script` to update the User Remote Script, then restart Ableton Live.",
+      "expect": "Ableton Remote Script missing capability 'set_track_volume' (loaded='legacy', expected=1.37.0). Run `ableton-mcp-install-script` to update the User Remote Script, then restart Ableton Live.",
       "name": "gated_legacy_script_blocked",
       "script_info": {
         "capabilities": [],
@@ -41,8 +41,8 @@
         "track_index": 0,
         "value": 0.85
       },
-      "expect": "Set 'Drums' volume to 0.0 dB",
-      "name": "gated_1_7_0_passes",
+      "expect": "Ableton Remote Script v1.7.0 is older than v1.37.0, which 'set_track_volume' requires. Run `ableton-mcp-install-script` to update the User Remote Script, then restart Ableton Live.",
+      "name": "gated_1_7_0_min_version_blocked",
       "script_info": {
         "capabilities": [
           "get_session_info",
@@ -86,21 +86,7 @@
         ],
         "script_version": "1.7.0"
       },
-      "wire": [
-        {
-          "command": "set_track_volume",
-          "params": {
-            "track_index": 0,
-            "track_type": "regular",
-            "value": 0.85
-          },
-          "response": {
-            "display_value": "0.0 dB",
-            "track_name": "Drums",
-            "value": 0.85
-          }
-        }
-      ]
+      "wire": []
     },
     {
       "args": {

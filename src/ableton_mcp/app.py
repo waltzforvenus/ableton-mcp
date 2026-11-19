@@ -21,6 +21,7 @@ from mcp.server.fastmcp import FastMCP
 
 from . import tools
 from .arrangement_edits import ArrangementEdits
+from .automation import Automation
 from .render_jobs import AtomicJobStore, RenderJobService
 from .connection import AbletonClient
 from .handshake import ScriptHandshake
@@ -117,7 +118,7 @@ def build_deps(settings: Settings, *, lock_authorization_verifier=None) -> Deps:
                              evidence_dir=settings.evidence_dir,
                              ffmpeg=settings.ffmpeg,
                              require_audio_auth=settings.require_audio_auth,
-                             source_span_probe=probe_source_span, arrangement_edits=ArrangementEdits())
+                             source_span_probe=probe_source_span, arrangement_edits=ArrangementEdits(), automation=Automation())
     return Deps(client=client, handshake=handshake, service=service,
                 render_jobs=jobs, render_executor=executor)
 

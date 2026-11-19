@@ -137,16 +137,18 @@ def _walk_devices(scope: ET.Element) -> Iterator[ET.Element]:
             yield el
 
 
-def _read_xml(path: str) -> ET.Element:
+def _read_xml(path: str, max_bytes: Optional[int] = None) -> ET.Element:
     with open(path, "rb") as f:
         head = f.read(2)
     try:
         if head == b"\x1f\x8b":
             with gzip.open(path, "rb") as f:
-                data = f.read()
+                data = f.read() if max_bytes is None else f.read(max_bytes + 1)
         else:
             with open(path, "rb") as f:
-                data = f.read()
+                data = f.read() if max_bytes is None else f.read(max_bytes + 1)
+        if max_bytes is not None and len(data) > max_bytes:
+            raise PluginStateError('saved XML exceeds decompressed byte budget')
         return ET.fromstring(data)
     except (OSError, ET.ParseError, EOFError) as e:
         raise PluginStateError(f"{path} is not a readable Live set or preset: {e}")

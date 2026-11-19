@@ -1,3 +1,13 @@
+## Unreleased — automation visibility (1.37.0 limited increment)
+
+- Device automation-state probe and explicit override guards on singular/plural
+  device parameter setters; unknown state refuses and old scripts are gated.
+- Read-only saved-envelope events and fingerprinted plan/diff, with unrelated
+  hashes and reload override warning; bounded decompression. No native/file CRUD.
+- Mixer/send/chain guards implemented with whole-call automation preflight for chain
+  parameters. Strict override intent and nested-event refusal enforced. Full A5
+  evaluated curves/reload/native acceptance remain pending.
+
 ## Unreleased — region manifests (1.36.0)
 
 - Plan/apply server-held region manifests with observed checkpoint and fresh-state

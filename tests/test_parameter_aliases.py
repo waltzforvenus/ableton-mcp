@@ -297,3 +297,39 @@ def test_set_song_scale_sends_only_what_was_given(fake_conn):
     conn = fake_conn(response={"verified": True})
     tools.set_song_scale(conn.ctx, scale_name="  Minor ")
     assert _params(conn, "set_song_scale") == {"scale_name": "Minor"}
+
+
+@pytest.mark.parametrize('plural', [False, True])
+def test_automation_override_intent_reaches_wire(fake_conn, plural):
+    conn = fake_conn()
+    if plural:
+        tools.set_device_parameters(conn.ctx, 0, 0, {'Gain': .4}, allow_automation_override=True)
+    else:
+        tools.set_device_parameter(conn.ctx, 0, 0, .4, parameter='Gain', allow_automation_override=True)
+    name = 'set_device_parameters' if plural else 'set_device_parameter'
+    assert _params(conn, name)['allow_automation_override'] is True
+
+
+@pytest.mark.parametrize('intent', ['false','true',1,None])
+@pytest.mark.parametrize('plural', [False,True])
+def test_invalid_override_intent_zero_wire(fake_conn,intent,plural):
+    conn=fake_conn()
+    with pytest.raises(ValueError):
+        if plural: tools.set_device_parameters.__wrapped__(conn.ctx,0,0,{'Gain':.4},allow_automation_override=intent)
+        else: tools.set_device_parameter.__wrapped__(conn.ctx,0,0,.4,parameter='Gain',allow_automation_override=intent)
+    assert conn.sent==[]
+
+
+@pytest.mark.parametrize('name,kwargs',[
+    ('set_track_volume',{'track_index':0,'value':.4}),
+    ('set_track_pan',{'track_index':0,'value':.3}),
+    ('set_track_send',{'track_index':0,'send_index':0,'value':.4}),
+    ('set_chain_mixer',{'track_index':0,'device_index':0,'chain_index':0,'volume':.4})])
+@pytest.mark.parametrize('intent',[False,True,'false',1,None])
+def test_mixer_override_controller_wire_contract(fake_conn,name,kwargs,intent):
+    conn=fake_conn()
+    result=getattr(tools,name)(conn.ctx,**kwargs,allow_automation_override=intent)
+    if type(intent) is not bool:
+        assert 'boolean' in result and conn.sent==[]
+    else:
+        assert _params(conn,name).get('allow_automation_override',False) is intent
