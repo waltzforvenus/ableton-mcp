@@ -996,3 +996,25 @@ refuse. Regular/return/master state reads use the existing track resolvers.
 These are read-only automation-state observations, not envelope points, evaluated
 values or override reconciliation proof. Unknown state stays unknown. Existing
 commands are version-gated at1.38.0 for expanded target semantics; no new tools.
+
+### Output-only saved automation value edits
+The optional plan target fields output_path, backup_path and
+schema="leaf-float-values-v1" enable a narrowly qualified new-copy writer.
+Supply an existing independent byte-identical backup and a NEW absolute output
+path. Only operation="replace" with exactly the original point times/count is
+supported. Plain UTF-8 XML, self-closing leaf FloatEvent Time/Value/optional numeric
+Id only; compressed sets, DTD/entities, changed times, insertion/deletion and
+unknown selected curves refuse. This schema is synthetic-fixture qualified, NOT
+Live-version certification; output loading/playback remains unverified.
+
+Only selected Value attribute payload bytes change. All other bytes—including
+unknown unrelated XML, comments, CDATA and other envelopes—remain unchanged.
+Apply revalidates held source/backup/output binding, exclusively creates a new
+file and verifies bytes/hash, projected points and unrelated envelopes. Publication
+failure retains any artifact and requires reconciliation; consumed plans never
+retry or clean up uncertain output. Source/backup originals are never overwritten.
+Preview-only plans without writer fields still refuse apply. No live envelope
+mutation, interpolation evaluation, reload or override reenable is performed.
+The earlier blanket no-file-write description applies to default preview mode;
+this explicit output-only mode is the sole exception. Next: reload dry-run/fresh
+state reconciliation; evaluated curves need documented schema/semantics fixtures.

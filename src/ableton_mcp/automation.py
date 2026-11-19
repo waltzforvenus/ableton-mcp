@@ -1,4 +1,4 @@
-"""Read-only saved-envelope previews. No live CRUD or implicit reload authority."""
+"""Saved-envelope plans and explicit output-only copies. Never native CRUD/reload."""
 import copy
 import hashlib
 import json
@@ -33,7 +33,8 @@ def points_checked(points):
 
 
 class Automation:
-    def __init__(self, read_xml=_read_xml, hash_file=media_hash):
+    def __init__(self, read_xml=_read_xml, hash_file=media_hash, writer=None):
+        self._writer = writer
         self._read_xml = read_xml
         self._hash_file = hash_file
         self._plans = {}
@@ -80,7 +81,11 @@ class Automation:
         proposed = points_checked(points)
         if (operation == 'delete' and proposed) or (operation != 'delete' and not proposed):
             raise ValueError('delete requires no points; insert/replace require points')
-        snapshot = self.read_saved(target)
+        writing = bool(set(target) & {'output_path', 'backup_path', 'schema'})
+        if writing and set(target) != {'saved_path', 'pointee_id', 'output_path', 'backup_path', 'schema'}:
+            raise ValueError('writer target requires source, pointee_id, new output, backup and schema')
+        read_target = {k: target[k] for k in ('saved_path', 'pointee_id')} if writing else target
+        snapshot = self.read_saved(read_target)
         old = snapshot['points']
         preview = proposed
         if operation == 'insert':
@@ -96,6 +101,14 @@ class Automation:
                         reload_risk='may_reenable_overrides', interpolation='not_inferred',
                         reason='lossless live envelope CRUD unavailable; saved-copy diff only, no file write/reload',
                         backup_required=True, manifest_id=uuid.uuid4().hex)
+        if writing:
+            if self._writer is None:
+                raise ValueError('saved writer not configured')
+            binding, _ = self._writer.prepare(target, old, preview, operation)
+            if binding['source_sha256'] != snapshot['file_sha256']:
+                raise ValueError('source changed during writer plan')
+            manifest.update(supported=True, apply_mode='saved_copy_only', writer_binding=binding,
+                            reason='value-only new XML copy; no live edit or reload')
         manifest['fingerprint'] = fingerprint(manifest)
         with self._mutex:
             if len(self._plans) >= 64:
@@ -110,5 +123,30 @@ class Automation:
                 raise ValueError('unknown/stale automation manifest')
             if self._hash_file(plan['target']['saved_path']) != plan['file_sha256']:
                 raise ValueError('stale saved automation copy')
+            if plan.get('apply_mode') == 'saved_copy_only':
+                binding, output_data = self._writer.prepare(plan['target'], plan['before_points'],
+                                                          plan['preview_points'], plan['operation'])
+                if binding != plan['writer_binding']:
+                    raise ValueError('stale source or backup writer binding')
+                del self._plans[manifest_id]  # consume before possible publication
+            else:
+                output_data = None
+        if output_data is not None:
+            target = plan['target']
+            try:
+                self._writer.publish(target['output_path'], output_data)
+                observed = self.read_saved({'saved_path': target['output_path'], 'pointee_id': target['pointee_id']})
+                if (observed['points'] != plan['preview_points']
+                        or observed['unrelated_envelope_hashes'] != plan['unrelated_envelope_hashes']
+                        or observed['file_sha256'] != binding['output_sha256']
+                        or self._hash_file(target['saved_path']) != binding['source_sha256']
+                        or self._hash_file(target['backup_path']) != binding['backup_sha256']):
+                    raise ValueError('saved-copy verification mismatch')
+                return dict(supported=True, applied=True, live_applied=False, output_path=target['output_path'],
+                            output_sha256=binding['output_sha256'], backup_path=target['backup_path'],
+                            reload_risk='may_reenable_overrides', retry_safe=False)
+            except Exception as exc:
+                return dict(applied=None, live_applied=False, reconciliation_required=True,
+                            output_path=target['output_path'], reason=str(exc), retry_safe=False)
         return dict(supported=False, applied=False, reason=plan['reason'],
                     backup_required=True, reload_risk='may_reenable_overrides')

@@ -297,16 +297,19 @@ def get_parameter_automation(ctx: Context, target: dict, range: Optional[dict] =
 @tool
 def plan_automation_edit(ctx: Context, target: dict, points: list[dict], operation: str) -> str:
     """Preview saved-copy insert/replace/delete (whole envelope for replace/delete).
-    Target=saved_path/pointee_id; points=time/value. No files are written and curve
-    interpolation is not inferred. Live CRUD and reload are unsupported.
+    Target=saved_path/pointee_id; points=time/value. Planning never writes.
+    Optional output_path/backup_path/schema=leaf-float-values-v1 enables only new
+    plain-UTF8 XML copies replacing values at identical existing times. Backup
+    must already match source bytes; no overwrite, curves, live CRUD or reload.
     """
     return presenters.plan_automation_edit(_deps(ctx).service.plan_automation_edit(target, points, operation))
 
 
 @tool
 def apply_automation_edit(ctx: Context, manifest_id: str, fingerprint: str) -> str:
-    """Validate a saved-copy diff; apply explicitly refuses without lossless CRUD.
-    Never writes files/envelopes or reloads a set. A backup alone is not authority.
+    """Apply an explicitly planned new-copy value edit with bound source/backup.
+    Default preview-only plans still refuse. Output is exclusively created and
+    verified; originals never overwritten. No native edit/reload/automatic retry.
     """
     return presenters.apply_automation_edit(_deps(ctx).service.apply_automation_edit(manifest_id, fingerprint))
 
