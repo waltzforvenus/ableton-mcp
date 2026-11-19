@@ -5136,8 +5136,10 @@ class AbletonMCP(ControlSurface):
         rows = []
         for clip in track.arrangement_clips:
             fields = ('name', 'start_time', 'end_time', 'start_marker', 'end_marker',
-                      'loop_start', 'loop_end', 'looping', 'color', 'is_midi_clip', 'is_audio_clip')
+                      'loop_start', 'loop_end', 'looping', 'color', 'is_midi_clip', 'is_audio_clip', 'muted')
             row = {key: getattr(clip, key) for key in fields}
+            if type(row['muted']) is not bool:
+                raise ValueError('whole-clip muted state unavailable')
             if clip.is_audio_clip:
                 row.update({key: getattr(clip, key) for key in
                             ('file_path', 'gain', 'warping', 'warp_mode', 'pitch_coarse', 'pitch_fine')})

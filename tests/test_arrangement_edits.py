@@ -154,3 +154,74 @@ def test_service_composes_checkpoint_and_native_apply(tmp_path):
     result=service.apply_arrangement_region(plan['manifest_id'],plan['fingerprint'])
     assert result['applied'] is True and sent==['plan_arrangement_region','checkpoint','apply_arrangement_region']
     assert track.arrangement_clips[0] is source
+
+
+def test_region_stale_whole_clip_mute_refuses_before_dispatch():
+    h, track, source, calls = region_fixture()
+    source.muted = True
+    plan = h.mcp._plan_arrangement_region(request=dict(source_start=8, source_end=12, destination_start=16))
+    source.muted = False
+    with pytest.raises(ValueError, match='stale'):
+        h.mcp._apply_arrangement_region(plan_id=plan['plan_id'], fingerprint=plan['fingerprint'])
+    assert calls == []
+
+
+@pytest.mark.parametrize('fault', ['none', 'original', 'clone'])
+def test_region_whole_clip_mute_preservation(fault):
+    h, track, source, calls = region_fixture()
+    source.muted = True
+    clone = track.duplicate_clip_to_arrangement
+    def dispatch(*args):
+        clone(*args)
+        if fault == 'original': source.muted = False
+        if fault == 'clone': track.arrangement_clips[-1].muted = False
+    track.duplicate_clip_to_arrangement = dispatch
+    plan = h.mcp._plan_arrangement_region(request=dict(source_start=8, source_end=12, destination_start=16))
+    result = h.mcp._apply_arrangement_region(plan_id=plan['plan_id'], fingerprint=plan['fingerprint'])
+    if fault == 'none':
+        assert result['applied'] is True
+        assert source.muted is True and track.arrangement_clips[-1].muted is True
+    else:
+        assert result['applied'] is None and result['reconciliation_required']
+        assert result['retry_safe'] is False
+        assert (source if fault == 'original' else track.arrangement_clips[-1]).muted is False
+        next_plan = h.mcp._plan_arrangement_region(request=dict(source_start=8, source_end=12, destination_start=24))
+        assert next_plan['supported'] is False
+    with pytest.raises(ValueError):
+        h.mcp._apply_arrangement_region(plan_id=plan['plan_id'], fingerprint=plan['fingerprint'])
+    assert calls == [16] and len(track.arrangement_clips) == 2
+
+
+@pytest.mark.parametrize('phase', ['plan', 'pre_dispatch', 'post_dispatch'])
+@pytest.mark.parametrize('unknown', ['missing', 'raises', 'none'])
+def test_region_unknown_mute_never_false_success(phase, unknown):
+    h, track, source, calls = region_fixture()
+    source.muted = True
+    def invalidate(clip):
+        if unknown == 'missing': del clip.muted
+        elif unknown == 'none': clip.muted = None
+        else:
+            class Unreadable(type(clip)):
+                @property
+                def muted(self): raise RuntimeError('mute read failed')
+            clip.__class__ = Unreadable
+    request = dict(source_start=8, source_end=12, destination_start=16)
+    if phase == 'plan': invalidate(source)
+    plan = h.mcp._plan_arrangement_region(request=request)
+    if phase == 'plan':
+        assert not plan['supported']
+        assert h.mcp._apply_arrangement_region(plan_id=plan['plan_id'], fingerprint=plan['fingerprint'])['applied'] is False
+    elif phase == 'pre_dispatch':
+        invalidate(source)
+        with pytest.raises((ValueError, AttributeError, RuntimeError)):
+            h.mcp._apply_arrangement_region(plan_id=plan['plan_id'], fingerprint=plan['fingerprint'])
+    else:
+        clone = track.duplicate_clip_to_arrangement
+        def dispatch(*args):
+            clone(*args)
+            invalidate(track.arrangement_clips[-1])
+        track.duplicate_clip_to_arrangement = dispatch
+        result = h.mcp._apply_arrangement_region(plan_id=plan['plan_id'], fingerprint=plan['fingerprint'])
+        assert result['applied'] is None and result['reconciliation_required']
+        assert result['retry_safe'] is False
+    assert calls == ([16] if phase == 'post_dispatch' else [])
