@@ -8,6 +8,7 @@ import base64
 import hashlib
 import json
 from mcp.types import CallToolResult, TextContent
+from .snapshot_projection import normalize
 
 
 def result_for(payload, mode):
@@ -19,6 +20,7 @@ def result_for(payload, mode):
 def paginate(snapshot, scope, budget, cursor, mode):
     if type(budget) is not int or budget <= 0:
         raise ValueError('max_bytes budget must be a positive integer')
+    snapshot = normalize(snapshot, scope)
     rows = snapshot.get('tracks')
     if not isinstance(rows, list) or any(not isinstance(t, dict) for t in rows):
         raise ValueError('snapshot tracks are unknown; cannot paginate')

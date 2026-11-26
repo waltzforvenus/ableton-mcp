@@ -1121,3 +1121,13 @@ return notes=null and note_count=null with notes_error; successful empty reads
 return [] and 0. Snapshot strict reads do not silently downgrade a failed extended
 reader to legacy data. The established query window remains 0..clip.length+1;
 read means that query succeeded, not lossless enumeration outside the window.
+
+Byte-budget snapshot projection also normalizes older-script optional state:
+missing/unrecognized monitoring or boolean state becomes null, never false.
+Missing device/clip collections on returns/master stay null, not fabricated empty
+lists; these serializers may not expose clips at all. Requested notes/parameters
+missing from older replies remain unknown. Notes/parameter exclusion applies to
+regular/return/master rows and nested rack devices, even if an older reply included
+them. Unrelated fields are preserved; malformed collection layouts refuse rather
+than claiming completeness. This normalization is opt-in with max_bytes; legacy
+and unbudgeted response shapes remain unchanged.
