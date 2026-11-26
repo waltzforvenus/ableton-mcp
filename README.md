@@ -1107,3 +1107,10 @@ Returns/master remain included and honor existing parameter flags. Pagination
 bounds response bytes, not native read cost. Legacy max_chars remains a historical
 character heuristic, not a strict transport guarantee. This opt-in increment does
 not yet add missing native device-active/monitoring/clip-mute/note-count fields.
+
+Remote Script 1.39 adds snapshot monitoring_state on regular/return/master rows
+and muted plus note_count on clip metadata. Unreadable monitoring/mute is null;
+notes excluded means note_count is null, not a fabricated zero or a hidden
+full-note read. Device is_active already uses the shared nullable state reader.
+These fields are additive; older scripts remain callable but may omit them.
+No new native arguments/capabilities or raised historical command floor are needed.

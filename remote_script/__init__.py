@@ -39,7 +39,7 @@ EXPECTED_COMMAND_ERRORS = (ValueError, IndexError, KeyError)
 
 # Bumped whenever the TCP command surface changes; the MCP server compares
 # this to EXPECTED_REMOTE_SCRIPT_VERSION.
-SCRIPT_VERSION = "1.38.0"
+SCRIPT_VERSION = "1.39.0"
 PROTOCOL_VERSION = 1
 
 # The trim eraser (see _trim_arrangement_clip): a temporary Session clip
@@ -6432,7 +6432,12 @@ class AbletonMCP(ControlSurface):
             count = self._warp_marker_count(clip)
             if count:
                 info["warp_marker_count"] = count
-        return dict((k, v) for k, v in info.items() if v is not None)
+        out = dict((k, v) for k, v in info.items() if v is not None)
+        out["muted"] = self._safe_attr(clip, "muted", bool, None)
+        # No implicit full-note read when notes were not requested. The caller
+        # fills a known count after a successful requested notes read.
+        out["note_count"] = None
+        return out
 
     def _serialize_session_clip(self, clip, include_notes=True,
                                 include_warp_markers=False):
@@ -6529,6 +6534,7 @@ class AbletonMCP(ControlSurface):
                     "solo": bool(track.solo),
                     "volume": float(track.mixer_device.volume.value),
                     "panning": float(track.mixer_device.panning.value),
+                    "monitoring_state": self._safe_attr(track, "current_monitoring_state", int, None),
                     "devices": devices,
                 })
         except Exception as e:
@@ -6550,7 +6556,8 @@ class AbletonMCP(ControlSurface):
             return {
                 "volume": float(track.mixer_device.volume.value),
                 "panning": float(track.mixer_device.panning.value),
-                "devices": devices,
+                "monitoring_state": self._safe_attr(track, "current_monitoring_state", int, None),
+                    "devices": devices,
             }
         except Exception as e:
             self.log_message("master_track serialize failed: " + str(e))
@@ -7078,7 +7085,8 @@ class AbletonMCP(ControlSurface):
             # for a slot index that is out of range.
             "clip_slot_count": len(track.clip_slots),
             "clip_slots": clip_slots,
-            "devices": devices,
+            "monitoring_state": self._safe_attr(track, "current_monitoring_state", int, None),
+                    "devices": devices,
             "arrangement_clips": arrangement_clips,
         }
 
