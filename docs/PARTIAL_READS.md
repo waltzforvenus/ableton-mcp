@@ -18,3 +18,22 @@ increment does not change host normalization of old data or public capability
 names. Optional parameter attributes, chain mixer fields, top-level track/device
 collection completeness, and direct rack-reader paths still need separate
 qualification/repair. Note enumeration completeness remains a separate scope.
+
+## Optional fields (Remote Script 1.42.0)
+
+Snapshot parameter is_enabled/is_quantized accept native booleans only; absent,
+malformed or failed reads are null. value_string is text or null and
+ automation_state is a documented integer/enum state (0, 1, 2) or null.
+Optional read failure no longer discards a parameter whose core values were
+read. Automation summary uses the same validation; unknown state is not false.
+
+Chain name is text or null, mute/solo are native booleans or null. Volume and
+panning are read independently as finite native numbers or null, preserving
+valid zero and the readable sibling when one fails. Missing optional fields
+now appear explicitly null; successful existing values are unchanged. Older
+script payloads are not rewritten by this change.
+
+Remaining: top-level collection completeness, device identity/chain capability
+read failure, direct rack-reader parity, chain out_note, core parameter numeric
+validation, note enumeration, and native qualification. These are not certified
+by optional-field unit tests.

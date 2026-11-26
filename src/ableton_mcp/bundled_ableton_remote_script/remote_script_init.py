@@ -39,7 +39,7 @@ EXPECTED_COMMAND_ERRORS = (ValueError, IndexError, KeyError)
 
 # Bumped whenever the TCP command surface changes; the MCP server compares
 # this to EXPECTED_REMOTE_SCRIPT_VERSION.
-SCRIPT_VERSION = "1.41.0"
+SCRIPT_VERSION = "1.42.0"
 PROTOCOL_VERSION = 1
 
 # The trim eraser (see _trim_arrangement_clip): a temporary Session clip
@@ -6244,9 +6244,16 @@ class AbletonMCP(ControlSurface):
                 is_auto = False
                 try:
                     if hasattr(param, "automation_state"):
-                        is_auto = int(param.automation_state) != 0
+                        state = self._nullable_automation_state(param)
+                        if state is None:
+                            return None
+                        is_auto = state != 0
                     elif hasattr(param, "is_automated"):
-                        is_auto = bool(param.is_automated)
+                        is_auto = self._nullable_bool_attr(param, "is_automated")
+                        if is_auto is None:
+                            return None
+                    else:
+                        return None
                 except Exception:
                     return None
                 if is_auto:
@@ -6321,16 +6328,11 @@ class AbletonMCP(ControlSurface):
                             "value": float(param.value),
                             "min": float(param.min),
                             "max": float(param.max),
-                            "is_enabled": bool(getattr(param, "is_enabled", True)),
-                            "is_quantized": bool(getattr(param, "is_quantized", False)),
+                            "is_enabled": self._nullable_bool_attr(param, "is_enabled"),
+                            "is_quantized": self._nullable_bool_attr(param, "is_quantized"),
                         }
-                        if hasattr(param, "value_string"):
-                            entry["value_string"] = str(param.value_string)
-                        if hasattr(param, "automation_state"):
-                            try:
-                                entry["automation_state"] = int(param.automation_state)
-                            except Exception:
-                                pass
+                        entry["value_string"] = self._nullable_text_attr(param, "value_string")
+                        entry["automation_state"] = self._nullable_automation_state(param)
                         params.append(entry)
                     except Exception as e:
                         errors.append({"index": p_index, "error": type(e).__name__ + ": " + str(e)})
@@ -6376,16 +6378,14 @@ class AbletonMCP(ControlSurface):
                     entry = {
                         "index": chain_index,
                         "kind": kind,
-                        "chain_name": self._safe_attr(chain, "name", str, ""),
-                        "mute": bool(self._safe_attr(chain, "mute", bool, False)),
-                        "solo": bool(self._safe_attr(chain, "solo", bool, False)),
+                        "chain_name": self._nullable_text_attr(chain, "name"),
+                        "mute": self._nullable_bool_attr(chain, "mute"),
+                        "solo": self._nullable_bool_attr(chain, "solo"),
                     }
-                    try:
-                        mixer = chain.mixer_device
-                        entry["volume"] = float(mixer.volume.value)
-                        entry["panning"] = float(mixer.panning.value)
-                    except Exception:
-                        pass
+                    mixer = self._safe_attr(chain, "mixer_device", None, None)
+                    for field in ("volume", "panning"):
+                        parameter = self._safe_attr(mixer, field, None, None)
+                        entry[field] = self._nullable_number_attr(parameter, "value")
 
                     # Drum racks expose the pad's note, which is what ties a
                     # nested device back to the kick/snare/hat it voices.
@@ -6421,6 +6421,33 @@ class AbletonMCP(ControlSurface):
                 read_status["chain_read_error"] = type(e).__name__ + ": " + str(e)
             self.log_message("Error serializing rack chains: " + str(e))
         return chains
+
+    def _nullable_text_attr(self, obj, name):
+        try:
+            value = getattr(obj, name)
+            return value if isinstance(value, str) else None
+        except Exception:
+            return None
+
+    def _nullable_number_attr(self, obj, name):
+        try:
+            value = getattr(obj, name)
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                return None
+            number = float(value)
+            return number if not math.isnan(number) and not math.isinf(number) else None
+        except Exception:
+            return None
+
+    def _nullable_automation_state(self, param):
+        try:
+            value = param.automation_state
+            if value is None or isinstance(value, (str, bool, float)):
+                return None
+            number = int(value)
+            return number if number in (0, 1, 2) else None
+        except Exception:
+            return None
 
     def _nullable_bool_attr(self, obj, name):
         """Documented native bool only; readable unknowns are not truth values."""
