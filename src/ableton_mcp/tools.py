@@ -969,7 +969,7 @@ def set_track_routing(ctx: Context, track_index: int, target: str,
     """
     result = _deps(ctx).service.set_track_routing(track_index, target, field,
                                                   expect_track_name)
-    return presenters.set_track_routing(result)
+    return presenters.with_metadata(presenters.set_track_routing(result), result)
 
 
 @tool
@@ -1017,7 +1017,7 @@ def set_track_send(ctx: Context, track_index: int, send_index: int, value: float
         raise ValueError('automation override intent must be boolean')
     result = _deps(ctx).service.set_track_send(track_index, send_index, value,
                                                expect_track_name, **({"allow_automation_override": True} if allow_automation_override else {}))
-    return presenters.set_track_send(result, send_index)
+    return presenters.with_metadata(presenters.set_track_send(result, send_index), result)
 
 
 @tool
@@ -1112,7 +1112,7 @@ def set_track_arm(ctx: Context, track_index: int, armed: bool = True,
     """
     result = _deps(ctx).service.set_track_arm(track_index, armed,
                                               expect_track_name, authorized)
-    return presenters.set_track_arm(result, track_index)
+    return presenters.with_metadata(presenters.set_track_arm(result, track_index), result)
 
 
 @tool
@@ -1131,7 +1131,7 @@ def set_track_monitoring(ctx: Context, track_index: int, state: str = "auto",
     """
     result = _deps(ctx).service.set_track_monitoring(track_index, state,
                                                      expect_track_name)
-    return presenters.set_track_monitoring(result, track_index)
+    return presenters.with_metadata(presenters.set_track_monitoring(result, track_index), result)
 
 
 @tool
@@ -1419,7 +1419,7 @@ def set_track_volume(ctx: Context, track_index: int, value: float,
         raise ValueError('automation override intent must be boolean')
     result = _deps(ctx).service.set_track_volume(track_index, value, track_type,
                                                  expect_track_name, **({"allow_automation_override": True} if allow_automation_override else {}))
-    return presenters.set_track_volume(result)
+    return presenters.with_metadata(presenters.set_track_volume(result), result)
 
 
 @tool
@@ -1444,7 +1444,7 @@ def set_track_pan(ctx: Context, track_index: int, value: float,
         raise ValueError('automation override intent must be boolean')
     result = _deps(ctx).service.set_track_pan(track_index, value, track_type,
                                               expect_track_name, **({"allow_automation_override": True} if allow_automation_override else {}))
-    return presenters.set_track_pan(result)
+    return presenters.with_metadata(presenters.set_track_pan(result), result)
 
 
 @tool
@@ -1463,7 +1463,7 @@ def set_track_mute(ctx: Context, track_index: int, mute: bool,
     """
     result = _deps(ctx).service.set_track_mute(track_index, mute,
                                                expect_track_name)
-    return presenters.set_track_mute(result, track_index)
+    return presenters.with_metadata(presenters.set_track_mute(result, track_index), result)
 
 
 @tool
@@ -1501,7 +1501,7 @@ def set_track_solo(ctx: Context, track_index: int, solo: bool,
         raise ValueError(presenters.master_cannot_be_soloed())
     result = _deps(ctx).service.set_track_solo(track_index, solo, track_type,
                                                expect_track_name)
-    return presenters.set_track_solo(result, track_index, solo)
+    return presenters.with_metadata(presenters.set_track_solo(result, track_index, solo), result)
 
 
 @tool
