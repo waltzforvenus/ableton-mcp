@@ -460,7 +460,7 @@ def create_arrangement_audio_clip(result: Dict[str, Any]) -> str:
     replaced = result.get("cropped_or_replaced") or []
     if replaced:
         text += f". Live cropped or replaced: {replaced}"
-    return text
+    return with_metadata(text, result)
 
 
 def create_arrangement_midi_clip(result: Dict[str, Any]) -> str:
