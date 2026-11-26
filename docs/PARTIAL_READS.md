@@ -37,3 +37,18 @@ Remaining: top-level collection completeness, device identity/chain capability
 read failure, direct rack-reader parity, chain out_note, core parameter numeric
 validation, note enumeration, and native qualification. These are not certified
 by optional-field unit tests.
+
+## Collection completeness (Remote Script 1.43.0)
+
+A shared collection reader now retains successfully serialized items after a
+bad item, and retains an observed prefix if enumeration itself fails. It emits
+ATTR_read_status (partial/unavailable) and ATTR_read_errors with original item
+indices (null for iteration failure). Successful empty lists remain unchanged.
+This applies to snapshot regular/return/master devices, nested chain devices,
+snapshot track/return-track enumeration, and direct get_rack_chains chains and
+devices. Direct rack chain_count is null when its collection is incomplete.
+A failed master section is explicitly marked unavailable in the snapshot.
+
+This does not certify remaining scene/cue/clip-slot/arrangement enumeration,
+filtered track selection failures, or every direct reader. Direct rack field
+value parity (as distinct from collection completeness) remains to qualify.
