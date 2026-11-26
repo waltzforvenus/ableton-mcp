@@ -39,7 +39,7 @@ EXPECTED_COMMAND_ERRORS = (ValueError, IndexError, KeyError)
 
 # Bumped whenever the TCP command surface changes; the MCP server compares
 # this to EXPECTED_REMOTE_SCRIPT_VERSION.
-SCRIPT_VERSION = "1.40.0"
+SCRIPT_VERSION = "1.41.0"
 PROTOCOL_VERSION = 1
 
 # The trim eraser (see _trim_arrangement_clip): a temporary Session clip
@@ -6248,11 +6248,11 @@ class AbletonMCP(ControlSurface):
                     elif hasattr(param, "is_automated"):
                         is_auto = bool(param.is_automated)
                 except Exception:
-                    continue
+                    return None
                 if is_auto:
                     automated.append(param.name)
         except Exception:
-            pass
+            return None
         return automated
 
     # Racks nest, and a pathological project could nest deeply. Cap the walk so
@@ -6267,7 +6267,7 @@ class AbletonMCP(ControlSurface):
                 return 0
             return len(raw)
         except Exception:
-            return 0
+            return None
 
     def _device_on_state(self, device):
         """Whether a device is on, without a get_device_parameters call.
@@ -6300,7 +6300,9 @@ class AbletonMCP(ControlSurface):
         }
         info.update(self._device_on_state(device))
         automated = self._automated_params_for_device(device)
-        if automated:
+        if automated is None:
+            info["automation_enabled"] = None
+        elif automated:
             info["automated_parameters"] = automated
             info["automation_enabled"] = True
         else:
@@ -6308,6 +6310,8 @@ class AbletonMCP(ControlSurface):
 
         if include_params:
             params = []
+            errors = []
+            enumeration_failed = False
             try:
                 for p_index, param in enumerate(device.parameters):
                     try:
@@ -6328,11 +6332,16 @@ class AbletonMCP(ControlSurface):
                             except Exception:
                                 pass
                         params.append(entry)
-                    except Exception:
-                        continue
+                    except Exception as e:
+                        errors.append({"index": p_index, "error": type(e).__name__ + ": " + str(e)})
             except Exception as e:
+                enumeration_failed = True
+                errors.append({"index": None, "error": type(e).__name__ + ": " + str(e)})
                 self.log_message("Error reading device parameters: " + str(e))
             info["parameters"] = params
+            if errors:
+                info["parameters_read_status"] = "unavailable" if enumeration_failed and not params else "partial"
+                info["parameter_read_errors"] = errors
 
         # Devices inside a rack carry the actual sound design — a drum rack's
         # nested Operator, an instrument rack's filter. Without this walk a rack
@@ -6345,14 +6354,16 @@ class AbletonMCP(ControlSurface):
             if depth >= self._MAX_CHAIN_DEPTH:
                 info["chains_truncated"] = True
             elif include_rack_chains:
+                chain_status = {}
                 info["chains"] = self._serialize_chains(
-                    device, include_params=include_params, depth=depth
+                    device, include_params=include_params, depth=depth, read_status=chain_status
                 )
+                info.update(chain_status)
             else:
                 info["chain_count"] = self._chain_count(device)
         return info
 
-    def _serialize_chains(self, rack, include_params=True, depth=0):
+    def _serialize_chains(self, rack, include_params=True, depth=0, read_status=None):
         chains = []
         try:
             chain_lists = [("chains", getattr(rack, "chains", []))]
@@ -6399,10 +6410,15 @@ class AbletonMCP(ControlSurface):
                                 )
                             )
                     except Exception as e:
+                        entry["devices_read_status"] = "partial" if nested else "unavailable"
+                        entry["device_read_error"] = type(e).__name__ + ": " + str(e)
                         self.log_message("Error reading chain devices: " + str(e))
                     entry["devices"] = nested
                     chains.append(entry)
         except Exception as e:
+            if read_status is not None:
+                read_status["chains_read_status"] = "partial" if chains else "unavailable"
+                read_status["chain_read_error"] = type(e).__name__ + ": " + str(e)
             self.log_message("Error serializing rack chains: " + str(e))
         return chains
 
