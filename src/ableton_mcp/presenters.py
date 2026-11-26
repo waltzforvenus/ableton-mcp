@@ -197,13 +197,15 @@ _IMAGE_KEY = (
 def _with_image(text: str, result: Dict[str, Any], fmt: str = "png") -> Any:
     """Text plus, when one was rendered, the image as MCP image content —
     the JSON alone must still be enough for a text-only model."""
+    from .presentation import MetadataText, MetadataBlocks
+    result = dict(result)  # A view must not consume the model's image bytes.
     image = result.pop("image", None)
     body = text + "\n" + json.dumps(result, indent=1)
     if image is None:
-        return body
+        return MetadataText(body, result)
     # Imported here so a text-only code path never needs the image type.
     from mcp.server.fastmcp import Image
-    return [body + "\n\n" + _IMAGE_KEY, Image(data=image, format=fmt)]
+    return MetadataBlocks([body + "\n\n" + _IMAGE_KEY, Image(data=image, format=fmt)], result)
 
 
 def _alignment_phrase(a: Dict[str, Any]) -> str:
