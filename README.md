@@ -1152,3 +1152,9 @@ locations/error types (not echoed inputs); unknown registered-tool lookups are
 This boundary does not rewrite malformed JSON-RPC requests or protocol-level
 errors. Legacy mode keeps SDK text errors. Successful content, including native
 multimodal blocks, passes through unchanged.
+
+Ordinary metadata migration: create_clip, set_track_name, set_tempo,
+start_playback and stop_playback now expose actual service-result objects in
+structured output, retaining exact legacy text alongside them. Requested values
+are not substituted for native readback; unknown fields/nulls survive. Other
+ordinary prose presenters are still being migrated.
