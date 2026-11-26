@@ -284,6 +284,24 @@ def release_live_lock(ctx: Context, holder: str, set_path: Optional[str] = None,
 
 
 @tool
+def plan_automation_reload(ctx: Context, copy_path: str, targets: list[dict]) -> str:
+    """Read-only reload risk plan: bind a copy hash and1..64 selected live
+    automation targets. Never loads a set or authorizes reload. Observations are
+    non-atomic, state-only, identity unverified; plan expires after300seconds.
+    """
+    return presenters.plan_automation_reload(_deps(ctx).service.plan_automation_reload(copy_path, targets))
+
+
+@tool
+def reconcile_automation_reload(ctx: Context, plan_id: str, fingerprint: str) -> str:
+    """Compare fresh selected automation states with a held dry-run plan.
+    Flags possible override reenable/unknowns; no corrective write or reload.
+    Unchanged observations do not prove safe reload, native identity or full coverage.
+    """
+    return presenters.reconcile_automation_reload(_deps(ctx).service.reconcile_automation_reload(plan_id, fingerprint))
+
+
+@tool
 def get_parameter_automation(ctx: Context, target: dict, range: Optional[dict] = None) -> str:
     """Read automation state, never live curve points. target.kind defaults to
     device (device_index/parameter); mixer uses parameter=volume|panning, send

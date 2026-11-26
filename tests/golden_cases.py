@@ -1790,6 +1790,11 @@ BASE_CASES += [
     _case("apply_automation_edit", "unconfigured", {"manifest_id": "missing", "fingerprint": "missing"}, []),
 ]
 
+BASE_CASES += [
+    _case("plan_automation_reload", "unconfigured", {"copy_path": "unused", "targets": []}, []),
+    _case("reconcile_automation_reload", "unconfigured", {"plan_id": "missing", "fingerprint": "missing"}, []),
+]
+
 CASES = BASE_CASES + _generated_error_cases(BASE_CASES)
 
 # All tools, in server-definition order of first appearance.

@@ -205,7 +205,8 @@ class AbletonService:
                  evidence_dir: Optional[str] = None,
                  ffmpeg: Optional[str] = None,
                  require_audio_auth: bool = False,
-                 source_span_probe: Any = None, render_jobs: Any = None, arrangement_edits: Any = None, automation: Any = None) -> None:
+                 source_span_probe: Any = None, render_jobs: Any = None, arrangement_edits: Any = None, automation: Any = None, automation_reload: Any = None) -> None:
+        self._automation_reload = automation_reload
         self._automation = automation
         self._arrangement_edits = arrangement_edits
         self._render_jobs = render_jobs
@@ -380,6 +381,16 @@ class AbletonService:
         if save is not None:
             result["save"] = save
         return result
+
+    def plan_automation_reload(self, copy_path: str, targets: list[dict]) -> dict:
+        if self._automation_reload is None:
+            return {'supported': False, 'reload_authorized': False, 'reason': 'reload comparison service not configured'}
+        return self._automation_reload.plan(copy_path, targets, self.get_parameter_automation)
+
+    def reconcile_automation_reload(self, plan_id: str, fingerprint: str) -> dict:
+        if self._automation_reload is None:
+            return {'supported': False, 'reload_authorized': False, 'reason': 'reload comparison service not configured'}
+        return self._automation_reload.reconcile(plan_id, fingerprint, self.get_parameter_automation)
 
     def get_parameter_automation(self, target: dict, range: dict | None = None) -> dict:
         if 'saved_path' in target:

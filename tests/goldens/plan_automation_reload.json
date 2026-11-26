@@ -1,0 +1,22 @@
+{
+  "cases": [
+    {
+      "args": {
+        "copy_path": "unused",
+        "targets": []
+      },
+      "expect": "{\n  \"supported\": false,\n  \"reload_authorized\": false,\n  \"reason\": \"reload comparison service not configured\"\n}",
+      "name": "unconfigured",
+      "wire": []
+    },
+    {
+      "args": {
+        "copy_path": "unused",
+        "targets": []
+      },
+      "expect": "{\n  \"supported\": false,\n  \"reload_authorized\": false,\n  \"reason\": \"reload comparison service not configured\"\n}",
+      "name": "error",
+      "wire": []
+    }
+  ]
+}

@@ -1,3 +1,10 @@
+## Unreleased — read-only automation reload reconciliation
+
+- Held copy/selected-state baselines and bounded fresh comparisons identify
+  possible override reenable, changed/unknown states and stale-copy/expired plans.
+- No reload/reenable executor or authorization; non-atomic selected coverage and
+  unverified native identity explicit.101tools; native version remains1.38.0.
+
 ## Unreleased — explicit saved automation output copies
 
 - Schema-qualified value-only replacement into a NEW plain UTF-8 XML file with

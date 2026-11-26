@@ -61,7 +61,9 @@ move_arrangement_clip
 move_device
 plan_arrangement_region
 plan_automation_edit
+plan_automation_reload
 plan_note_edits
+reconcile_automation_reload
 release_live_lock
 resume_live_lock
 save_set
