@@ -1058,3 +1058,25 @@ not establish their normalization/segment ownership; its tempo sentinel discussi
 is explicitly uncertain. See https://github.com/offlinemark/dawtool/blob/master/dawtool/daw/ableton.py .
 A real version-qualified fixture with known sampled envelope values/timing semantics
 is still required before implementing playback-equivalent evaluation.
+
+### MCP structured output (A6 transport increment)
+The default server now returns one canonical object in structuredContent and no
+duplicated text block. Existing JSON-object presenters become that object directly,
+not a JSON string under result. Legacy prose-only successes use {message:...};
+this compatibility adapter does not invent raw model fields that those controllers
+currently discard. Lists/scalars use explicit items/value object adapters.
+
+ABLETON_MCP_OUTPUT_MODE=legacy retains exact historical text behavior; both emits
+compact JSON text of the SAME structured object for clients requiring text fallback.
+Programmatic build_app(output_mode=...) selects the same modes. Direct Python tool
+calls remain legacy, keeping text goldens stable. The default is structured.
+Controller/service exceptions return isError=true with {code,message,details};
+codes distinguish capability, lock, audio authority, render refusal, invalid argument
+and operation failure. FastMCP argument-validation errors occurring before controller
+invocation remain SDK-owned in this increment. No successful error-text guessing.
+
+This delivers transport structure, not full A6: names/compact filters, projections,
+return/master parity, cursor continuity and final serialized UTF-8 byte budgets
+remain next implementation work. Unicode transport is preserved; no new budget
+promise yet. Existing max_chars snapshot estimates must not be treated as final
+encoded MCP byte limits. Native script/tool inventory unchanged.

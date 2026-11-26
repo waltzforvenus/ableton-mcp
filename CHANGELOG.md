@@ -1,3 +1,9 @@
+## Unreleased — canonical structured MCP transport (A6 increment)
+
+- Default structuredContent object with explicit legacy/both compatibility modes.
+- Typed controller/service errors and no duplicated JSON text by default.
+- Direct-call text goldens unchanged; full projection/filter/budget A6 remains open.
+
 ## Unreleased — saved curve schema inspection
 
 - Read-only control-field qualification and exact stored-event samples with raw
