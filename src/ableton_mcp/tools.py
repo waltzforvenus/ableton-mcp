@@ -925,8 +925,8 @@ def back_to_arrangement(ctx: Context) -> str:
     clip does not undo it: the track falls silent instead of reverting. Until
     this is called, arrangement edits on an overridden track are inaudible.
     """
-    _deps(ctx).service.back_to_arrangement()
-    return presenters.back_to_arrangement()
+    result = _deps(ctx).service.back_to_arrangement()
+    return presenters.with_metadata(presenters.back_to_arrangement(), result)
 
 
 @tool
@@ -1669,9 +1669,9 @@ def set_clip_name(ctx: Context, track_index: int, clip_index: int, name: str,
       renumber whenever a track is added or deleted, and an index that is
       still in range but now points elsewhere fails silently otherwise
     """
-    _deps(ctx).service.set_clip_name(track_index, clip_index, name,
+    result = _deps(ctx).service.set_clip_name(track_index, clip_index, name,
                                      expect_track_name)
-    return presenters.set_clip_name(track_index, clip_index, name)
+    return presenters.with_metadata(presenters.set_clip_name(track_index, clip_index, name), result)
 
 
 @tool
@@ -1691,9 +1691,9 @@ def set_arrangement_clip_name(ctx: Context, track_index: int, clip_index: int,
       renumber whenever a track is added or deleted, and an index that is
       still in range but now points elsewhere fails silently otherwise
     """
-    _deps(ctx).service.set_arrangement_clip_name(track_index, clip_index, name,
+    result = _deps(ctx).service.set_arrangement_clip_name(track_index, clip_index, name,
                                                  expect_track_name)
-    return presenters.set_arrangement_clip_name(track_index, clip_index, name)
+    return presenters.with_metadata(presenters.set_arrangement_clip_name(track_index, clip_index, name), result)
 
 
 @tool
@@ -2310,9 +2310,9 @@ def fire_clip(ctx: Context, track_index: int, clip_index: int,
       renumber whenever a track is added or deleted, and an index that is
       still in range but now points elsewhere fails silently otherwise
     """
-    _deps(ctx).service.fire_clip(track_index, clip_index, expect_track_name,
+    result = _deps(ctx).service.fire_clip(track_index, clip_index, expect_track_name,
                                  authorized)
-    return presenters.fire_clip(track_index, clip_index)
+    return presenters.with_metadata(presenters.fire_clip(track_index, clip_index), result)
 
 
 @tool
@@ -2329,8 +2329,8 @@ def stop_clip(ctx: Context, track_index: int, clip_index: int,
       renumber whenever a track is added or deleted, and an index that is
       still in range but now points elsewhere fails silently otherwise
     """
-    _deps(ctx).service.stop_clip(track_index, clip_index, expect_track_name)
-    return presenters.stop_clip(track_index, clip_index)
+    result = _deps(ctx).service.stop_clip(track_index, clip_index, expect_track_name)
+    return presenters.with_metadata(presenters.stop_clip(track_index, clip_index), result)
 
 
 @tool
@@ -2426,8 +2426,8 @@ def load_drum_kit(ctx: Context, track_index: int, rack_uri: str, kit_path: str,
 def switch_to_arrangement_view(ctx: Context) -> str:
     """Switch Ableton's main window to the Arrangement view.
     """
-    _deps(ctx).service.switch_to_arrangement_view()
-    return presenters.switch_to_arrangement_view()
+    result = _deps(ctx).service.switch_to_arrangement_view()
+    return presenters.with_metadata(presenters.switch_to_arrangement_view(), result)
 
 
 @tool

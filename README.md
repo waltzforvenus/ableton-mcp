@@ -1158,3 +1158,7 @@ start_playback and stop_playback now expose actual service-result objects in
 structured output, retaining exact legacy text alongside them. Requested values
 are not substituted for native readback; unknown fields/nulls survive. Other
 ordinary prose presenters are still being migrated.
+The same raw-result/legacy-text policy now also covers set_clip_name,
+set_arrangement_clip_name, fire_clip, stop_clip, back_to_arrangement and
+switch_to_arrangement_view. Exceptions and authorization refusals retain their
+existing mode-specific contracts; metadata is not inferred from success prose.
