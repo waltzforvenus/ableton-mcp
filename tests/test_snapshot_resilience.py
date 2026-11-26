@@ -50,11 +50,11 @@ def test_a_failing_track_is_isolated_and_named():
     harness = make_harness()
     harness.song.tracks[1].devices = _Raising()
     result = _snapshot(harness)
-    errors = result["section_errors"]
-    assert errors == [{"section": "tracks[1]", "error": "TypeError: " + BOOST_ERROR}]
     by_index = {t["index"]: t for t in result["tracks"]}
-    assert by_index[1] == {"index": 1, "name": harness.song.tracks[1].name,
-                           "error": True}
+    assert by_index[1]["devices"] == []
+    assert by_index[1]["devices_read_status"] == "unavailable"
+    assert by_index[1]["devices_read_errors"] == [{"index": None, "error": "TypeError: " + BOOST_ERROR}]
+    assert by_index[1]["name"] == harness.song.tracks[1].name
     assert "devices" in by_index[0]  # the other tracks are whole
 
 

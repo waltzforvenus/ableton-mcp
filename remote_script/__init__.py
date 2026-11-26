@@ -39,7 +39,7 @@ EXPECTED_COMMAND_ERRORS = (ValueError, IndexError, KeyError)
 
 # Bumped whenever the TCP command surface changes; the MCP server compares
 # this to EXPECTED_REMOTE_SCRIPT_VERSION.
-SCRIPT_VERSION = "1.42.0"
+SCRIPT_VERSION = "1.43.0"
 PROTOCOL_VERSION = 1
 
 # The trim eraser (see _trim_arrangement_clip): a temporary Session clip
@@ -1991,15 +1991,11 @@ class AbletonMCP(ControlSurface):
                 info["in_note"] = int(chain.in_note)
             except Exception:
                 info["in_note"] = None
-        devices = []
-        try:
-            for i, d in enumerate(chain.devices):
-                entry = {"index": i, "name": d.name, "class_name": d.class_name}
-                entry.update(self._device_on_state(d))
-                devices.append(entry)
-        except Exception:
-            pass
-        info["devices"] = devices
+        def describe(i, d):
+            entry = {"index": i, "name": d.name, "class_name": d.class_name}
+            entry.update(self._device_on_state(d))
+            return entry
+        info["devices"] = self._read_collection(chain, "devices", describe, info)
         return info
 
     def _rack_header(self, track, track_index, device_index, rack):
@@ -2010,14 +2006,16 @@ class AbletonMCP(ControlSurface):
         """A rack's chains: name, mixer (volume/pan as value + display),
         mute/solo, a drum chain's in_note, and each chain's devices."""
         track, rack = self._resolve_rack(track_index, device_index, track_type)
-        chains = list(rack.chains)
+        read_status = {}
+        chains = self._read_collection(rack, "chains", self._chain_info, read_status)
         result = self._rack_header(track, track_index, device_index, rack)
         result.update({
             "is_drum_rack": bool(getattr(rack, "can_have_drum_pads", False)),
-            "chain_count": len(chains),
-            "chains": [self._chain_info(i, c) for i, c in enumerate(chains)],
+            "chain_count": None if read_status else len(chains),
+            "chains": chains,
             "can_insert_chain": callable(getattr(rack, "insert_chain", None)),
         })
+        result.update(read_status)
         return result
 
     def _insert_rack_chain(self, track_index=0, device_index=0, index=-1,
@@ -6297,6 +6295,22 @@ class AbletonMCP(ControlSurface):
             pass
         return state
 
+    def _read_collection(self, obj, attr, visitor, status):
+        """Retain observed rows and original indices; never certify failed reads."""
+        rows, errors = [], []
+        try:
+            for index, value in enumerate(getattr(obj, attr)):
+                try:
+                    rows.append(visitor(index, value))
+                except Exception as e:
+                    errors.append({"index": index, "error": type(e).__name__ + ": " + str(e)})
+        except Exception as e:
+            errors.append({"index": None, "error": type(e).__name__ + ": " + str(e)})
+        if errors:
+            status[attr + "_read_status"] = "partial" if rows else "unavailable"
+            status[attr + "_read_errors"] = errors
+        return rows
+
     def _serialize_device(self, device, device_index, include_params=True,
                           include_rack_chains=False, depth=0):
         info = {
@@ -6393,27 +6407,10 @@ class AbletonMCP(ControlSurface):
                     if note is not None:
                         entry["out_note"] = note
 
-                    nested = []
-                    try:
-                        for d_i, dev in enumerate(chain.devices):
-                            nested.append(
-                                self._serialize_device(
-                                    dev,
-                                    d_i,
-                                    include_params=include_params,
-                                    # Already inside an opted-in walk: a rack
-                                    # nested in a chain keeps expanding, or
-                                    # the caller who asked for chains gets a
-                                    # bare count exactly where the sound is.
-                                    include_rack_chains=True,
-                                    depth=depth + 1,
-                                )
-                            )
-                    except Exception as e:
-                        entry["devices_read_status"] = "partial" if nested else "unavailable"
-                        entry["device_read_error"] = type(e).__name__ + ": " + str(e)
-                        self.log_message("Error reading chain devices: " + str(e))
-                    entry["devices"] = nested
+                    entry["devices"] = self._read_collection(chain, "devices",
+                        lambda i, d: self._serialize_device(d, i,
+                            include_params=include_params, include_rack_chains=True,
+                            depth=depth + 1), entry)
                     chains.append(entry)
         except Exception as e:
             if read_status is not None:
@@ -6591,51 +6588,43 @@ class AbletonMCP(ControlSurface):
         return cues
 
     def _serialize_return_tracks(self, include_params=True,
-                                 include_rack_chains=False):
-        returns = []
-        try:
-            for i, track in enumerate(self._song.return_tracks):
-                devices = []
-                for d_i, device in enumerate(track.devices):
-                    devices.append(
-                        self._serialize_device(
-                            device, d_i, include_params=include_params,
-                            include_rack_chains=include_rack_chains)
-                    )
-                returns.append({
-                    "index": i,
-                    "name": track.name,
-                    "mute": bool(track.mute),
-                    "solo": bool(track.solo),
-                    "volume": float(track.mixer_device.volume.value),
-                    "panning": float(track.mixer_device.panning.value),
-                    "monitoring_state": self._safe_attr(track, "current_monitoring_state", int, None),
-                    "devices": devices,
-                })
-        except Exception as e:
-            self.log_message("return_tracks serialize failed: " + str(e))
-        return returns
+                                 include_rack_chains=False, collection_status=None):
+        status = collection_status if collection_status is not None else {}
+        def describe(i, track):
+            row = {
+                "index": i, "name": track.name, "mute": bool(track.mute),
+                "solo": bool(track.solo), "volume": float(track.mixer_device.volume.value),
+                "panning": float(track.mixer_device.panning.value),
+                "monitoring_state": self._safe_attr(track, "current_monitoring_state", int, None),
+            }
+            row["devices"] = self._read_collection(track, "devices",
+                lambda j, d: self._serialize_device(d, j, include_params=include_params,
+                    include_rack_chains=include_rack_chains), row)
+            return row
+        return self._read_collection(self._song, "return_tracks", describe, status)
 
     def _serialize_master_track(self, include_params=True,
-                                include_rack_chains=False):
+                                include_rack_chains=False, collection_status=None):
         """Master chain — the bus compressor/limiter that shapes the final sound."""
         try:
             track = self._song.master_track
-            devices = []
-            for d_i, device in enumerate(track.devices):
-                devices.append(
-                    self._serialize_device(
-                        device, d_i, include_params=include_params,
-                        include_rack_chains=include_rack_chains)
-                )
-            return {
+            read_status = {}
+            devices = self._read_collection(track, "devices",
+                lambda i, d: self._serialize_device(d, i, include_params=include_params,
+                    include_rack_chains=include_rack_chains), read_status)
+            result = {
                 "volume": float(track.mixer_device.volume.value),
                 "panning": float(track.mixer_device.panning.value),
                 "monitoring_state": self._safe_attr(track, "current_monitoring_state", int, None),
                     "devices": devices,
             }
+            result.update(read_status)
+            return result
         except Exception as e:
             self.log_message("master_track serialize failed: " + str(e))
+            if collection_status is not None:
+                collection_status["master_track_read_status"] = "unavailable"
+                collection_status["master_track_read_errors"] = [{"index": None, "error": type(e).__name__ + ": " + str(e)}]
             return None
 
     def _get_clip_notes(self, track_index=0, clip_index=0, arrangement=False,
@@ -7041,8 +7030,9 @@ class AbletonMCP(ControlSurface):
 
             session = guarded("session", read_session, {})
             tracks_out = []
-            song_tracks = guarded("tracks", lambda: list(self._song.tracks), [])
-            for track_index, track in enumerate(song_tracks):
+            collection_status = {}
+            song_tracks = self._read_collection(self._song, "tracks", lambda i, t: (i, t), collection_status)
+            for track_index, track in song_tracks:
                 if selected is not None and track_index not in selected:
                     continue
                 entry = guarded(
@@ -7069,13 +7059,15 @@ class AbletonMCP(ControlSurface):
                     "return_tracks",
                     lambda: self._serialize_return_tracks(
                         include_params=include_params,
-                        include_rack_chains=include_rack_chains),
+                        include_rack_chains=include_rack_chains,
+                        collection_status=collection_status),
                     []),
                 "master_track": guarded(
                     "master_track",
                     lambda: self._serialize_master_track(
                         include_params=include_params,
-                        include_rack_chains=include_rack_chains),
+                        include_rack_chains=include_rack_chains,
+                        collection_status=collection_status),
                     None),
                 "cue_points": guarded("cue_points", self._serialize_cue_points, []),
                 "include_notes": bool(include_notes),
@@ -7091,6 +7083,7 @@ class AbletonMCP(ControlSurface):
                 result["tracks_selected"] = list(selected)
             if section_errors:
                 result["section_errors"] = section_errors
+            result.update(collection_status)
             return result
         except Exception as e:
             self.log_message("Error getting session snapshot: " + str(e))
@@ -7121,14 +7114,10 @@ class AbletonMCP(ControlSurface):
                 "clip": clip_info,
             })
 
-        devices = []
-        for device_index, device in enumerate(track.devices):
-            devices.append(
-                self._serialize_device(
-                    device, device_index, include_params=include_params,
-                    include_rack_chains=include_rack_chains
-                )
-            )
+        read_status = {}
+        devices = self._read_collection(track, "devices",
+            lambda i, d: self._serialize_device(d, i, include_params=include_params,
+                include_rack_chains=include_rack_chains), read_status)
 
         arrangement_clips = []
         try:
@@ -7145,7 +7134,7 @@ class AbletonMCP(ControlSurface):
                 % (track_index, str(e))
             )
 
-        return {
+        result = {
             "index": track_index,
             "name": track.name,
             "is_audio_track": bool(track.has_audio_input),
@@ -7164,6 +7153,8 @@ class AbletonMCP(ControlSurface):
                     "devices": devices,
             "arrangement_clips": arrangement_clips,
         }
+        result.update(read_status)
+        return result
 
     def get_browser_tree(self, category_type="all"):
         """
