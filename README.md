@@ -1114,3 +1114,10 @@ notes excluded means note_count is null, not a fabricated zero or a hidden
 full-note read. Device is_active already uses the shared nullable state reader.
 These fields are additive; older scripts remain callable but may omit them.
 No new native arguments/capabilities or raised historical command floor are needed.
+
+Remote Script 1.40 distinguishes snapshot notes_status: read, unavailable,
+not_requested, or not_applicable. Failed or interrupted native MIDI note reads
+return notes=null and note_count=null with notes_error; successful empty reads
+return [] and 0. Snapshot strict reads do not silently downgrade a failed extended
+reader to legacy data. The established query window remains 0..clip.length+1;
+read means that query succeeded, not lossless enumeration outside the window.
