@@ -460,6 +460,8 @@ def get_session_snapshot(
     include_empty_slots: bool = False,
     tracks: Optional[Union[List[Union[int, str]], int, str]] = None,
     max_chars: Optional[int] = 40000,
+    max_bytes: Optional[int] = None,
+    cursor: Optional[str] = None,
 ) -> str:
     """
     Read project state in one call: session metadata, tracks (mixer, devices,
@@ -492,12 +494,22 @@ def get_session_snapshot(
     - tracks: restrict to these song tracks — indices, names, or a mix; one
       selector or a list. Names match case-insensitively. A selector that
       matches nothing is refused rather than quietly dropped
+    - max_bytes: optional positive UTF-8 byte cap for the complete serialized
+      CallToolResult (structured/both modes only). Overrides max_chars, retains
+      whole tracks, includes duplicate text in both mode, refuses if no track
+      fits. Errors may exceed an impossibly small requested cap. Does not count
+      the outer JSON-RPC request-id envelope. No native read-cost bound implied.
+    - cursor: next_cursor from a byte-budget page; repeat the identical scope
+      and max_bytes. Any observed snapshot/scope change refuses as stale.
+      This is content freshness, not native identity or an atomic snapshot.
     - max_chars: size budget for the reply (default 40000; 0 = no limit).
       Over budget, whole tracks are dropped from the end and named in
       omitted_tracks, with `continuation` holding the `tracks` argument that
       fetches exactly those next — never a reply cut off mid-JSON. For a
       mixer check, get_mix_state is a fraction of the size.
     """
+    if max_bytes is not None or cursor is not None:
+        raise ValueError("max_bytes/cursor require structured or both output mode")
     # A bare selector is the common case ("just the DRUMS bus"), so accept
     # one without a list around it and normalise here — the wire form is a
     # list, and boundary coercion is the controller's job.
@@ -1121,10 +1133,18 @@ def set_track_monitoring(ctx: Context, track_index: int, state: str = "auto",
 
 @tool
 def get_device_parameters(ctx: Context, track_index: int, device_index: int,
-                          track_type: str = "regular") -> str:
+                          track_type: str = "regular",
+                          names: Optional[List[str]] = None,
+                          compact: StrictBool = False) -> str:
     """
     List every parameter on a device, with its current value, range and the
     value as Live displays it (e.g. "-6.0 dB", "35 %").
+
+    Optional names selects exact, case-sensitive names in native order (all
+    duplicate matches retained); [] selects none. Missing names are reported.
+    compact returns index/name/value/display_value only, with unknown values
+    null and omitted fields listed. Defaults preserve the full legacy payload.
+    Filtering occurs server-side and does not reduce native read work.
 
     Call this before set_device_parameter so you know the parameter names and
     what range each one accepts — a reverb's dry/wet, a delay's feedback, a
@@ -1134,7 +1154,8 @@ def get_device_parameters(ctx: Context, track_index: int, device_index: int,
     - track_index: The index of the track containing the device
     - device_index: The index of the device in that track's chain (0 = first)
     """
-    result = _deps(ctx).service.get_device_parameters(track_index, device_index, track_type)
+    result = _deps(ctx).service.get_device_parameters(
+        track_index, device_index, track_type, names=names, compact=compact)
     return presenters.get_device_parameters(result)
 
 

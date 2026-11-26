@@ -11,6 +11,7 @@ from .handshake import CapabilityError
 from .live_lock import LockError
 from .render import RenderRefused
 from .services import AudioAuthRequired
+from .snapshot_output import paginate
 from .presentation import MetadataText, MetadataBlocks
 from mcp.server.fastmcp import Image
 
@@ -54,6 +55,22 @@ def structured_tool(fn, mode):
     def invoke(*args, **kwargs):
         failed = False
         try:
+            bound = inspect.signature(fn).bind(*args, **kwargs)
+            bound.apply_defaults()
+            snapshot_budget = (fn.__name__ == 'get_session_snapshot' and
+                               (bound.arguments.get('max_bytes') is not None or
+                                bound.arguments.get('cursor') is not None))
+            if snapshot_budget:
+                budget = bound.arguments['max_bytes']
+                cursor = bound.arguments['cursor']
+                if type(budget) is not int or budget <= 0:
+                    raise ValueError('max_bytes budget must be a positive integer')
+                scope = {key: bound.arguments[key] for key in (
+                    'include_notes', 'include_params', 'include_warp_markers',
+                    'include_rack_chains', 'include_empty_slots', 'tracks')}
+                bound.arguments.update(max_chars=0, max_bytes=None, cursor=None)
+                payload = canonical_payload(controller(*bound.args, **bound.kwargs))
+                return paginate(payload, scope, budget, cursor, mode)
             value = controller(*args, **kwargs)
             if isinstance(value, (MetadataText, MetadataBlocks)):
                 # Multimodal views deliberately retain their original human

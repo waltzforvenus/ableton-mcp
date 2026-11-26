@@ -1080,3 +1080,30 @@ return/master parity, cursor continuity and final serialized UTF-8 byte budgets
 remain next implementation work. Unicode transport is preserved; no new budget
 promise yet. Existing max_chars snapshot estimates must not be treated as final
 encoded MCP byte limits. Native script/tool inventory unchanged.
+
+### Parameter read projections
+
+The parameter-list tool accepts optional names (exact, case-sensitive names;
+null selects all, an empty list selects none) and compact (boolean).
+Duplicate native names remain separate rows in native order. Opt-in responses
+report requested scope, missing names, returned count and omitted parameter fields;
+the original parameter count remains the total. Compact rows retain index, name,
+raw value and display value (unknown fields are null). Default responses retain
+the legacy shape. Projection is server-side, not a reduction in native read cost.
+This increment does not yet enforce final MCP encoded snapshot budgets or cursors.
+
+### Snapshot UTF-8 budgets and cursors
+
+Structured/both snapshot calls can opt into max_bytes, a positive byte cap on
+serialized CallToolResult JSON (including content/structuredContent/isError;
+excluding the outer JSON-RPC id envelope). This overrides legacy max_chars.
+Whole-track pages expose requested_scope, omitted_fields, omitted_tracks and
+next_cursor. Repeat the same scope and budget with that cursor. Any observed
+snapshot/scope change invalidates it; cursors do not certify native identity or
+atomic capture. Both mode budgets include duplicated compatibility text.
+An envelope or single track too large is an explicit error, never an oversized
+successful page. Refusal errors can exceed an impossibly small requested cap.
+Returns/master remain included and honor existing parameter flags. Pagination
+bounds response bytes, not native read cost. Legacy max_chars remains a historical
+character heuristic, not a strict transport guarantee. This opt-in increment does
+not yet add missing native device-active/monitoring/clip-mute/note-count fields.
