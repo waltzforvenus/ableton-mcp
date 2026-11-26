@@ -557,12 +557,12 @@ def load_device_from_path(result: Dict[str, Any]) -> str:
         return as_json(result)
     new = result.get("new_devices") or []
     if result.get("loaded") is False:
-        return (f"Did NOT load '{result.get('item_name')}' from {result.get('path')}: "
-                f"{result.get('reason') or 'no new device appeared'}")
+        return (with_metadata(f"Did NOT load '{result.get('item_name')}' from {result.get('path')}: "
+                f"{result.get('reason') or 'no new device appeared'}", result))
     added = f"added {', '.join(new)}" if new else "no new device appeared"
     chain = ", ".join(f"{i} {n}" for i, n in enumerate(result.get("devices_after") or []))
-    return (f"Loaded '{result.get('item_name')}' from {result.get('path')} onto "
-            f"'{result.get('track_name')}': {added}. Devices now: {chain}")
+    return (with_metadata(f"Loaded '{result.get('item_name')}' from {result.get('path')} onto "
+            f"'{result.get('track_name')}': {added}. Devices now: {chain}", result))
 
 
 get_plugin_state = as_json
@@ -583,7 +583,7 @@ def load_devices(result: Dict[str, Any]) -> str:
         tail = f". STOPPED at {failed.get('uri')}: {failed.get('error')}"
         if result.get("not_attempted"):
             tail += f"; not attempted: {result.get('not_attempted')}"
-    return head + (f". Devices now: {chain}" if chain else "") + tail
+    return with_metadata(head + (f". Devices now: {chain}" if chain else "") + tail, result)
 
 
 get_plugin_presets = as_json
@@ -829,15 +829,15 @@ def load_instrument_or_effect(result: Dict[str, Any], track_index: int,
     if result.get("loaded", False):
         new_devices = result.get("new_devices", [])
         if new_devices:
-            return f"Loaded instrument with URI '{uri}' on track {track_index}. New devices: {', '.join(new_devices)}"
+            return with_metadata(f"Loaded instrument with URI '{uri}' on track {track_index}. New devices: {', '.join(new_devices)}", result)
         else:
             devices = result.get("devices_after", [])
             if devices:
-                return f"Loaded instrument with URI '{uri}' on track {track_index}. Devices on track: {', '.join(devices)}"
+                return with_metadata(f"Loaded instrument with URI '{uri}' on track {track_index}. Devices on track: {', '.join(devices)}", result)
             item = result.get("item_name") or uri
-            return f"Loaded '{item}' on track {track_index}"
+            return with_metadata(f"Loaded '{item}' on track {track_index}", result)
     else:
-        return f"Failed to load instrument with URI '{uri}'"
+        return with_metadata(f"Failed to load instrument with URI '{uri}'", result)
 
 
 def fire_clip(track_index: int, clip_index: int) -> str:
@@ -886,8 +886,8 @@ def get_browser_tree(result: Dict[str, Any], category_type: str) -> str:
     # Check if we got any categories
     if "available_categories" in result and len(result.get("categories", [])) == 0:
         available_cats = result.get("available_categories", [])
-        return (f"No categories found for '{category_type}'. "
-                f"Available browser categories: {', '.join(available_cats)}")
+        return (with_metadata(f"No categories found for '{category_type}'. "
+                f"Available browser categories: {', '.join(available_cats)}", result))
 
     # Format the tree in a more readable way
     total_folders = result.get("total_folders", 0)
@@ -898,7 +898,7 @@ def get_browser_tree(result: Dict[str, Any], category_type: str) -> str:
         formatted_output += format_tree(category)
         formatted_output += "\n"
 
-    return formatted_output
+    return with_metadata(formatted_output, result)
 
 
 def get_browser_items_at_path(result: Dict[str, Any]) -> str:
@@ -906,8 +906,8 @@ def get_browser_items_at_path(result: Dict[str, Any]) -> str:
     if "error" in result and "available_categories" in result:
         error = result.get("error", "")
         available_cats = result.get("available_categories", [])
-        return (f"Error: {error}\n"
-                f"Available browser categories: {', '.join(available_cats)}")
+        return (with_metadata(f"Error: {error}\n"
+                f"Available browser categories: {', '.join(available_cats)}", result))
 
     return as_json(result)
 
@@ -921,12 +921,12 @@ def load_drum_kit(result: Dict[str, Any]) -> str:
         return as_json(result)
     stage = result["stage"]
     if stage == "rack_failed":
-        return f"Failed to load drum rack with URI '{result['rack_uri']}'"
+        return with_metadata(f"Failed to load drum rack with URI '{result['rack_uri']}'", result)
     if stage == "kit_lookup_failed":
-        return f"Loaded drum rack but failed to find drum kit: {result['error']}"
+        return with_metadata(f"Loaded drum rack but failed to find drum kit: {result['error']}", result)
     if stage == "no_loadable":
-        return f"Loaded drum rack but no loadable drum kits found at '{result['kit_path']}'"
-    return f"Loaded drum rack and kit '{result['kit_name']}' on track {result['track_index']}"
+        return with_metadata(f"Loaded drum rack but no loadable drum kits found at '{result['kit_path']}'", result)
+    return with_metadata(f"Loaded drum rack and kit '{result['kit_name']}' on track {result['track_index']}", result)
 
 
 def switch_to_arrangement_view() -> str:
