@@ -118,6 +118,6 @@ def test_real_fake_service_flags_apply_to_returns_and_master():
     for track in body['tracks'] + body['return_tracks'] + [body['master_track']]:
         for device in track.get('devices', []):
             assert not device.get('parameters')
-        for clip in track.get('arrangement_clips', []):
+        for clip in (track.get('arrangement_clips') or []):
             assert not clip.get('notes')
     assert 'notes' in body['omitted_fields'] and 'parameters' in body['omitted_fields']
