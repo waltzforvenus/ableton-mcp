@@ -553,7 +553,7 @@ def create_midi_track(ctx: Context, index: int = -1) -> str:
     - index: The index to insert the track at (-1 = end of list)
     """
     result = _deps(ctx).service.create_midi_track(index)
-    return presenters.create_midi_track(result)
+    return presenters.with_metadata(presenters.create_midi_track(result), result)
 
 
 @tool
@@ -568,7 +568,7 @@ def create_audio_track(ctx: Context, index: int = -1) -> str:
     - index: The index to insert the track at (-1 = end of list)
     """
     result = _deps(ctx).service.create_audio_track(index)
-    return presenters.create_audio_track(result)
+    return presenters.with_metadata(presenters.create_audio_track(result), result)
 
 
 @tool
@@ -601,7 +601,7 @@ def duplicate_track(ctx: Context, track_index: int,
       still in range but now points elsewhere fails silently otherwise
     """
     result = _deps(ctx).service.duplicate_track(track_index, expect_track_name)
-    return presenters.duplicate_track(result)
+    return presenters.with_metadata(presenters.duplicate_track(result), result)
 
 
 @tool
@@ -669,7 +669,7 @@ def set_clip_gain(ctx: Context, track_index: int, clip_index: int, gain: float,
     """
     result = _deps(ctx).service.set_clip_gain(track_index, clip_index, gain,
                                               arrangement, expect_track_name)
-    return presenters.set_clip_gain(result)
+    return presenters.with_metadata(presenters.set_clip_gain(result), result)
 
 
 @tool
@@ -707,7 +707,7 @@ def set_clip_warp(ctx: Context, track_index: int, clip_index: int, warping: bool
         track_index, clip_index, bool(warping),
         None if warp_mode is None else int(warp_mode), arrangement,
         expect_track_name)
-    return presenters.set_clip_warp(result)
+    return presenters.with_metadata(presenters.set_clip_warp(result), result)
 
 
 # ── Warp vision ──────────────────────────────────────────────────────────────
@@ -790,7 +790,7 @@ def edit_clip_warp_markers(ctx: Context, track_index: int, clip_index: int,
     result = _deps(ctx).service.edit_clip_warp_markers(
         track_index, clip_index, list(edits or []), arrangement,
         bool(stop_on_error), expect_track_name=expect_track_name)
-    return presenters.edit_clip_warp_markers(result)
+    return presenters.with_metadata(presenters.edit_clip_warp_markers(result), result)
 
 
 @tool
@@ -989,7 +989,7 @@ def set_count_in(ctx: Context, bars: int = 1, metronome: bool = True) -> str:
     - metronome: Turn the metronome on, so the count-in is audible
     """
     result = _deps(ctx).service.set_count_in(bars, metronome)
-    return presenters.set_count_in(result)
+    return presenters.with_metadata(presenters.set_count_in(result), result)
 
 
 @tool
@@ -1090,7 +1090,7 @@ def create_return_track(ctx: Context) -> str:
     mixer tools.
     """
     result = _deps(ctx).service.create_return_track()
-    return presenters.create_return_track(result)
+    return presenters.with_metadata(presenters.create_return_track(result), result)
 
 
 @tool
