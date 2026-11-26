@@ -13,7 +13,9 @@ from .render import RenderRefused
 from .services import AudioAuthRequired
 from .snapshot_output import paginate
 from .presentation import MetadataText, MetadataBlocks
-from mcp.server.fastmcp import Image
+from mcp.server.fastmcp import Image, FastMCP
+from mcp.server.fastmcp.exceptions import ToolError
+from pydantic import ValidationError
 
 
 def canonical_payload(value):
@@ -109,3 +111,44 @@ def structured_tool(fn, mode):
     invoke.__annotations__ = dict(fn.__annotations__)
     invoke.__annotations__['return'] = CallToolResult
     return invoke
+
+
+# Override the public dispatch seam, not SDK private handler/manager tables.
+# The SDK wraps argument-validation exceptions in ToolError with a typed cause.
+class StructuredFastMCP(FastMCP):
+    """Normalize supported tool dispatch failures; leave protocol errors alone."""
+
+    def __init__(self, *args, output_mode='structured', **kwargs):
+        if output_mode not in ('structured', 'both'):
+            raise ValueError('structured dispatch mode must be structured or both')
+        self.output_mode = output_mode
+        super().__init__(*args, **kwargs)
+
+    async def call_tool(self, name, arguments):
+        try:
+            return await super().call_tool(name, arguments)
+        except ToolError as exc:
+            cause = exc.__cause__
+            details = {'tool': name}
+            if isinstance(cause, ValidationError):
+                code = 'invalid_argument'
+                message = 'Tool arguments failed validation'
+                # No input echo, context objects or prose parsing. SDK locations
+                # and error types are the actual validation evidence.
+                details['validation'] = [
+                    {'loc': list(error['loc']), 'type': error['type']}
+                    for error in cause.errors(include_input=False, include_context=False,
+                                              include_url=False)
+                ]
+            elif name not in {tool.name for tool in await self.list_tools()}:
+                code = 'unknown_tool'
+                message = 'Unknown tool'
+            else:
+                code = 'operation_failed'
+                message = str(exc)
+            payload = {'code': code, 'message': message, 'details': details}
+            content = []
+            if self.output_mode == 'both':
+                content = [TextContent(type='text', text=json.dumps(
+                    payload, ensure_ascii=False, separators=(',', ':'), allow_nan=False))]
+            return CallToolResult(content=content, structuredContent=payload, isError=True)
