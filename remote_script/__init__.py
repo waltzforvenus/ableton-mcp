@@ -39,7 +39,7 @@ EXPECTED_COMMAND_ERRORS = (ValueError, IndexError, KeyError)
 
 # Bumped whenever the TCP command surface changes; the MCP server compares
 # this to EXPECTED_REMOTE_SCRIPT_VERSION.
-SCRIPT_VERSION = "1.38.0"
+SCRIPT_VERSION = "1.40.0"
 PROTOCOL_VERSION = 1
 
 # The trim eraser (see _trim_arrangement_clip): a temporary Session clip
@@ -6128,7 +6128,7 @@ class AbletonMCP(ControlSurface):
         except Exception:
             return default
 
-    def _notes_from_clip(self, clip, raw_extended=None, source_start=0.0, source_end=None):
+    def _notes_from_clip(self, clip, raw_extended=None, source_start=0.0, source_end=None, strict=False):
         """Extract MIDI notes from a clip (incl. MPE/expression when available)."""
         notes = []
         seen_ids = set()
@@ -6140,6 +6140,10 @@ class AbletonMCP(ControlSurface):
             try:
                 raw = (raw_extended if raw_extended is not None else clip.get_notes_extended(0, 128, source_start, source_end - source_start))
                 for n in raw:
+                    if strict:
+                        for key in ("pitch", "start_time", "duration", "velocity", "mute"):
+                            if not hasattr(n, key):
+                                raise ValueError("Malformed snapshot note enumeration")
                     if raw_extended is not None:
                         for key in ("pitch", "start_time", "duration", "velocity", "mute", "note_id"):
                             if not hasattr(n, key):
@@ -6177,7 +6181,7 @@ class AbletonMCP(ControlSurface):
                     notes.append(entry)
                 return notes
             except Exception as e:
-                if raw_extended is not None:
+                if raw_extended is not None or strict:
                     raise
                 self.log_message("get_notes_extended failed, falling back: " + str(e))
 
@@ -6193,7 +6197,11 @@ class AbletonMCP(ControlSurface):
                         "mute": bool(n[4]) if len(n) > 4 else False,
                     })
             except Exception as e:
+                if strict:
+                    raise
                 self.log_message("get_notes failed: " + str(e))
+        elif strict:
+            raise RuntimeError("No supported note reader available")
         return notes
 
     def _warp_markers_from_clip(self, clip):
@@ -6398,6 +6406,14 @@ class AbletonMCP(ControlSurface):
             self.log_message("Error serializing rack chains: " + str(e))
         return chains
 
+    def _nullable_bool_attr(self, obj, name):
+        """Documented native bool only; readable unknowns are not truth values."""
+        try:
+            value = getattr(obj, name)
+            return value if type(value) is bool else None
+        except Exception:
+            return None
+
     def _serialize_clip_common(self, clip, include_warp_markers=False):
         info = {
             "looping": bool(self._safe_attr(clip, "looping", bool, False)),
@@ -6432,7 +6448,12 @@ class AbletonMCP(ControlSurface):
             count = self._warp_marker_count(clip)
             if count:
                 info["warp_marker_count"] = count
-        return dict((k, v) for k, v in info.items() if v is not None)
+        out = dict((k, v) for k, v in info.items() if v is not None)
+        out["muted"] = self._nullable_bool_attr(clip, "muted")
+        # No implicit full-note read when notes were not requested. The caller
+        # fills a known count after a successful requested notes read.
+        out["note_count"] = None
+        return out
 
     def _serialize_session_clip(self, clip, include_notes=True,
                                 include_warp_markers=False):
@@ -6447,9 +6468,17 @@ class AbletonMCP(ControlSurface):
         }
         info.update(self._serialize_clip_common(
             clip, include_warp_markers=include_warp_markers))
+        info["notes_status"] = "not_requested" if not include_notes else "not_applicable"
         if include_notes and info["is_midi_clip"]:
-            info["notes"] = self._notes_from_clip(clip)
-            info["note_count"] = len(info["notes"])
+            try:
+                info["notes"] = self._notes_from_clip(clip, strict=True)
+                info["note_count"] = len(info["notes"])
+                info["notes_status"] = "read"
+            except Exception as exc:
+                info["notes"] = None
+                info["note_count"] = None
+                info["notes_status"] = "unavailable"
+                info["notes_error"] = "%s: %s" % (type(exc).__name__, exc)
         return info
 
     def _serialize_arrangement_clip(self, clip, include_notes=True,
@@ -6466,9 +6495,17 @@ class AbletonMCP(ControlSurface):
         }
         info.update(self._serialize_clip_common(
             clip, include_warp_markers=include_warp_markers))
+        info["notes_status"] = "not_requested" if not include_notes else "not_applicable"
         if include_notes and info["is_midi_clip"]:
-            info["notes"] = self._notes_from_clip(clip)
-            info["note_count"] = len(info["notes"])
+            try:
+                info["notes"] = self._notes_from_clip(clip, strict=True)
+                info["note_count"] = len(info["notes"])
+                info["notes_status"] = "read"
+            except Exception as exc:
+                info["notes"] = None
+                info["note_count"] = None
+                info["notes_status"] = "unavailable"
+                info["notes_error"] = "%s: %s" % (type(exc).__name__, exc)
         return info
 
     def _serialize_sends(self, track):
@@ -6529,6 +6566,7 @@ class AbletonMCP(ControlSurface):
                     "solo": bool(track.solo),
                     "volume": float(track.mixer_device.volume.value),
                     "panning": float(track.mixer_device.panning.value),
+                    "monitoring_state": self._safe_attr(track, "current_monitoring_state", int, None),
                     "devices": devices,
                 })
         except Exception as e:
@@ -6550,7 +6588,8 @@ class AbletonMCP(ControlSurface):
             return {
                 "volume": float(track.mixer_device.volume.value),
                 "panning": float(track.mixer_device.panning.value),
-                "devices": devices,
+                "monitoring_state": self._safe_attr(track, "current_monitoring_state", int, None),
+                    "devices": devices,
             }
         except Exception as e:
             self.log_message("master_track serialize failed: " + str(e))
@@ -7078,7 +7117,8 @@ class AbletonMCP(ControlSurface):
             # for a slot index that is out of range.
             "clip_slot_count": len(track.clip_slots),
             "clip_slots": clip_slots,
-            "devices": devices,
+            "monitoring_state": self._safe_attr(track, "current_monitoring_state", int, None),
+                    "devices": devices,
             "arrangement_clips": arrangement_clips,
         }
 
