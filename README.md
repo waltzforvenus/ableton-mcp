@@ -421,7 +421,7 @@ get_live_status shows who holds it.
 
 ### Tool reference
 
-All 99 tools the server exposes. Tools marked **†** are added by this fork and
+All 101 tools the server exposes. Tools marked **†** are added by this fork and
 are not present upstream.
 
 #### Session & info
@@ -450,6 +450,9 @@ are not present upstream.
 | `get_parameter_automation` | target, range | Device automation state or saved-copy events; overrides unknown in saved copies |
 | `plan_automation_edit` | target, points, operation | Non-mutating saved-copy envelope diff; live CRUD unsupported |
 | `apply_automation_edit` | manifest_id, fingerprint | Validates freshness then refuses unsupported apply; never reloads |
+
+| `plan_automation_reload` | copy_path, targets | Read-only selected-target override risk baseline; never reloads |
+| `reconcile_automation_reload` | plan_id, fingerprint | Fresh state comparison; never authorizes reload or repairs overrides |
 
 #### Tracks
 
@@ -1018,3 +1021,19 @@ mutation, interpolation evaluation, reload or override reenable is performed.
 The earlier blanket no-file-write description applies to default preview mode;
 this explicit output-only mode is the sole exception. Next: reload dry-run/fresh
 state reconciliation; evaluated curves need documented schema/semantics fixtures.
+
+### Reload risk dry-run and observation comparison
+plan_automation_reload hashes a candidate copy and reads1..64 live automation
+state targets through the existing gated read command. Its server-held plan expires
+in300seconds; max64plans, lost on restart/eviction. reconcile_automation_reload
+rehashes the copy and freshly reads the same targets. Changed/unknown observations
+are flagged; prior overridden=True becomingFalse is a POSSIBLE reenable risk, not
+proof that a reload occurred. Caller data cannot replace held observations.
+
+Neither tool loads, saves, edits, reenables or authorizes anything. Scope is selected
+non-atomic state observations, not all parameters, stable native identities, set
+identity, saved-file compatibility or a reload safety certificate. Even unchanged
+states return reload_authorized=false and identity_verified=false. Hash/expiry
+mismatches refuse before/after reads; unreadable/inconsistent observations remain
+unknown, never equivalent to safe. Real reload execution and native acceptance
+remain separately gated; this protocol supplies evidence, not the missing loader.

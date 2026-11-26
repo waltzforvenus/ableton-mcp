@@ -1,0 +1,22 @@
+{
+  "cases": [
+    {
+      "args": {
+        "fingerprint": "missing",
+        "plan_id": "missing"
+      },
+      "expect": "{\n  \"supported\": false,\n  \"reload_authorized\": false,\n  \"reason\": \"reload comparison service not configured\"\n}",
+      "name": "unconfigured",
+      "wire": []
+    },
+    {
+      "args": {
+        "fingerprint": "missing",
+        "plan_id": "missing"
+      },
+      "expect": "{\n  \"supported\": false,\n  \"reload_authorized\": false,\n  \"reason\": \"reload comparison service not configured\"\n}",
+      "name": "error",
+      "wire": []
+    }
+  ]
+}

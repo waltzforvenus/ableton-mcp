@@ -1370,3 +1370,9 @@ ERROR_PHRASES["plan_automation_edit"] = "plan automation edit"
 
 apply_automation_edit = as_json
 ERROR_PHRASES["apply_automation_edit"] = "apply automation edit"
+
+plan_automation_reload = as_json
+ERROR_PHRASES["plan_automation_reload"] = "plan automation reload"
+
+reconcile_automation_reload = as_json
+ERROR_PHRASES["reconcile_automation_reload"] = "reconcile automation reload"
