@@ -6,11 +6,13 @@ Legacy prose has only a message; this adapter does not invent missing model data
 import functools
 import inspect
 import json
-from mcp.types import CallToolResult, TextContent
+from mcp.types import CallToolResult, TextContent, ImageContent, AudioContent, EmbeddedResource, ResourceLink
 from .handshake import CapabilityError
 from .live_lock import LockError
 from .render import RenderRefused
 from .services import AudioAuthRequired
+from .presentation import MetadataText, MetadataBlocks
+from mcp.server.fastmcp import Image
 
 
 def canonical_payload(value):
@@ -52,7 +54,27 @@ def structured_tool(fn, mode):
     def invoke(*args, **kwargs):
         failed = False
         try:
-            payload = canonical_payload(controller(*args, **kwargs))
+            value = controller(*args, **kwargs)
+            if isinstance(value, (MetadataText, MetadataBlocks)):
+                # Multimodal views deliberately retain their original human
+                # text/image blocks in both structured and compatibility modes.
+                # Only the explicit raw model metadata enters structuredContent.
+                payload = value.metadata
+                json.dumps(payload, ensure_ascii=False, allow_nan=False)
+                blocks = [value] if isinstance(value, MetadataText) else value
+                content = []
+                for block in blocks:
+                    if isinstance(block, Image):
+                        content.append(block.to_image_content())
+                    elif isinstance(block, (TextContent, ImageContent, AudioContent,
+                                            EmbeddedResource, ResourceLink)):
+                        content.append(block)
+                    elif isinstance(block, str):
+                        content.append(TextContent(type='text', text=block))
+                    else:
+                        raise TypeError('unsupported multimodal content block')
+                return CallToolResult(content=content, structuredContent=payload, isError=False)
+            payload = canonical_payload(value)
             # Validate finite JSON before a transport can serialize NaN differently.
             encoded = json.dumps(payload, ensure_ascii=False, separators=(',', ':'), allow_nan=False)
         except Exception as exc:
