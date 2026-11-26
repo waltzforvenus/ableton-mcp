@@ -20,6 +20,7 @@ from typing import Any, AsyncIterator, Dict, Mapping, Optional, Protocol
 from mcp.server.fastmcp import FastMCP
 
 from . import tools
+from .structured_output import structured_tool
 from .arrangement_edits import ArrangementEdits
 from .automation import Automation
 from .automation_reload import AutomationReload
@@ -126,7 +127,7 @@ def build_deps(settings: Settings, *, lock_authorization_verifier=None) -> Deps:
 
 
 def build_app(settings: Optional[Settings] = None,
-              deps: Optional[Deps] = None) -> FastMCP:
+              deps: Optional[Deps] = None, output_mode: str = "structured") -> FastMCP:
     """Assemble the FastMCP application.
 
     ``deps`` injects a pre-built dependency set (tests hand in fakes);
@@ -134,6 +135,8 @@ def build_app(settings: Optional[Settings] = None,
     environment) when the server actually starts — importing and building
     the app still has zero side effects.
     """
+    if output_mode not in ("structured", "legacy", "both"):
+        raise ValueError("output_mode must be structured, legacy or both")
     injected = deps
 
     @asynccontextmanager
@@ -171,7 +174,7 @@ def build_app(settings: Optional[Settings] = None,
 
     app = FastMCP("AbletonMCP", lifespan=server_lifespan)
     for fn in tools.TOOLS:
-        app.add_tool(fn)
+        app.add_tool(fn if output_mode == "legacy" else structured_tool(fn, output_mode))
     return app
 
 
@@ -181,4 +184,4 @@ def main() -> None:
     # package must have no side effects.
     logging.basicConfig(level=logging.INFO,
                         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    build_app().run()
+    build_app(output_mode=os.environ.get("ABLETON_MCP_OUTPUT_MODE", "structured")).run()

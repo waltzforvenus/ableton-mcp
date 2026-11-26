@@ -78,7 +78,7 @@ def _ctx(deps):
 
 def test_in_memory_session_matches_direct_calls():
     deps, _harness = _make_deps()
-    app = build_app(deps=deps)
+    app = build_app(deps=deps, output_mode="legacy")
 
     async def run():
         async with create_connected_server_and_client_session(app) as session:
@@ -108,7 +108,7 @@ def test_in_memory_session_matches_direct_calls():
 
 def test_in_memory_session_lists_all_102_tools():
     deps, _harness = _make_deps()
-    app = build_app(deps=deps)
+    app = build_app(deps=deps, output_mode="legacy")
 
     async def run():
         async with create_connected_server_and_client_session(app) as session:
