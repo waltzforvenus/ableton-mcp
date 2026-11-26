@@ -1223,7 +1223,7 @@ def set_device_parameter(ctx: Context, track_index: int, device_index: int,
     result = _deps(ctx).service.set_device_parameter(
         track_index, device_index, param, value, track_type,
         expect_track_name, **({"allow_automation_override": True} if allow_automation_override else {}))
-    return presenters.set_device_parameter(result)
+    return presenters.with_metadata(presenters.set_device_parameter(result), result)
 
 
 @tool
@@ -1278,7 +1278,7 @@ def set_device_parameters(ctx: Context, track_index: int, device_index: int,
     result = _deps(ctx).service.set_device_parameters(
         track_index, device_index, parameters, track_type, expect_track_name,
         **({"allow_automation_override": True} if allow_automation_override else {}))
-    return presenters.set_device_parameters(result)
+    return presenters.with_metadata(presenters.set_device_parameters(result), result)
 
 
 @tool
@@ -1390,7 +1390,7 @@ def delete_device(ctx: Context, track_index: int, device_index: int,
     """
     result = _deps(ctx).service.delete_device(track_index, device_index,
                                               track_type, expect_track_name)
-    return presenters.delete_device(result, track_index)
+    return presenters.with_metadata(presenters.delete_device(result, track_index), result)
 
 
 @tool
@@ -1982,7 +1982,7 @@ def insert_device(ctx: Context, track_index: int, device_name: str,
     """
     result = _deps(ctx).service.insert_device(track_index, device_name, index,
                                              track_type, expect_track_name)
-    return presenters.insert_device(result)
+    return presenters.with_metadata(presenters.insert_device(result), result)
 
 
 @tool
@@ -2008,7 +2008,7 @@ def move_device(ctx: Context, track_index: int, device_index: int, to_index: int
     result = _deps(ctx).service.move_device(
         track_index, device_index, to_index, to_track_index, track_type,
         to_track_type, expect_track_name)
-    return presenters.move_device(result)
+    return presenters.with_metadata(presenters.move_device(result), result)
 
 
 @tool
@@ -2047,7 +2047,7 @@ def set_device_sidechain(ctx: Context, track_index: int, device_index: int,
     result = _deps(ctx).service.set_device_sidechain(
         track_index, device_index, source, channel, enable, track_type,
         expect_track_name)
-    return presenters.set_device_sidechain(result)
+    return presenters.with_metadata(presenters.set_device_sidechain(result), result)
 
 
 @tool
@@ -2100,7 +2100,7 @@ def create_arrangement_midi_clip(ctx: Context, track_index: int, start_time: flo
     result = _deps(ctx).service.create_arrangement_midi_clip(
         track_index, start_time, length, notes, name, allow_overlap,
         expect_track_name)
-    return presenters.create_arrangement_midi_clip(result)
+    return presenters.with_metadata(presenters.create_arrangement_midi_clip(result), result)
 
 
 @tool
@@ -2439,7 +2439,7 @@ def set_arrangement_time(ctx: Context, time: float) -> str:
     - time: Position in beats from the start of the arrangement (e.g. 8.0 = bar 3 in 4/4)
     """
     result = _deps(ctx).service.set_current_song_time(time)
-    return presenters.set_arrangement_time(result, time)
+    return presenters.with_metadata(presenters.set_arrangement_time(result, time), result)
 
 
 @tool
