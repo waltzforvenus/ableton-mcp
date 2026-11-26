@@ -228,7 +228,7 @@ def acquire_live_lock(ctx: Context, holder: str, task: str = "") -> str:
     saving, and never take it over — ask the holder (or the user) instead.
     """
     result = _deps(ctx).service.acquire_live_lock(holder, task)
-    return presenters.acquire_live_lock(result)
+    return presenters.with_metadata(presenters.acquire_live_lock(result), result)
 
 
 @tool
@@ -280,7 +280,7 @@ def release_live_lock(ctx: Context, holder: str, set_path: Optional[str] = None,
     result = _deps(ctx).service.release_live_lock(
         holder, set_path, save_first=save_first,
         allow_ui_automation=allow_ui_automation)
-    return presenters.release_live_lock(result)
+    return presenters.with_metadata(presenters.release_live_lock(result), result)
 
 
 @tool
@@ -1048,7 +1048,7 @@ def save_set(ctx: Context, allow_ui_automation: bool = False,
     """
     result = _deps(ctx).service.save_set(allow_ui_automation=allow_ui_automation,
                                          set_path=set_path)
-    return presenters.save_set(result)
+    return presenters.with_metadata(presenters.save_set(result), result)
 
 
 @tool
@@ -1076,7 +1076,7 @@ def checkpoint_set(ctx: Context, label: str, set_path: Optional[str] = None,
     result = _deps(ctx).service.checkpoint_set(
         label, set_path=set_path, allow_ui_automation=allow_ui_automation,
         checkpoint_dir=checkpoint_dir)
-    return presenters.checkpoint_set(result)
+    return presenters.with_metadata(presenters.checkpoint_set(result), result)
 
 
 @tool
