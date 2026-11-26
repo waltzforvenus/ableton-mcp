@@ -1381,3 +1381,13 @@ ERROR_PHRASES["reconcile_automation_reload"] = "reconcile automation reload"
 
 inspect_automation_curve = as_json
 ERROR_PHRASES["inspect_automation_curve"] = "inspecting automation curve"
+
+
+def with_metadata(text: str, result: Dict[str, Any]) -> str:
+    """Keep the legacy view verbatim while exposing the actual model outcome.
+
+    No facts are inferred from wording or requested inputs. The existing
+    transport validates JSON and preserves this text in compatibility modes.
+    """
+    from .presentation import MetadataText
+    return MetadataText(text, result)

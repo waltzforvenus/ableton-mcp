@@ -618,7 +618,7 @@ def set_track_name(ctx: Context, track_index: int, name: str,
     """
     result = _deps(ctx).service.set_track_name(track_index, name,
                                                expect_track_name)
-    return presenters.set_track_name(result, name)
+    return presenters.with_metadata(presenters.set_track_name(result, name), result)
 
 
 @tool
@@ -636,9 +636,9 @@ def create_clip(ctx: Context, track_index: int, clip_index: int, length: float =
       renumber whenever a track is added or deleted, and an index that is
       still in range but now points elsewhere fails silently otherwise
     """
-    _deps(ctx).service.create_clip(track_index, clip_index, length,
+    result = _deps(ctx).service.create_clip(track_index, clip_index, length,
                                    expect_track_name)
-    return presenters.create_clip(track_index, clip_index, length)
+    return presenters.with_metadata(presenters.create_clip(track_index, clip_index, length), result)
 
 
 @tool
@@ -1704,8 +1704,8 @@ def set_tempo(ctx: Context, tempo: float) -> str:
     Parameters:
     - tempo: The new tempo in BPM
     """
-    _deps(ctx).service.set_tempo(tempo)
-    return presenters.set_tempo(tempo)
+    result = _deps(ctx).service.set_tempo(tempo)
+    return presenters.with_metadata(presenters.set_tempo(tempo), result)
 
 
 @tool
@@ -2362,16 +2362,16 @@ def start_playback(ctx: Context, authorized: bool = False) -> str:
     # Upstream's docstring, kept byte-identical; `authorized` is the S1
     # gate's argument (makes sound: true only with the user's OK), and the
     # refusal names it.
-    _deps(ctx).service.start_playback(authorized)
-    return presenters.start_playback()
+    result = _deps(ctx).service.start_playback(authorized)
+    return presenters.with_metadata(presenters.start_playback(), result)
 
 
 @tool
 def stop_playback(ctx: Context) -> str:
     """Stop playing the Ableton session.
     """
-    _deps(ctx).service.stop_playback()
-    return presenters.stop_playback()
+    result = _deps(ctx).service.stop_playback()
+    return presenters.with_metadata(presenters.stop_playback(), result)
 
 
 @tool
