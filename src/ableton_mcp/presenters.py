@@ -746,15 +746,15 @@ def add_notes_to_clip(result: Dict[str, Any], track_index: int,
     if added is None:
         # The clip could not be counted. "I could not check" and "none
         # arrived" are different answers and must not be conflated.
-        return (f"Sent {requested} notes to {where} — this clip's notes could "
+        return (with_metadata(f"Sent {requested} notes to {where} — this clip's notes could "
                 f"not be counted, so how many Live took is unverified; read "
-                f"it back with get_clip_notes")
+                f"it back with get_clip_notes", result))
     if added != requested:
-        return (f"Live took {added} of the {requested} notes sent to {where}; "
+        return (with_metadata(f"Live took {added} of the {requested} notes sent to {where}; "
                 f"the clip now holds {total}. Notes written past the clip's "
                 f"marker window are stored but never sound — read it back "
-                f"with get_clip_notes")
-    return (f"Added {added} notes to {where}; the clip now holds {total}")
+                f"with get_clip_notes", result))
+    return (with_metadata(f"Added {added} notes to {where}; the clip now holds {total}", result))
 
 
 def clear_notes_from_clip(result: Dict[str, Any], track_index: int,
