@@ -11,7 +11,7 @@ An MCP server that drives Ableton Live. Two halves that must stay in step:
   - `app.py` — composition root: `Settings`, `Deps`, `build_app()`, `main()`.
     The only module that reads the environment, configures logging, or wires
     objects together.
-  - `tools.py` — **controllers**: all 86 `@tool` functions, kept in upstream's
+  - `tools.py` — **controllers**: all 102 `@tool` functions, kept in upstream's
     order; coerce arguments, call the service, hand the result to a presenter.
   - `services.py` — **model** (domain): `AbletonService`, one method per wire
     command; its `_send` consults the registry, so gating happens in one place.
@@ -107,7 +107,7 @@ one silently wins. The same trap exists inside the Remote Script's class
 body: Python keeps the later `def`, which is how the 2026-08 merge shipped
 broken device-parameter handlers while its commit message said ours were
 kept. Both are now caught mechanically — `tests/test_tool_surface.py` pins
-`list_tools()` against the `tests/data/tool_names.txt` snapshot (86 unique
+`list_tools()` against the `tests/data/tool_names.txt` snapshot (102 unique
 names), and `tests/test_remote_script_ast.py` rejects any method defined
 twice in any class. If you deliberately add or rename a tool, update the
 snapshot (and the README) in the same commit.
@@ -253,3 +253,67 @@ version changes — see `CHANGELOG.md`).
 - When merging upstream, run through the hard rules above before committing:
   telemetry, loopback bind, duplicate tools, bundled script — and run the
   suite *before* the manual sweeps, per `docs/UPSTREAM.md`.
+
+
+## Consolidated delivery guidance (26 November 2026)
+
+Overnight implementation is authorized. One retained implementation owner,
+independent exact-head reviewer and serial landing owner coordinate the same
+canonical task list; this is a public-safe mapping snapshot, not a second queue.
+Original A/F/R integrity and delivery work precedes dependent extensions.
+Reviewed/unit-tested implementation is not native acceptance or production
+completion. Required CI and actual native acceptance on safe disposable fixtures
+must precede authorized main promotion. Save-verified serial Live custody,
+rollback, original music preservation and explicit audio consent remain required.
+Never infer permission to alter unrelated production work, expose the network,
+upload data, install models or incur spend. Preserve all hard rules above.
+
+Existing A5 primitives cover the SYN08 implementation obligation; native curve
+qualification and broader acceptance remain open. A6 structured transport and
+projection increments are implemented/reviewed in stages; prose migration and
+native partial-read fidelity remain incomplete. No expanded ID below is newly
+native-qualified by this documentation. Record exact revision, tests, dependency
+and native evidence in the canonical task list before advancing a status.
+
+| ID | Status | Canonical action or precise dependency |
+|---|---|---|
+| SYN01 | Queued | Shared nested device resolver |
+| SYN02 | Queued | Typed Wavetable adapter; SYN01 |
+| SYN03 | Queued | Modulation matrix; SYN01/native proof |
+| SYN04 | Queued | A8 ordered verified transactions |
+| SYN05 | Queued | A9/A10 recall; SYN04 |
+| SYN06 | Partly covered / queued | A6 projections covered in reviewed increments; metadata/search delta remains |
+| SYN07 | Queued | Typed Simpler/sample adapter |
+| SYN08 | Covered obligation / acceptance open | Consolidated into A5; no separate engine |
+| B01 | Queued | F2 scene extension |
+| B02 | Queued | Recording/capture; input/audio custody |
+| B03 | Queued | GroovePool/clip associations |
+| B04 | Queued | Local MIDI interchange over A2 |
+| B05 | Queued | Transport extension; external Link decision separate |
+| B06 | Queued | F4/A3 pitch/warp controls |
+| B07 | Queued | Bounded opt-in lifecycle observations |
+| B08 | Partly covered / queued | Existing registry/A6; typed capability reasons delta |
+| B09 | Queued / proof dependency | Take lanes; full comp requires API proof |
+| B10 | Queued | Shared mixer crossfader/cue |
+| B11 | Queued | Typed track/view conveniences |
+| B12 | Queued | ONE shared C08 recipe engine |
+| C01 | Queued / dependency | A8/SYN04/B07 foundations |
+| C02 | Product dependency | Named hardware/port/workflow needed; no hardware purchase or visual-editor clone assumed |
+| C03 | Queued / dependency | SYN04/05+A5 morph semantics/timing proof |
+| C04 | Queued / dependency | A9/A10 local index first; embeddings require model/license/resources decision |
+| C05 | Queued | Existing metrics/reference composition |
+| C06 | Product dependency | Select transcription/stem task plus licensed model/resources/quality target; no install assumed |
+| C07 | Product dependency | Select frontend/performance need; local MIDI versus LAN exposure requires explicit decision |
+| C08 | Queued | Shared B12 recipes using existing host |
+| C09 | Queued / platform dependency | Existing native matrix; Windows requires provisioned host/license/tester |
+
+Use one implementation per capability: A2 underpins B04/B12/C08, A3 underpins
+B09/arrangement recipes, A4 protections underpin B02, A5 underpins SYN08/C03,
+A6 underpins SYN06/B08, A7/R1/R2 underpin B07/C01, A8/SYN04 underpin ordered
+transactions/B03/C01/C03, A9/A10 underpin SYN05/C04, F2 underpins B01,
+F4 underpins B06, F1 underpins B05, and F6/R3 underpin B10. SYN01 is the shared
+nested resolver. B12/C08 share one bounded deterministic recipe engine using
+the existing host. C05 reuses existing analysis/render metrics; hardware and
+frontend work are adapters over this bridge, never duplicate servers.
+Preserve public aliases, legacy adapters, focused readers, safety layers and
+bundle mirrors; no source deletion is justified by duplication suspicion alone.
