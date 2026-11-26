@@ -1359,7 +1359,7 @@ def set_plugin_preset(ctx: Context, track_index: int, device_index: int,
     result = _deps(ctx).service.set_plugin_preset(
         track_index, device_index, preset_index, preset_name, track_type,
         expect_track_name)
-    return presenters.set_plugin_preset(result)
+    return presenters.with_metadata(presenters.set_plugin_preset(result), result)
 
 
 @tool
@@ -1568,7 +1568,7 @@ def create_audio_clip(ctx: Context, track_index: int, clip_index: int,
             "path", ("file_path",), "an absolute path to an audio file"))
     result = _deps(ctx).service.create_audio_clip(
         track_index, clip_index, source, expected_beats, expect_track_name)
-    return presenters.create_audio_clip(result, track_index, clip_index)
+    return presenters.with_metadata(presenters.create_audio_clip(result, track_index, clip_index), result)
 
 
 @tool
@@ -2141,7 +2141,7 @@ def insert_rack_chain(ctx: Context, track_index: int, device_index: int,
     """
     result = _deps(ctx).service.insert_rack_chain(
         track_index, device_index, index, name, track_type, expect_track_name)
-    return presenters.insert_rack_chain(result)
+    return presenters.with_metadata(presenters.insert_rack_chain(result), result)
 
 
 @tool
@@ -2166,7 +2166,7 @@ def insert_chain_device(ctx: Context, track_index: int, device_index: int,
     result = _deps(ctx).service.insert_chain_device(
         track_index, device_index, chain_index, device_name, index, track_type,
         expect_track_name)
-    return presenters.insert_chain_device(result)
+    return presenters.with_metadata(presenters.insert_chain_device(result), result)
 
 
 @tool
@@ -2199,7 +2199,7 @@ def set_chain_mixer(ctx: Context, track_index: int, device_index: int,
     result = _deps(ctx).service.set_chain_mixer(
         track_index, device_index, chain_index, settings, track_type,
         expect_track_name, **({"allow_automation_override": True} if allow_automation_override else {}))
-    return presenters.set_chain_mixer(result)
+    return presenters.with_metadata(presenters.set_chain_mixer(result), result)
 
 
 @tool
