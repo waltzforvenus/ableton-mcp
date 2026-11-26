@@ -1522,7 +1522,7 @@ def delete_track(ctx: Context, track_index: int,
       still in range but now points elsewhere fails silently otherwise
     """
     result = _deps(ctx).service.delete_track(track_index, expect_track_name)
-    return presenters.delete_track(result, track_index)
+    return presenters.with_metadata(presenters.delete_track(result, track_index), result)
 
 
 @tool
@@ -1651,7 +1651,7 @@ def clear_notes_from_clip(
     """
     result = _deps(ctx).service.clear_notes_from_clip(
         track_index, clip_index, arrangement, expect_track_name)
-    return presenters.clear_notes_from_clip(result, track_index, clip_index)
+    return presenters.with_metadata(presenters.clear_notes_from_clip(result, track_index, clip_index), result)
 
 
 @tool
@@ -1763,7 +1763,7 @@ def set_song_scale(ctx: Context, root_note: Optional[Union[int, str]] = None,
     if root is None and scale_name is None and scale_mode is None:
         raise ValueError(presenters.song_scale_nothing_to_set())
     result = _deps(ctx).service.set_song_scale(root, scale_name, scale_mode)
-    return presenters.set_song_scale(result)
+    return presenters.with_metadata(presenters.set_song_scale(result), result)
 
 
 @tool
@@ -2531,8 +2531,8 @@ def duplicate_to_arrangement(
     result = _deps(ctx).service.duplicate_session_clip_to_arrangement(
         track_index, clip_index, beat, destination_times,
         allow_loop_phase_reset, expect_track_name)
-    return presenters.duplicate_to_arrangement(
-        result, track_index, clip_index, beat)
+    return presenters.with_metadata(presenters.duplicate_to_arrangement(
+        result, track_index, clip_index, beat), result)
 
 
 @tool
@@ -2553,7 +2553,7 @@ def create_locator(
     - time: Beat position where the locator should sit
     """
     result = _deps(ctx).service.create_locator(name, time)
-    return presenters.create_locator(result, name, time)
+    return presenters.with_metadata(presenters.create_locator(result, name, time), result)
 
 
 @tool
@@ -2581,7 +2581,7 @@ def jump_to_locator(
       is given or the name finds nothing
     """
     result = _deps(ctx).service.jump_to_locator(name, time)
-    return presenters.jump_to_locator(result, name, time)
+    return presenters.with_metadata(presenters.jump_to_locator(result, name, time), result)
 
 
 @tool
@@ -2615,7 +2615,7 @@ def delete_locator(
       given or the name finds nothing
     """
     result = _deps(ctx).service.delete_locator(name, time)
-    return presenters.delete_locator(result, name, time)
+    return presenters.with_metadata(presenters.delete_locator(result, name, time), result)
 
 
 @tool
@@ -2660,8 +2660,8 @@ def trim_arrangement_clip(
     """
     result = _deps(ctx).service.trim_arrangement_clip(
         track_index, clip_index, start_time, end_time, expect_track_name)
-    return presenters.trim_arrangement_clip(
-        result, track_index, clip_index, start_time, end_time)
+    return presenters.with_metadata(presenters.trim_arrangement_clip(
+        result, track_index, clip_index, start_time, end_time), result)
 
 
 @tool
@@ -2724,7 +2724,7 @@ def delete_arrangement_clip(
             "start_time for one, clip_index only when you have neither."))
     result = _deps(ctx).service.delete_arrangement_clip(
         track_index, clip_index, start_time, start_times, expect_track_name)
-    return presenters.delete_arrangement_clip(result, track_index, clip_index)
+    return presenters.with_metadata(presenters.delete_arrangement_clip(result, track_index, clip_index), result)
 
 
 @tool
@@ -2760,8 +2760,8 @@ def move_arrangement_clip(
     """
     result = _deps(ctx).service.move_arrangement_clip(
         track_index, clip_index, destination_time, expect_track_name)
-    return presenters.move_arrangement_clip(
-        result, track_index, clip_index, destination_time)
+    return presenters.with_metadata(presenters.move_arrangement_clip(
+        result, track_index, clip_index, destination_time), result)
 
 
 @tool
@@ -2804,5 +2804,5 @@ def duplicate_arrangement_clip(
     result = _deps(ctx).service.duplicate_arrangement_clip(
         track_index, clip_index, destination_time, allow_loop_phase_reset,
         expect_track_name)
-    return presenters.duplicate_arrangement_clip(
-        result, track_index, clip_index, destination_time)
+    return presenters.with_metadata(presenters.duplicate_arrangement_clip(
+        result, track_index, clip_index, destination_time), result)
