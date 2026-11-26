@@ -6406,6 +6406,14 @@ class AbletonMCP(ControlSurface):
             self.log_message("Error serializing rack chains: " + str(e))
         return chains
 
+    def _nullable_bool_attr(self, obj, name):
+        """Documented native bool only; readable unknowns are not truth values."""
+        try:
+            value = getattr(obj, name)
+            return value if type(value) is bool else None
+        except Exception:
+            return None
+
     def _serialize_clip_common(self, clip, include_warp_markers=False):
         info = {
             "looping": bool(self._safe_attr(clip, "looping", bool, False)),
@@ -6441,7 +6449,7 @@ class AbletonMCP(ControlSurface):
             if count:
                 info["warp_marker_count"] = count
         out = dict((k, v) for k, v in info.items() if v is not None)
-        out["muted"] = self._safe_attr(clip, "muted", bool, None)
+        out["muted"] = self._nullable_bool_attr(clip, "muted")
         # No implicit full-note read when notes were not requested. The caller
         # fills a known count after a successful requested notes read.
         out["note_count"] = None

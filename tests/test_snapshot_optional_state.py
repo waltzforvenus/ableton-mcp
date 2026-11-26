@@ -49,3 +49,41 @@ def test_unavailable_monitoring_is_null_not_default_mode():
             return getattr(track, name)
     result = h.mcp._snapshot_track(0, Unavailable(), False, False, False, False, False)
     assert result['monitoring_state'] is None
+
+
+import pytest
+
+
+@pytest.mark.parametrize('value,expected', [(None, None), ('false', None),
+    ('true', None), (0, None), (1, None), ([], None), ({}, None),
+    (False, False), (True, True)])
+@pytest.mark.parametrize('kind', ['session', 'arrangement'])
+def test_mute_accepts_only_native_boolean_not_truthiness(value, expected, kind):
+    h = make_harness()
+    clip = h.song.tracks[0].clip_slots[0].clip
+    clip.start_time, clip.end_time = 0, 4
+    clip.muted = value
+    result = getattr(h.mcp, '_serialize_' + kind + '_clip')(clip, include_notes=False)
+    assert result['muted'] is expected
+
+
+def test_missing_mute_is_unknown():
+    h = make_harness()
+    assert h.mcp._serialize_clip_common(object())['muted'] is None
+
+
+def test_explicit_unknown_mute_remains_json_null_over_mcp():
+    import asyncio
+    import json
+    from mcp.shared.memory import create_connected_server_and_client_session
+    from ableton_mcp.app import build_app
+    from test_full_stack import _make_deps
+    deps, h = _make_deps()
+    h.song.tracks[0].clip_slots[0].clip.muted = None
+    async def run():
+        async with create_connected_server_and_client_session(build_app(deps=deps)) as session:
+            return await session.call_tool('get_session_snapshot', {'max_bytes': 40000})
+    result = asyncio.run(run())
+    assert not result.isError
+    wire = json.loads(result.model_dump_json(by_alias=True, exclude_none=True))
+    assert wire['structuredContent']['tracks'][0]['clip_slots'][0]['clip']['muted'] is None
