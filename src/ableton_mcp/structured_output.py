@@ -57,11 +57,15 @@ def structured_tool(fn, mode):
         try:
             bound = inspect.signature(fn).bind(*args, **kwargs)
             bound.apply_defaults()
-            snapshot_budget = (fn.__name__ == 'get_session_snapshot' and
-                               (bound.arguments.get('max_bytes') is not None or
-                                bound.arguments.get('cursor') is not None))
+            snapshot_budget = fn.__name__ == 'get_session_snapshot'
             if snapshot_budget:
                 budget = bound.arguments['max_bytes']
+                if budget is None:
+                    legacy_cap = bound.arguments['max_chars']
+                    # Legacy text retains its original character heuristic.
+                    # Structured mode uses the positive compatibility cap as
+                    # bytes; old unlimited switches retain the safe default.
+                    budget = 40000 if legacy_cap is None or legacy_cap == 0 else legacy_cap
                 cursor = bound.arguments['cursor']
                 if type(budget) is not int or budget <= 0:
                     raise ValueError('max_bytes budget must be a positive integer')

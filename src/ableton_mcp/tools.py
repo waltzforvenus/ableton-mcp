@@ -494,15 +494,18 @@ def get_session_snapshot(
     - tracks: restrict to these song tracks — indices, names, or a mix; one
       selector or a list. Names match case-insensitively. A selector that
       matches nothing is refused rather than quietly dropped
-    - max_bytes: optional positive UTF-8 byte cap for the complete serialized
-      CallToolResult (structured/both modes only). Overrides max_chars, retains
+    - max_bytes: positive UTF-8 byte cap for the complete serialized
+      CallToolResult (structured/both modes only). Default 40000; if omitted,
+      positive max_chars is treated as bytes, while 0/null retain 40000.
+      Explicit max_bytes overrides max_chars, retains
       whole tracks, includes duplicate text in both mode, refuses if no track
       fits. Errors may exceed an impossibly small requested cap. Does not count
       the outer JSON-RPC request-id envelope. No native read-cost bound implied.
     - cursor: next_cursor from a byte-budget page; repeat the identical scope
       and max_bytes. Any observed snapshot/scope change refuses as stale.
       This is content freshness, not native identity or an atomic snapshot.
-    - max_chars: size budget for the reply (default 40000; 0 = no limit).
+    - max_chars: legacy text character budget (default 40000; 0 = no limit
+      only in legacy mode). Structured/both compatibility mapping is above.
       Over budget, whole tracks are dropped from the end and named in
       omitted_tracks, with `continuation` holding the `tracks` argument that
       fetches exactly those next — never a reply cut off mid-JSON. For a

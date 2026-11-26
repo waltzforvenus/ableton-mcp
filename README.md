@@ -1131,3 +1131,16 @@ regular/return/master rows and nested rack devices, even if an older reply inclu
 them. Unrelated fields are preserved; malformed collection layouts refuse rather
 than claiming completeness. This normalization is opt-in with max_bytes; legacy
 and unbudgeted response shapes remain unchanged.
+
+### Structured snapshot default policy (current)
+
+Structured and both modes now ALWAYS use the shared projection and whole-track
+byte-budget path, default 40000 UTF-8 CallToolResult bytes. Explicit max_bytes
+wins; otherwise a positive max_chars compatibility value is interpreted as bytes.
+max_chars=0 or null no longer disables safety in structured/both mode: these use
+40000. Legacy mode alone preserves its original text/character heuristic and
+unlimited switch. This explicit policy supersedes earlier opt-in/unbudgeted-shape
+notes above; choose legacy mode for that historical contract. No output signature
+or native API changes. Default cursors need no extra byte argument; repeat the
+same scope/cap. Errors may exceed tiny impossible caps, never successful pages.
+The outer JSON-RPC id envelope and native read-work cost are not budgeted.
