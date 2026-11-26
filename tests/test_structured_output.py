@@ -42,9 +42,11 @@ def test_structured_errors_have_stable_code_message_details():
     assert result.structuredContent['code']=='invalid_argument'
 
 
-def test_legacy_prose_success_is_explicit_message_not_json_string():
+def test_migrated_mixer_success_is_raw_metadata_not_prose():
     result=call('structured','set_track_volume',{'track_index':0,'value':.4})
-    assert isinstance(result.structuredContent['message'],str) and not result.isError
+    assert not result.isError
+    assert result.structuredContent['value'] == .4
+    assert 'message' not in result.structuredContent
 
 
 def test_bad_output_mode_refused():
