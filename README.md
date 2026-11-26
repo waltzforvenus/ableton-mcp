@@ -1080,3 +1080,14 @@ return/master parity, cursor continuity and final serialized UTF-8 byte budgets
 remain next implementation work. Unicode transport is preserved; no new budget
 promise yet. Existing max_chars snapshot estimates must not be treated as final
 encoded MCP byte limits. Native script/tool inventory unchanged.
+
+### Parameter read projections
+
+The parameter-list tool accepts optional names (exact, case-sensitive names;
+null selects all, an empty list selects none) and compact (boolean).
+Duplicate native names remain separate rows in native order. Opt-in responses
+report requested scope, missing names, returned count and omitted parameter fields;
+the original parameter count remains the total. Compact rows retain index, name,
+raw value and display value (unknown fields are null). Default responses retain
+the legacy shape. Projection is server-side, not a reduction in native read cost.
+This increment does not yet enforce final MCP encoded snapshot budgets or cursors.

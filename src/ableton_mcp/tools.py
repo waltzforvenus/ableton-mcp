@@ -1121,10 +1121,18 @@ def set_track_monitoring(ctx: Context, track_index: int, state: str = "auto",
 
 @tool
 def get_device_parameters(ctx: Context, track_index: int, device_index: int,
-                          track_type: str = "regular") -> str:
+                          track_type: str = "regular",
+                          names: Optional[List[str]] = None,
+                          compact: StrictBool = False) -> str:
     """
     List every parameter on a device, with its current value, range and the
     value as Live displays it (e.g. "-6.0 dB", "35 %").
+
+    Optional names selects exact, case-sensitive names in native order (all
+    duplicate matches retained); [] selects none. Missing names are reported.
+    compact returns index/name/value/display_value only, with unknown values
+    null and omitted fields listed. Defaults preserve the full legacy payload.
+    Filtering occurs server-side and does not reduce native read work.
 
     Call this before set_device_parameter so you know the parameter names and
     what range each one accepts — a reverb's dry/wet, a delay's feedback, a
@@ -1134,7 +1142,8 @@ def get_device_parameters(ctx: Context, track_index: int, device_index: int,
     - track_index: The index of the track containing the device
     - device_index: The index of the device in that track's chain (0 = first)
     """
-    result = _deps(ctx).service.get_device_parameters(track_index, device_index, track_type)
+    result = _deps(ctx).service.get_device_parameters(
+        track_index, device_index, track_type, names=names, compact=compact)
     return presenters.get_device_parameters(result)
 
 

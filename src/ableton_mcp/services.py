@@ -1014,12 +1014,37 @@ class AbletonService:
         }, expect_track_name))
 
     def get_device_parameters(self, track_index: int, device_index: int,
-                              track_type: str) -> Dict[str, Any]:
-        return self._send("get_device_parameters", {
+                              track_type: str, names: Optional[List[str]] = None,
+                              compact: bool = False) -> Dict[str, Any]:
+        if names is not None and (not isinstance(names, list) or
+                                  any(not isinstance(n, str) for n in names)):
+            raise ValueError("names must be a list of exact parameter names or null")
+        if type(compact) is not bool:
+            raise ValueError("compact must be boolean")
+        result = self._send("get_device_parameters", {
             "track_index": track_index,
             "device_index": device_index,
             "track_type": track_type
         })
+        # Projection is server-side: never send new keywords to older scripts.
+        # Default calls retain their exact legacy shape and text goldens.
+        if names is None and not compact:
+            return result
+        rows = result.get("parameters")
+        if not isinstance(rows, list) or any(not isinstance(p, dict) for p in rows):
+            raise ValueError("parameter read did not return a known parameter list")
+        selected = [p for p in rows if names is None or p.get("name") in names]
+        out = dict(result)
+        out["requested_scope"] = {"names": names, "compact": compact}
+        out["returned_parameter_count"] = len(selected)
+        out["missing_names"] = list(dict.fromkeys(
+            n for n in (names or []) if not any(p.get("name") == n for p in rows)))
+        fields = ("index", "name", "value", "display_value")
+        out["omitted_parameter_fields"] = (sorted({
+            k for p in selected for k in p if k not in fields}) if compact else [])
+        out["parameters"] = ([{k: p.get(k) for k in fields} for p in selected]
+                             if compact else [dict(p) for p in selected])
+        return out
 
     def set_device_parameter(self, track_index: int, device_index: int,
                              parameter: Union[str, int], value: float,
