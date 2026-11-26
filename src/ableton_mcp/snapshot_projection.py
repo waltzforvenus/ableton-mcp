@@ -1,4 +1,4 @@
-"""Opt-in snapshot projection across native versions; absent data stays unknown."""
+"""Structured snapshot projection across native versions; absent data stays unknown."""
 import copy
 
 
@@ -20,6 +20,10 @@ def normalize(snapshot, scope):
         for item in value:
             visit(item)
 
+    def leaf(_row):
+        # Shape only: preserve native fields and unknown row attributes verbatim.
+        pass
+
     def clip(row):
         boolean(row, 'muted')
         count = row.get('note_count')
@@ -27,10 +31,12 @@ def normalize(snapshot, scope):
             row['note_count'] = None
         if not scope['include_notes']:
             row.pop('notes', None)
-        elif 'notes' not in row:
-            row['notes'] = None
+        else:
+            collection(row, 'notes', leaf)
         if not scope['include_warp_markers']:
             row.pop('warp_markers', None)
+        else:
+            collection(row, 'warp_markers', leaf)
 
     def slot(row):
         value = row.get('clip')
@@ -44,8 +50,8 @@ def normalize(snapshot, scope):
         boolean(row, 'device_on')
         if not scope['include_params']:
             row.pop('parameters', None)
-        elif 'parameters' not in row:
-            row['parameters'] = None
+        else:
+            collection(row, 'parameters', leaf)
         if scope['include_rack_chains']:
             # Missing chains does not establish a rack or an empty chain list.
             if 'chains' in row:

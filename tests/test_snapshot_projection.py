@@ -84,3 +84,76 @@ def test_projection_does_not_mutate_source_or_discard_unrelated_fields():
                                 'include_rack_chains': True, 'include_warp_markers': False})
     assert payload == original
     assert result['master_track']['future'] == {'opaque': [1, 2]}
+
+
+def leaf_target(payload, kind, field, nested=False):
+    track = (payload['master_track'] if kind == 'master' else
+             payload['return_tracks' if kind == 'return' else 'tracks'][0])
+    if field == 'parameters':
+        device = track['devices'][0]
+        return device['chains'][0]['devices'][0] if nested else device
+    if nested:
+        if 'arrangement_clips' not in track:
+            track['arrangement_clips'] = [copy.deepcopy(track['clip_slots'][0]['clip'])]
+        return track['arrangement_clips'][0]
+    return track['clip_slots'][0]['clip']
+
+
+LEAF_FLAGS = {'notes': 'include_notes', 'parameters': 'include_params',
+              'warp_markers': 'include_warp_markers'}
+
+
+@pytest.mark.parametrize('kind', ['regular', 'return', 'master'])
+@pytest.mark.parametrize('field', LEAF_FLAGS)
+@pytest.mark.parametrize('value', ['unavailable', {'unexpected': 1}, [42]])
+@pytest.mark.parametrize('nested', [False, True])
+def test_requested_malformed_leaves_refuse_through_mcp(kind, field, value, nested):
+    payload = fixture()
+    leaf_target(payload, kind, field, nested)[field] = value
+    original = copy.deepcopy(payload)
+    result = call(payload, {LEAF_FLAGS[field]: True, 'include_rack_chains': True})
+    assert result.isError
+    assert result.structuredContent['code'] == 'invalid_argument'
+    assert 'malformed snapshot collection: ' + field in result.structuredContent['message']
+    assert payload == original
+
+
+@pytest.mark.parametrize('mode', ['structured', 'both'])
+@pytest.mark.parametrize('field', LEAF_FLAGS)
+@pytest.mark.parametrize('value', [None, [], [{'future': {'opaque': [1, 'λ']}}]])
+def test_requested_valid_leaf_shapes_preserved(mode, field, value):
+    import json
+    payload = fixture()
+    for kind in ['regular', 'return', 'master']:
+        for nested in [False, True]:
+            leaf_target(payload, kind, field, nested)[field] = copy.deepcopy(value)
+    original = copy.deepcopy(payload)
+    result = call(payload, {LEAF_FLAGS[field]: True, 'include_rack_chains': True}, mode)
+    assert not result.isError
+    body = json.loads(result.model_dump_json(by_alias=True, exclude_none=True))['structuredContent']
+    for kind in ['regular', 'return', 'master']:
+        for nested in [False, True]:
+            assert leaf_target(body, kind, field, nested)[field] == value
+    assert payload == original
+
+
+@pytest.mark.parametrize('field', LEAF_FLAGS)
+def test_missing_requested_leaves_unknown_and_excluded_malformed_dropped(field):
+    from ableton_mcp.snapshot_projection import normalize
+    payload = fixture()
+    scope = dict(include_notes=True, include_params=True,
+                 include_rack_chains=True, include_warp_markers=True)
+    for kind in ['regular', 'return', 'master']:
+        leaf_target(payload, kind, field).pop(field, None)
+    body = normalize(payload, scope)
+    for kind in ['regular', 'return', 'master']:
+        assert leaf_target(body, kind, field)[field] is None
+        for nested in [False, True]:
+            leaf_target(payload, kind, field, nested)[field] = 'malformed'
+    original = copy.deepcopy(payload)
+    scope[LEAF_FLAGS[field]] = False
+    body = normalize(payload, scope)
+    for kind in ['regular', 'return', 'master']:
+        for nested in [False, True]:
+            assert field not in leaf_target(body, kind, field, nested)
+    assert payload == original
