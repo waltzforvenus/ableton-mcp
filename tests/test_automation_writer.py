@@ -89,8 +89,8 @@ def test_partial_publication_retained_without_replay(source):
     from pathlib import Path
     model,target=model_and_target(source)
     class FailAfterWrite(SavedAutomationWriter):
-        def publish(self,path,data):
-            super().publish(path,data)
+        def publish(self,path,data,destination):
+            super().publish(path,data,destination)
             raise OSError('simulated acknowledgement loss')
     model._writer=FailAfterWrite()
     before=source.read_bytes(); plan=model.plan(target,POINTS,'replace')
@@ -115,3 +115,59 @@ def test_backup_same_inode_is_not_independent_copy(source):
     model,target=model_and_target(source)
     Path(target['backup_path']).unlink(); os.link(source,target['backup_path'])
     with pytest.raises(ValueError): model.plan(target,POINTS,'replace')
+
+
+@pytest.mark.parametrize('replacement',['symlink','directory'])
+def test_output_parent_retarget_before_apply_refuses(source,replacement):
+    model,target=model_and_target(source)
+    root=source.parent; approved=root/'approved'; approved.mkdir(); other=root/'other'; other.mkdir()
+    parent=root/'destination'
+    if replacement=='symlink': parent.symlink_to(approved, target_is_directory=True)
+    else: parent.mkdir()
+    target['output_path']=str(parent/'out.xml')
+    plan=model.plan(target,POINTS,'replace')
+    if replacement=='symlink': parent.unlink(); parent.symlink_to(other,target_is_directory=True)
+    else: parent.rename(root/'old'); parent.mkdir()
+    with pytest.raises(ValueError): model.apply(plan['manifest_id'],plan['fingerprint'])
+    assert not (parent/'out.xml').exists() and not (approved/'out.xml').exists() and not (other/'out.xml').exists()
+
+
+def test_parent_retarget_at_publication_never_redirects(source,monkeypatch):
+    import os
+    model,target=model_and_target(source)
+    root=source.parent; approved=root/'approved'; approved.mkdir(); other=root/'other'; other.mkdir()
+    parent=root/'destination'; parent.symlink_to(approved,target_is_directory=True)
+    target['output_path']=str(parent/'out.xml'); plan=model.plan(target,POINTS,'replace')
+    original_open=os.open
+    def retarget_on_create(path,flags,*args,**kwargs):
+        if flags & os.O_CREAT:
+            parent.unlink(); parent.symlink_to(other,target_is_directory=True)
+        return original_open(path,flags,*args,**kwargs)
+    monkeypatch.setattr(os,'open',retarget_on_create)
+    result=model.apply(plan['manifest_id'],plan['fingerprint'])
+    assert not (other/'out.xml').exists()
+    assert result['applied'] is None and result['reconciliation_required']
+    with pytest.raises(ValueError): model.apply(plan['manifest_id'],plan['fingerprint'])
+
+
+@pytest.mark.parametrize('retarget',[False,True])
+def test_parent_identity_rechecked_when_publication_opens(source,retarget):
+    from ableton_mcp.automation_writer import SavedAutomationWriter
+    model,target=model_and_target(source)
+    root=source.parent; approved=root/'approved'; approved.mkdir(); other=root/'other'; other.mkdir()
+    parent=root/'destination'; parent.symlink_to(approved,target_is_directory=True)
+    target['output_path']=str(parent/'out.xml')
+    class BoundaryWriter(SavedAutomationWriter):
+        def publish(self,path,data,destination):
+            if retarget:
+                parent.unlink(); parent.symlink_to(other,target_is_directory=True)
+            return super().publish(path,data,destination)
+    model._writer=BoundaryWriter()
+    plan=model.plan(target,POINTS,'replace')
+    result=model.apply(plan['manifest_id'],plan['fingerprint'])
+    assert not (other/'out.xml').exists()
+    if retarget:
+        assert result['applied'] is None and not (approved/'out.xml').exists()
+        assert result['destination_binding']['resolved_parent']==str(approved.resolve())
+    else:
+        assert result['applied'] is True and (approved/'out.xml').exists()

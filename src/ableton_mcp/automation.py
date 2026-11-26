@@ -40,14 +40,19 @@ class Automation:
         self._plans = {}
         self._mutex = threading.Lock()
 
-    def read_saved(self, target, range=None):
+    def read_saved(self, target, range=None, *, _verified_bytes=None):
         if set(target) != {'saved_path', 'pointee_id'}:
             raise ValueError('saved target requires only saved_path and unique pointee_id')
         path = target['saved_path']
-        before = self._hash_file(path)
-        root = self._read_xml(path, max_bytes=8 * 1024 * 1024)
-        if self._hash_file(path) != before:
-            raise ValueError('saved file changed during read')
+        if _verified_bytes is None:
+            before = self._hash_file(path)
+            root = self._read_xml(path, max_bytes=8 * 1024 * 1024)
+            if self._hash_file(path) != before:
+                raise ValueError('saved file changed during read')
+        else:
+            # Internal descriptor-read bytes, never a caller assertion of state.
+            before = hashlib.sha256(_verified_bytes).hexdigest()
+            root = ET.fromstring(_verified_bytes)
         envelopes = list(root.iter('AutomationEnvelope'))
         matches = [e for e in envelopes if e.find('EnvelopeTarget/PointeeId') is not None
                    and e.find('EnvelopeTarget/PointeeId').get('Value') == str(target['pointee_id'])]
@@ -134,8 +139,9 @@ class Automation:
         if output_data is not None:
             target = plan['target']
             try:
-                self._writer.publish(target['output_path'], output_data)
-                observed = self.read_saved({'saved_path': target['output_path'], 'pointee_id': target['pointee_id']})
+                verified_bytes = self._writer.publish(target['output_path'], output_data, binding['destination'])
+                observed = self.read_saved({'saved_path': target['output_path'], 'pointee_id': target['pointee_id']},
+                                           _verified_bytes=verified_bytes)
                 if (observed['points'] != plan['preview_points']
                         or observed['unrelated_envelope_hashes'] != plan['unrelated_envelope_hashes']
                         or observed['file_sha256'] != binding['output_sha256']
@@ -147,6 +153,7 @@ class Automation:
                             reload_risk='may_reenable_overrides', retry_safe=False)
             except Exception as exc:
                 return dict(applied=None, live_applied=False, reconciliation_required=True,
-                            output_path=target['output_path'], reason=str(exc), retry_safe=False)
+                            output_path=target['output_path'], destination_binding=binding['destination'],
+                            reason=str(exc), retry_safe=False)
         return dict(supported=False, applied=False, reason=plan['reason'],
                     backup_required=True, reload_risk='may_reenable_overrides')

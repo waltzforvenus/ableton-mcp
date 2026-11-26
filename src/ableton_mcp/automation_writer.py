@@ -79,6 +79,16 @@ class SavedAutomationWriter:
             spans.append((offset+match.start(2), offset+match.end(2)))
         return spans
 
+    def _parent_binding(self, output_path, fd=None):
+        parent = os.path.dirname(output_path)
+        resolved = os.path.realpath(parent)
+        stat = os.stat(parent) if fd is None else os.fstat(fd)
+        visible = os.stat(resolved)
+        if (visible.st_dev, visible.st_ino) != (stat.st_dev, stat.st_ino):
+            raise ValueError('destination parent changed while resolving')
+        return {'resolved_parent': resolved, 'parent_device': stat.st_dev,
+                'parent_inode': stat.st_ino, 'filename': os.path.basename(output_path)}
+
     def prepare(self, target, before, proposed, operation):
         if target.get('schema') != self.SCHEMA:
             raise ValueError('unsupported writer schema')
@@ -102,13 +112,32 @@ class SavedAutomationWriter:
         for (start, end), point in reversed(list(zip(spans, proposed))):
             output_data = output_data[:start] + repr(point['value']).encode('ascii') + output_data[end:]
         return {'source_sha256': digest, 'backup_sha256': digest,
-                'output_sha256': hashlib.sha256(output_data).hexdigest()}, output_data
+                'output_sha256': hashlib.sha256(output_data).hexdigest(),
+                'destination': self._parent_binding(output)}, output_data
 
-    def publish(self, output_path, data):
-        # Exclusive creation: race-to-create or symlink can never overwrite a file.
-        with open(output_path, 'xb') as stream:
-            stream.write(data)
-            stream.flush()
-            os.fsync(stream.fileno())
-        if self._read(output_path) != data:
-            raise ValueError('output byte readback mismatch')
+    def publish(self, output_path, data, destination):
+        # Opening may follow a parent symlink, but the opened object's identity
+        # must equal the held plan. All file IO thereafter is relative to that fd.
+        parent_fd = os.open(os.path.dirname(output_path), os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            if self._parent_binding(output_path, parent_fd) != destination:
+                raise ValueError('destination parent identity changed')
+            flags = os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
+            fd = os.open(destination['filename'], flags, 0o600, dir_fd=parent_fd)
+            with os.fdopen(fd, 'w+b') as stream:
+                stream.write(data)
+                stream.flush()
+                os.fsync(stream.fileno())
+                stream.seek(0)
+                observed = stream.read(self.LIMIT + 1)
+                if observed != data:
+                    raise ValueError('output byte readback mismatch')
+                visible = os.stat(destination['filename'], dir_fd=parent_fd, follow_symlinks=False)
+                actual = os.fstat(stream.fileno())
+                if (visible.st_dev, visible.st_ino) != (actual.st_dev, actual.st_ino):
+                    raise ValueError('output directory entry changed')
+            if self._parent_binding(output_path) != destination:
+                raise ValueError('destination parent changed after publication; inspect bound directory')
+            return observed
+        finally:
+            os.close(parent_fd)
