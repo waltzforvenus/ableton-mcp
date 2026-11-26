@@ -382,6 +382,11 @@ class AbletonService:
             result["save"] = save
         return result
 
+    def inspect_automation_curve(self, saved_path: str, pointee_id: str, sample_times: list[float]) -> dict:
+        if self._automation is None:
+            return {'schema_qualified': False, 'evaluation_supported': False, 'reason': 'automation service not configured'}
+        return self._automation.inspect_curve(saved_path, pointee_id, sample_times)
+
     def plan_automation_reload(self, copy_path: str, targets: list[dict]) -> dict:
         if self._automation_reload is None:
             return {'supported': False, 'reload_authorized': False, 'reason': 'reload comparison service not configured'}

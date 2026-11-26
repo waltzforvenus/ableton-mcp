@@ -1,3 +1,9 @@
+## Unreleased — saved curve schema inspection
+
+- Read-only control-field qualification and exact stored-event samples with raw
+  version provenance; refuse unknown/nested/partial layouts.
+- No inferred interpolation or native certification.102tools; script1.38unchanged.
+
 ## Unreleased — read-only automation reload reconciliation
 
 - Held copy/selected-state baselines and bounded fresh comparisons identify

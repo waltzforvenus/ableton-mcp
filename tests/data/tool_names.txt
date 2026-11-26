@@ -52,6 +52,7 @@ get_track_routing
 insert_chain_device
 insert_device
 insert_rack_chain
+inspect_automation_curve
 jump_to_locator
 load_device_from_path
 load_devices

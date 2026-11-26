@@ -421,7 +421,7 @@ get_live_status shows who holds it.
 
 ### Tool reference
 
-All 101 tools the server exposes. Tools marked **†** are added by this fork and
+All 102 tools the server exposes. Tools marked **†** are added by this fork and
 are not present upstream.
 
 #### Session & info
@@ -453,6 +453,8 @@ are not present upstream.
 
 | `plan_automation_reload` | copy_path, targets | Read-only selected-target override risk baseline; never reloads |
 | `reconcile_automation_reload` | plan_id, fingerprint | Fresh state comparison; never authorizes reload or repairs overrides |
+
+| `inspect_automation_curve` | saved_path, pointee_id, sample_times | Inspect serialized curve fields and exact stored points; no playback evaluation |
 
 #### Tracks
 
@@ -1037,3 +1039,22 @@ states return reload_authorized=false and identity_verified=false. Hash/expiry
 mismatches refuse before/after reads; unreadable/inconsistent observations remain
 unknown, never equivalent to safe. Real reload execution and native acceptance
 remain separately gated; this protocol supplies evidence, not the missing loader.
+
+### Saved curve schema inspection (not playback evaluation)
+inspect_automation_curve retains FloatEvent Time/Value/Id and complete sets of
+CurveControl1X/Y,CurveControl2X/Y. Unknown attributes, partial control sets, nested
+event content, ambiguous mappings, nonfinite values and duplicate/unordered times
+refuse. Max10000events,1024sample requests; existing8MiB XML/hash bounds apply.
+Root version fields are reported verbatim as provenance, NEVER native certification.
+
+At an exact nonnegative stored timestamp, stored_value is returned. evaluated_value
+is always null: between-point interpolation, extrapolation and negative sentinel
+interpretation are unsupported. No absence-of-controls=linear assumption. Source
+bytes remain unchanged; no writes, Live probes or override claims. This qualifies
+lexical fields for inspection, not audible playback or the source's entire format.
+
+Evidence: dawtool's Ableton parser observes four curve-control attributes but does
+not establish their normalization/segment ownership; its tempo sentinel discussion
+is explicitly uncertain. See https://github.com/offlinemark/dawtool/blob/master/dawtool/daw/ableton.py .
+A real version-qualified fixture with known sampled envelope values/timing semantics
+is still required before implementing playback-equivalent evaluation.

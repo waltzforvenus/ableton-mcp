@@ -1376,3 +1376,6 @@ ERROR_PHRASES["plan_automation_reload"] = "plan automation reload"
 
 reconcile_automation_reload = as_json
 ERROR_PHRASES["reconcile_automation_reload"] = "reconcile automation reload"
+
+inspect_automation_curve = as_json
+ERROR_PHRASES["inspect_automation_curve"] = "inspecting automation curve"

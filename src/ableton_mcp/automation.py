@@ -7,6 +7,7 @@ import threading
 import uuid
 import xml.etree.ElementTree as ET
 from .plugin_state import _read_xml
+from .automation_curves import inspect_curve_xml
 from .arrangement_edits import media_hash
 
 
@@ -39,6 +40,14 @@ class Automation:
         self._hash_file = hash_file
         self._plans = {}
         self._mutex = threading.Lock()
+
+    def inspect_curve(self, saved_path, pointee_id, sample_times):
+        before = self._hash_file(saved_path)
+        root = self._read_xml(saved_path, max_bytes=8 * 1024 * 1024)
+        result = inspect_curve_xml(root, pointee_id, sample_times)
+        if self._hash_file(saved_path) != before:
+            raise ValueError('saved copy changed during curve inspection')
+        return dict(result, file_sha256=before)
 
     def read_saved(self, target, range=None, *, _verified_bytes=None):
         if set(target) != {'saved_path', 'pointee_id'}:
