@@ -1144,3 +1144,11 @@ notes above; choose legacy mode for that historical contract. No output signatur
 or native API changes. Default cursors need no extra byte argument; repeat the
 same scope/cap. Errors may exceed tiny impossible caps, never successful pages.
 The outer JSON-RPC id envelope and native read-work cost are not budgeted.
+
+Structured/both tool dispatch errors also use \{code, message, details\}:
+SDK argument-validation failures are \invalid_argument\ with typed validation
+locations/error types (not echoed inputs); unknown registered-tool lookups are
+\unknown_tool\; other SDK tool execution failures are \operation_failed\.
+This boundary does not rewrite malformed JSON-RPC requests or protocol-level
+errors. Legacy mode keeps SDK text errors. Successful content, including native
+multimodal blocks, passes through unchanged.

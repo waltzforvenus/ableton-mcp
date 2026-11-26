@@ -20,7 +20,7 @@ from typing import Any, AsyncIterator, Dict, Mapping, Optional, Protocol
 from mcp.server.fastmcp import FastMCP
 
 from . import tools
-from .structured_output import structured_tool
+from .structured_output import StructuredFastMCP, structured_tool
 from .arrangement_edits import ArrangementEdits
 from .automation import Automation
 from .automation_reload import AutomationReload
@@ -172,7 +172,9 @@ def build_app(settings: Optional[Settings] = None,
                 d.client.close()
             logger.info("AbletonMCP server shut down")
 
-    app = FastMCP("AbletonMCP", lifespan=server_lifespan)
+    app = (FastMCP("AbletonMCP", lifespan=server_lifespan) if output_mode == "legacy"
+           else StructuredFastMCP("AbletonMCP", lifespan=server_lifespan,
+                                  output_mode=output_mode))
     for fn in tools.TOOLS:
         app.add_tool(fn if output_mode == "legacy" else structured_tool(fn, output_mode))
     return app
