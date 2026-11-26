@@ -1,0 +1,24 @@
+{
+  "cases": [
+    {
+      "args": {
+        "pointee_id": "0",
+        "sample_times": [],
+        "saved_path": "unused"
+      },
+      "expect": "{\n  \"schema_qualified\": false,\n  \"evaluation_supported\": false,\n  \"reason\": \"automation service not configured\"\n}",
+      "name": "unconfigured",
+      "wire": []
+    },
+    {
+      "args": {
+        "pointee_id": "0",
+        "sample_times": [],
+        "saved_path": "unused"
+      },
+      "expect": "{\n  \"schema_qualified\": false,\n  \"evaluation_supported\": false,\n  \"reason\": \"automation service not configured\"\n}",
+      "name": "error",
+      "wire": []
+    }
+  ]
+}

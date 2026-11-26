@@ -284,6 +284,15 @@ def release_live_lock(ctx: Context, holder: str, set_path: Optional[str] = None,
 
 
 @tool
+def inspect_automation_curve(ctx: Context, saved_path: str, pointee_id: str, sample_times: list[float]) -> str:
+    """Inspect saved FloatEvent/curve-control schema and exact stored-event samples.
+    Never evaluates interpolation, extrapolation or negative sentinel semantics.
+    Raw version metadata is provenance, not native qualification. No writes/Live.
+    """
+    return presenters.inspect_automation_curve(_deps(ctx).service.inspect_automation_curve(saved_path, pointee_id, sample_times))
+
+
+@tool
 def plan_automation_reload(ctx: Context, copy_path: str, targets: list[dict]) -> str:
     """Read-only reload risk plan: bind a copy hash and1..64 selected live
     automation targets. Never loads a set or authorizes reload. Observations are

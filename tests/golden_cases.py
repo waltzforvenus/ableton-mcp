@@ -1795,6 +1795,10 @@ BASE_CASES += [
     _case("reconcile_automation_reload", "unconfigured", {"plan_id": "missing", "fingerprint": "missing"}, []),
 ]
 
+BASE_CASES += [
+    _case("inspect_automation_curve", "unconfigured", {"saved_path": "unused", "pointee_id": "0", "sample_times": []}, []),
+]
+
 CASES = BASE_CASES + _generated_error_cases(BASE_CASES)
 
 # All tools, in server-definition order of first appearance.
