@@ -460,6 +460,8 @@ def get_session_snapshot(
     include_empty_slots: bool = False,
     tracks: Optional[Union[List[Union[int, str]], int, str]] = None,
     max_chars: Optional[int] = 40000,
+    max_bytes: Optional[int] = None,
+    cursor: Optional[str] = None,
 ) -> str:
     """
     Read project state in one call: session metadata, tracks (mixer, devices,
@@ -492,12 +494,22 @@ def get_session_snapshot(
     - tracks: restrict to these song tracks — indices, names, or a mix; one
       selector or a list. Names match case-insensitively. A selector that
       matches nothing is refused rather than quietly dropped
+    - max_bytes: optional positive UTF-8 byte cap for the complete serialized
+      CallToolResult (structured/both modes only). Overrides max_chars, retains
+      whole tracks, includes duplicate text in both mode, refuses if no track
+      fits. Errors may exceed an impossibly small requested cap. Does not count
+      the outer JSON-RPC request-id envelope. No native read-cost bound implied.
+    - cursor: next_cursor from a byte-budget page; repeat the identical scope
+      and max_bytes. Any observed snapshot/scope change refuses as stale.
+      This is content freshness, not native identity or an atomic snapshot.
     - max_chars: size budget for the reply (default 40000; 0 = no limit).
       Over budget, whole tracks are dropped from the end and named in
       omitted_tracks, with `continuation` holding the `tracks` argument that
       fetches exactly those next — never a reply cut off mid-JSON. For a
       mixer check, get_mix_state is a fraction of the size.
     """
+    if max_bytes is not None or cursor is not None:
+        raise ValueError("max_bytes/cursor require structured or both output mode")
     # A bare selector is the common case ("just the DRUMS bus"), so accept
     # one without a list around it and normalise here — the wire form is a
     # list, and boundary coercion is the controller's job.
