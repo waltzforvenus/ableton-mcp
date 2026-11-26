@@ -1,3 +1,11 @@
+## Unreleased — explicit saved automation output copies
+
+- Schema-qualified value-only replacement into a NEW plain UTF-8 XML file with
+  source/independent-backup hashes, byte-preserving unrelated content and readback.
+- Exclusive creation, consumed-before-publication plans, truthful partial failure.
+- Synthetic schema fixture only; no certified Live writer, native CRUD or reload.
+- Existing script1.38.0/tool inventory unchanged: server-only domain adapter via DI.
+
 ## Unreleased — expanded automation state reads (1.38.0)
 
 - Typed device/mixer/send/chain state-only targets, including return/master mixer
